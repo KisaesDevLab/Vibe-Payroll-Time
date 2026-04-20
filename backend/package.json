@@ -35,6 +35,7 @@
     "pino-http": "^10.3.0",
     "pino-pretty": "^11.3.0",
     "tsx": "^4.19.2",
+    "twilio": "^5.3.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -5,6 +5,7 @@ import { runMigrations } from './db/migrate.js';
 import { waitForDb } from './db/wait.js';
 import { createApp } from './http/app.js';
 import { scheduleAutoClockout } from './services/auto-clockout.js';
+import { scheduleMissedPunchReminder } from './services/notifications/missed-punch-cron.js';
 
 async function main() {
   logger.info('waiting for database');
@@ -21,7 +22,8 @@ async function main() {
   }
 
   const app = createApp();
-  const stopCron = scheduleAutoClockout();
+  const stopAutoClockout = scheduleAutoClockout();
+  const stopMissedPunch = scheduleMissedPunchReminder();
   const server = app.listen(env.BACKEND_PORT, env.BACKEND_HOST, () => {
     logger.info(
       { host: env.BACKEND_HOST, port: env.BACKEND_PORT, env: env.NODE_ENV },
@@ -31,7 +33,8 @@ async function main() {
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
-    stopCron();
+    stopAutoClockout();
+    stopMissedPunch();
     server.close(() => logger.info('http server closed'));
     await closeDb();
     process.exit(0);

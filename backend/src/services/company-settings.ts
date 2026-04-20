@@ -16,11 +16,10 @@ interface SettingsRow {
   twilio_account_sid: string | null;
   twilio_auth_token_encrypted: string | null;
   twilio_from_number: string | null;
-  smtp_host: string | null;
-  smtp_port: number | null;
-  smtp_user: string | null;
-  smtp_pass_encrypted: string | null;
-  smtp_from: string | null;
+  emailit_api_key_encrypted: string | null;
+  emailit_from_email: string | null;
+  emailit_from_name: string | null;
+  emailit_reply_to: string | null;
 }
 
 function rowToSettings(row: SettingsRow): CompanySettings {
@@ -37,11 +36,10 @@ function rowToSettings(row: SettingsRow): CompanySettings {
     twilioAccountSid: row.twilio_account_sid,
     twilioFromNumber: row.twilio_from_number,
     twilioAuthTokenConfigured: !!row.twilio_auth_token_encrypted,
-    smtpHost: row.smtp_host,
-    smtpPort: row.smtp_port,
-    smtpUser: row.smtp_user,
-    smtpFrom: row.smtp_from,
-    smtpPasswordConfigured: !!row.smtp_pass_encrypted,
+    emailitFromEmail: row.emailit_from_email,
+    emailitFromName: row.emailit_from_name,
+    emailitReplyTo: row.emailit_reply_to,
+    emailitApiKeyConfigured: !!row.emailit_api_key_encrypted,
   };
 }
 
@@ -52,8 +50,8 @@ export async function getCompanySettings(companyId: number): Promise<CompanySett
 }
 
 /**
- * Partial patch. Secret fields (`twilioAuthToken`, `smtpPassword`) follow
- * three-state semantics:
+ * Partial patch. Secret fields (`twilioAuthToken`, `emailitApiKey`)
+ * follow three-state semantics:
  *   - omitted   → leave the existing encrypted blob untouched
  *   - null      → clear (set column to NULL)
  *   - string    → encrypt + store
@@ -90,18 +88,18 @@ export async function updateCompanySettings(
 
     if (patch.twilioAccountSid !== undefined) updates.twilio_account_sid = patch.twilioAccountSid;
     if (patch.twilioFromNumber !== undefined) updates.twilio_from_number = patch.twilioFromNumber;
-    if (patch.smtpHost !== undefined) updates.smtp_host = patch.smtpHost;
-    if (patch.smtpPort !== undefined) updates.smtp_port = patch.smtpPort;
-    if (patch.smtpUser !== undefined) updates.smtp_user = patch.smtpUser;
-    if (patch.smtpFrom !== undefined) updates.smtp_from = patch.smtpFrom;
+    if (patch.emailitFromEmail !== undefined)
+      updates.emailit_from_email = patch.emailitFromEmail;
+    if (patch.emailitFromName !== undefined) updates.emailit_from_name = patch.emailitFromName;
+    if (patch.emailitReplyTo !== undefined) updates.emailit_reply_to = patch.emailitReplyTo;
 
     if ('twilioAuthToken' in patch) {
       updates.twilio_auth_token_encrypted =
         patch.twilioAuthToken === null ? null : encryptSecret(patch.twilioAuthToken as string);
     }
-    if ('smtpPassword' in patch) {
-      updates.smtp_pass_encrypted =
-        patch.smtpPassword === null ? null : encryptSecret(patch.smtpPassword as string);
+    if ('emailitApiKey' in patch) {
+      updates.emailit_api_key_encrypted =
+        patch.emailitApiKey === null ? null : encryptSecret(patch.emailitApiKey as string);
     }
 
     await trx('company_settings').where({ company_id: companyId }).update(updates);

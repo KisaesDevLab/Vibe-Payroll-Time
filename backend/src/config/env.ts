@@ -33,6 +33,23 @@ const envSchema = z.object({
   /** Where payroll-export CSV files are written. Relative paths resolve
    *  against the backend's cwd. The directory is created lazily. */
   EXPORTS_DIR: z.string().default('./exports'),
+
+  // ---------- EmailIt (appliance-wide fallback) ----------
+  /** If set, used when a company has not configured its own EmailIt
+   *  API key. Leave blank to make email a per-company opt-in. */
+  EMAILIT_API_KEY: z.string().optional(),
+  EMAILIT_FROM_EMAIL: z.string().email().optional(),
+  EMAILIT_FROM_NAME: z.string().default('Vibe Payroll Time'),
+  /** Override if EmailIt ever publishes a different base URL. */
+  EMAILIT_API_BASE_URL: z.string().default('https://api.emailit.com/v1'),
+
+  /** Disables outbound email + SMS entirely (useful for dev + test).
+   *  Log rows are still written with a 'disabled' status so the admin
+   *  UI reflects that the send was skipped. */
+  NOTIFICATIONS_DISABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

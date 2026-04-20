@@ -51,11 +51,10 @@ export const companySettingsSchema = z.object({
   twilioFromNumber: z.string().nullable(),
   /** True iff the encrypted blob is populated. Plaintext is never returned. */
   twilioAuthTokenConfigured: z.boolean(),
-  smtpHost: z.string().nullable(),
-  smtpPort: z.number().int().nullable(),
-  smtpUser: z.string().nullable(),
-  smtpFrom: z.string().nullable(),
-  smtpPasswordConfigured: z.boolean(),
+  emailitFromEmail: z.string().nullable(),
+  emailitFromName: z.string().nullable(),
+  emailitReplyTo: z.string().nullable(),
+  emailitApiKeyConfigured: z.boolean(),
 });
 export type CompanySettings = z.infer<typeof companySettingsSchema>;
 
@@ -74,11 +73,12 @@ export const updateCompanySettingsRequestSchema = z
      *  leave the existing encrypted value untouched. */
     twilioAuthToken: z.string().max(256).nullable().optional(),
     twilioFromNumber: z.string().max(32).nullable(),
-    smtpHost: z.string().max(254).nullable(),
-    smtpPort: z.number().int().min(1).max(65535).nullable(),
-    smtpUser: z.string().max(254).nullable(),
-    smtpPassword: z.string().max(256).nullable().optional(),
-    smtpFrom: z.string().max(254).nullable(),
+    /** EmailIt API key follows the same three-state convention as Twilio:
+     *  omit=keep, null=clear, string=re-encrypt. */
+    emailitApiKey: z.string().max(256).nullable().optional(),
+    emailitFromEmail: z.string().email().max(254).nullable(),
+    emailitFromName: z.string().max(200).nullable(),
+    emailitReplyTo: z.string().email().max(254).nullable(),
   })
   .partial()
   .refine(
