@@ -7,7 +7,7 @@ import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { TopBar } from '../components/TopBar';
 import { ApiError, apiFetch } from '../lib/api';
-import { companies as companiesApi } from '../lib/resources';
+import { companies as companiesApi, licensing } from '../lib/resources';
 
 const TZ_GUESS = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
 
@@ -45,6 +45,12 @@ export function CompaniesListPage() {
     },
   });
 
+  const toggleInternal = useMutation({
+    mutationFn: ({ id, isInternal }: { id: number; isInternal: boolean }) =>
+      licensing.setInternalFlag(id, isInternal),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
+  });
+
   return (
     <>
       <TopBar />
@@ -79,15 +85,29 @@ export function CompaniesListPage() {
                     <div className="text-xs text-slate-500">{c.slug}</div>
                   </td>
                   <td className="px-4 py-3">
-                    {c.isInternal ? (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                        Internal
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                        Client
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !c.isInternal;
+                        if (
+                          confirm(
+                            next
+                              ? `Mark "${c.name}" as internal? Licensing will no longer apply to this company.`
+                              : `Unmark "${c.name}" as internal? It will revert to trial and need a license.`,
+                          )
+                        )
+                          toggleInternal.mutate({ id: c.id, isInternal: next });
+                      }}
+                      className={
+                        'rounded-full px-2 py-0.5 text-xs font-medium transition ' +
+                        (c.isInternal
+                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200')
+                      }
+                      title="Click to toggle"
+                    >
+                      {c.isInternal ? 'Internal' : 'Client'}
+                    </button>
                   </td>
                   <td className="px-4 py-3 text-slate-700">{c.licenseState.replace('_', ' ')}</td>
                   <td className="px-4 py-3 text-slate-700">{c.payPeriodType.replace('_', '-')}</td>

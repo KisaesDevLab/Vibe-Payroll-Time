@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Outlet, useParams } from 'react-router-dom';
 import { CompanyTabs } from '../components/CompanyTabs';
+import { LicenseBanner } from '../components/LicenseBanner';
 import { TopBar } from '../components/TopBar';
 import { companies as companiesApi } from '../lib/resources';
 
@@ -34,6 +35,9 @@ export function CompanyLayout() {
         <CompanyTabs companyId={companyId} />
       </div>
       <main className="mx-auto max-w-7xl px-6 py-8">
+        <div className="mb-4">
+          <LicenseBanner companyId={companyId} />
+        </div>
         <Outlet context={{ companyId }} />
       </main>
     </>

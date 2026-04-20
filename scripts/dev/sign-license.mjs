@@ -52,9 +52,7 @@ const claims = {
   company_slug: parseFlag('company-slug', 'acme'),
   tier: parseFlag('tier', 'per_company_monthly'),
   employee_count_cap:
-    parseFlag('employee-cap', 'null') === 'null'
-      ? null
-      : Number(parseFlag('employee-cap', '50')),
+    parseFlag('employee-cap', 'null') === 'null' ? null : Number(parseFlag('employee-cap', '50')),
   company_count_cap: null,
 };
 

@@ -29,6 +29,7 @@ export function CompanyTabs({ companyId }: { companyId: number }) {
             to: `/companies/${companyId}/notifications-log`,
             label: 'Notifications',
           },
+          { to: `/companies/${companyId}/license`, label: 'License' },
           { to: `/companies/${companyId}/settings`, label: 'Settings' },
         ]
       : []),

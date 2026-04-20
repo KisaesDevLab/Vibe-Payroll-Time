@@ -20,6 +20,7 @@ import type {
   Job,
   KioskDevice,
   KioskPairingCodeResponse,
+  LicenseStatus,
   Membership,
   AISettings,
   ChatRequest,
@@ -356,5 +357,25 @@ export const ai = {
     apiFetch<ChatResponse>(`/companies/${companyId}/ai/chat`, {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Licensing
+// ---------------------------------------------------------------------------
+
+export const licensing = {
+  getStatus: (companyId: number) => apiFetch<LicenseStatus>(`/companies/${companyId}/license`),
+  upload: (companyId: number, jwt: string) =>
+    apiFetch<LicenseStatus>(`/companies/${companyId}/license`, {
+      method: 'POST',
+      body: JSON.stringify({ jwt }),
+    }),
+  clear: (companyId: number) =>
+    apiFetch<void>(`/companies/${companyId}/license`, { method: 'DELETE' }),
+  setInternalFlag: (companyId: number, isInternal: boolean) =>
+    apiFetch<LicenseStatus>(`/companies/${companyId}/license/internal-flag`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isInternal }),
     }),
 };
