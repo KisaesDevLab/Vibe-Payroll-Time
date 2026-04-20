@@ -448,42 +448,55 @@ function NotificationsSection({
         }
       />
 
-      <h3 className="mt-4 text-sm font-semibold text-slate-900">SMTP (email)</h3>
+      <h3 className="mt-4 text-sm font-semibold text-slate-900">EmailIt (email)</h3>
+      <p className="-mt-2 text-xs text-slate-500">
+        Transactional email goes through EmailIt.com. Get an API key at{' '}
+        <a
+          href="https://emailit.com"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          emailit.com
+        </a>
+        , then paste below. Leave the key blank to use the appliance-wide fallback
+        (if the administrator has configured one).
+      </p>
+      <FormField
+        label="API key"
+        type="password"
+        hint={
+          settings.emailitApiKeyConfigured
+            ? 'A key is currently stored. Leave blank to keep; enter a new value to replace.'
+            : 'Not configured. Paste your EmailIt API key to enable email.'
+        }
+        placeholder={settings.emailitApiKeyConfigured ? '••••••••' : 'paste API key'}
+        onChange={(e) => setForm((f) => ({ ...f, emailitApiKey: e.target.value || null }))}
+      />
       <div className="grid grid-cols-2 gap-4">
         <FormField
-          label="Host"
-          defaultValue={settings.smtpHost ?? ''}
-          onChange={(e) => setForm((f) => ({ ...f, smtpHost: e.target.value || null }))}
+          label="From email"
+          type="email"
+          defaultValue={settings.emailitFromEmail ?? ''}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, emailitFromEmail: e.target.value || null }))
+          }
         />
         <FormField
-          label="Port"
-          type="number"
-          defaultValue={settings.smtpPort ?? 587}
+          label="From name"
+          defaultValue={settings.emailitFromName ?? ''}
           onChange={(e) =>
-            setForm((f) => ({ ...f, smtpPort: Number(e.target.value) || null }))
+            setForm((f) => ({ ...f, emailitFromName: e.target.value || null }))
           }
         />
       </div>
       <FormField
-        label="User"
-        defaultValue={settings.smtpUser ?? ''}
-        onChange={(e) => setForm((f) => ({ ...f, smtpUser: e.target.value || null }))}
-      />
-      <FormField
-        label="Password"
-        type="password"
-        hint={
-          settings.smtpPasswordConfigured
-            ? 'A password is currently stored. Leave blank to keep; enter a new value to replace.'
-            : 'Not configured.'
+        label="Reply-to (optional)"
+        type="email"
+        defaultValue={settings.emailitReplyTo ?? ''}
+        onChange={(e) =>
+          setForm((f) => ({ ...f, emailitReplyTo: e.target.value || null }))
         }
-        placeholder={settings.smtpPasswordConfigured ? '••••••••' : ''}
-        onChange={(e) => setForm((f) => ({ ...f, smtpPassword: e.target.value || null }))}
-      />
-      <FormField
-        label="From address"
-        defaultValue={settings.smtpFrom ?? ''}
-        onChange={(e) => setForm((f) => ({ ...f, smtpFrom: e.target.value || null }))}
       />
     </SectionShell>
   );

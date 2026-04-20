@@ -40,6 +40,9 @@ export function TopBar() {
               <Link to="/my-timesheet" className="hover:text-slate-900">
                 Timesheet
               </Link>
+              <Link to="/notifications" className="hover:text-slate-900">
+                Notifications
+              </Link>
             </>
           )}
           {session?.user.roleGlobal === 'super_admin' && (

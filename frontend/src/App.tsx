@@ -16,6 +16,8 @@ import { KioskRoot } from './pages/kiosk/KioskRoot';
 import { LoginPage } from './pages/LoginPage';
 import { MyPunchPage } from './pages/MyPunchPage';
 import { MyTimesheetPage } from './pages/MyTimesheetPage';
+import { NotificationPreferencesPage } from './pages/NotificationPreferencesPage';
+import { NotificationsLogPage } from './pages/NotificationsLogPage';
 import { PayrollExportsPage } from './pages/PayrollExportsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SetupPage } from './pages/SetupPage';
@@ -112,6 +114,14 @@ export function App() {
             </RequireSession>
           }
         />
+        <Route
+          path="/notifications"
+          element={
+            <RequireSession>
+              <NotificationPreferencesPage />
+            </RequireSession>
+          }
+        />
 
         <Route
           path="/"
@@ -145,6 +155,7 @@ export function App() {
           <Route path="corrections" element={<CorrectionsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="exports" element={<PayrollExportsPage />} />
+          <Route path="notifications-log" element={<NotificationsLogPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="kiosks" element={<KiosksPage />} />

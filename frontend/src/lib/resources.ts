@@ -15,11 +15,13 @@ import type {
   Employee,
   EmployeeWithPinResponse,
   EntryAuditRow,
+  EmployeePreferences,
   InviteMembershipRequest,
   Job,
   KioskDevice,
   KioskPairingCodeResponse,
   Membership,
+  NotificationsLogRow,
   PayrollExport,
   PreflightRequest,
   PreflightResponse,
@@ -30,6 +32,7 @@ import type {
   TimesheetResponse,
   UpdateCompanyRequest,
   UpdateCompanySettingsRequest,
+  UpdateEmployeePreferencesRequest,
   UpdateEmployeeRequest,
   UpdateJobRequest,
 } from '@vibept/shared';
@@ -308,5 +311,42 @@ export const payrollExports = {
   downloadUrl: (companyId: number, id: number) => {
     const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
     return `${apiBase}/companies/${companyId}/payroll-exports/${id}/download`;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Notifications (self-service + admin log)
+// ---------------------------------------------------------------------------
+
+export const notifications = {
+  getPreferences: (companyId: number) =>
+    apiFetch<EmployeePreferences>(`/notifications/preferences?companyId=${companyId}`),
+  updatePreferences: (companyId: number, body: UpdateEmployeePreferencesRequest) =>
+    apiFetch<EmployeePreferences>(`/notifications/preferences?companyId=${companyId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  requestPhoneVerification: (companyId: number, phone: string) =>
+    apiFetch<{ expiresAt: string }>(
+      `/notifications/phone-verification/request?companyId=${companyId}`,
+      { method: 'POST', body: JSON.stringify({ phone }) },
+    ),
+  confirmPhoneVerification: (companyId: number, code: string) =>
+    apiFetch<EmployeePreferences>(
+      `/notifications/phone-verification/confirm?companyId=${companyId}`,
+      { method: 'POST', body: JSON.stringify({ code }) },
+    ),
+  log: (
+    companyId: number,
+    opts: { status?: string; channel?: string; limit?: number } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (opts.status) qs.set('status', opts.status);
+    if (opts.channel) qs.set('channel', opts.channel);
+    if (opts.limit) qs.set('limit', String(opts.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return apiFetch<NotificationsLogRow[]>(
+      `/companies/${companyId}/notifications-log${suffix}`,
+    );
   },
 };

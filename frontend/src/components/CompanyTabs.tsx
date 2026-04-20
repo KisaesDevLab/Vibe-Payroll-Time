@@ -27,6 +27,10 @@ export function CompanyTabs({ companyId }: { companyId: number }) {
           { to: `/companies/${companyId}/exports`, label: 'Exports' },
           { to: `/companies/${companyId}/team`, label: 'Team' },
           { to: `/companies/${companyId}/kiosks`, label: 'Kiosks' },
+          {
+            to: `/companies/${companyId}/notifications-log`,
+            label: 'Notifications',
+          },
           { to: `/companies/${companyId}/settings`, label: 'Settings' },
         ]
       : []),
