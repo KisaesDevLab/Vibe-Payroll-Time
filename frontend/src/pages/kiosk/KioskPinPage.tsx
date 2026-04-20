@@ -84,12 +84,29 @@ export function KioskPinPage() {
     },
   });
 
-  // Placeholder punch action. Phase 5 wires the actual POST /punch/*
-  // endpoints through kioskApi + the employee session token.
-  const stubPunch = useCallback((label: string) => {
-    setConfirmMessage(label);
-    setScreen('confirmation');
-  }, []);
+  const punch = useMutation({
+    mutationFn: async (action: 'clockIn' | 'clockOut' | 'breakIn' | 'breakOut') => {
+      if (!session) throw new ApiError(401, 'unauthorized', 'No active session');
+      const token = session.sessionToken;
+      switch (action) {
+        case 'clockIn':
+          return { label: 'Clocked in', entry: await kioskApi.clockIn(token) };
+        case 'clockOut':
+          return { label: 'Clocked out', entry: await kioskApi.clockOut(token) };
+        case 'breakIn':
+          return { label: 'On break', entry: await kioskApi.breakIn(token) };
+        case 'breakOut':
+          return { label: 'Back from break', entry: await kioskApi.breakOut(token) };
+      }
+    },
+    onSuccess: (res) => {
+      setConfirmMessage(res.label);
+      setScreen('confirmation');
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Punch failed');
+    },
+  });
 
   if (!kiosk) {
     return null;
@@ -152,8 +169,10 @@ export function KioskPinPage() {
         {screen === 'menu' && session && (
           <EmployeeMenu
             ctx={session}
-            onAction={(label) => stubPunch(label)}
+            onAction={(action) => punch.mutate(action)}
             onCancel={resetToPin}
+            pending={punch.isPending}
+            error={error}
           />
         )}
         {screen === 'confirmation' && confirmMessage && (
@@ -248,14 +267,20 @@ function KeyButton({
   );
 }
 
+type PunchAction = 'clockIn' | 'clockOut' | 'breakIn' | 'breakOut';
+
 function EmployeeMenu({
   ctx,
   onAction,
   onCancel,
+  pending,
+  error,
 }: {
   ctx: KioskEmployeeContext;
-  onAction: (label: string) => void;
+  onAction: (action: PunchAction) => void;
   onCancel: () => void;
+  pending: boolean;
+  error: string | null;
 }) {
   const isClockedIn = ctx.openEntry?.entryType === 'work';
   const isOnBreak = ctx.openEntry?.entryType === 'break';
@@ -273,41 +298,49 @@ function EmployeeMenu({
 
       <div className="grid w-full gap-3">
         {isClockedOut && (
-          <Button className="py-5 text-lg" onClick={() => onAction('Clocked in')}>
+          <Button
+            className="py-5 text-lg"
+            loading={pending}
+            onClick={() => onAction('clockIn')}
+          >
             Clock in
           </Button>
         )}
         {isClockedIn && (
           <>
-            <Button className="py-5 text-lg" onClick={() => onAction('Clocked out')}>
+            <Button
+              className="py-5 text-lg"
+              loading={pending}
+              onClick={() => onAction('clockOut')}
+            >
               Clock out
             </Button>
             <Button
               variant="secondary"
               className="py-4 text-base"
-              onClick={() => onAction('Started break')}
+              loading={pending}
+              onClick={() => onAction('breakIn')}
             >
               Start break
-            </Button>
-            <Button
-              variant="secondary"
-              className="py-4 text-base"
-              onClick={() => onAction('Switched job')}
-            >
-              Switch job
             </Button>
           </>
         )}
         {isOnBreak && (
-          <Button className="py-5 text-lg" onClick={() => onAction('Back from break')}>
+          <Button
+            className="py-5 text-lg"
+            loading={pending}
+            onClick={() => onAction('breakOut')}
+          >
             End break
           </Button>
         )}
       </div>
 
-      <p className="text-xs text-slate-500">
-        (Punch actions will be wired up in Phase 5 of the build plan.)
-      </p>
+      {error && (
+        <p className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-200">
+          {error}
+        </p>
+      )}
 
       <button
         type="button"
