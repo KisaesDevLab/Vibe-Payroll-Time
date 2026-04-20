@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AISettings,
   Company,
   CompanySettings,
+  UpdateAISettingsRequest,
   UpdateCompanyRequest,
   UpdateCompanySettingsRequest,
 } from '@vibept/shared';
@@ -12,18 +14,20 @@ import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { ApiError } from '../lib/api';
 import {
+  ai,
   companies as companiesApi,
   companySettings as settingsApi,
 } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
-type Section = 'general' | 'punch' | 'approval' | 'notifications';
+type Section = 'general' | 'punch' | 'approval' | 'notifications' | 'ai';
 
 const SECTIONS: Array<{ id: Section; label: string }> = [
   { id: 'general', label: 'General' },
   { id: 'punch', label: 'Punch rules' },
   { id: 'approval', label: 'Approval' },
   { id: 'notifications', label: 'Notifications' },
+  { id: 'ai', label: 'AI' },
 ];
 
 export function CompanySettingsPage() {
@@ -119,6 +123,7 @@ export function CompanySettingsPage() {
             error={updateSettings.error}
           />
         )}
+        {section === 'ai' && <AISection companyId={companyId} />}
       </div>
 
       {confirmPayPeriodChange && (
@@ -498,6 +503,117 @@ function NotificationsSection({
           setForm((f) => ({ ...f, emailitReplyTo: e.target.value || null }))
         }
       />
+    </SectionShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI
+// ---------------------------------------------------------------------------
+
+function AISection({ companyId }: { companyId: number }) {
+  const qc = useQueryClient();
+  const settingsQ = useQuery({
+    queryKey: ['ai-settings', companyId],
+    queryFn: () => ai.getSettings(companyId),
+  });
+  const [form, setForm] = useState<UpdateAISettingsRequest>({});
+  const update = useMutation({
+    mutationFn: () => ai.updateSettings(companyId, form),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-settings', companyId] });
+      setForm({});
+    },
+  });
+
+  if (!settingsQ.data) return <p className="text-sm text-slate-500">Loading…</p>;
+
+  const effective = { ...settingsQ.data, ...form } as AISettings & UpdateAISettingsRequest;
+
+  return (
+    <SectionShell
+      title="AI features"
+      onSave={() => update.mutate()}
+      saving={update.isPending}
+      error={update.error}
+      disabled={Object.keys(form).length === 0}
+    >
+      <p className="-mt-2 text-xs text-slate-500">
+        Enables natural-language timesheet corrections and the support chat.
+        Disabled by default. Credentials are stored per-company; the
+        appliance-wide env value is used as a fallback.
+      </p>
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          className="h-4 w-4"
+          checked={!!effective.aiEnabled}
+          onChange={(e) => setForm((f) => ({ ...f, aiEnabled: e.target.checked }))}
+        />
+        AI enabled for this company
+      </label>
+
+      <div className="grid grid-cols-2 gap-4">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Provider</span>
+          <select
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 shadow-sm"
+            value={effective.aiProvider ?? 'anthropic'}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                aiProvider: e.target.value as AISettings['aiProvider'],
+              }))
+            }
+          >
+            <option value="anthropic">Anthropic</option>
+            <option value="openai_compatible">OpenAI-compatible</option>
+            <option value="ollama">Ollama (local)</option>
+          </select>
+        </label>
+        <FormField
+          label="Model"
+          defaultValue={settingsQ.data.aiModel ?? ''}
+          placeholder="defaults to a sensible per-provider pick"
+          onChange={(e) =>
+            setForm((f) => ({ ...f, aiModel: e.target.value || null }))
+          }
+        />
+      </div>
+
+      <FormField
+        label="API key"
+        type="password"
+        hint={
+          settingsQ.data.aiApiKeyConfigured
+            ? 'A key is currently stored. Leave blank to keep; enter a new value to replace.'
+            : 'Not configured. The appliance-wide AI_API_KEY env var is used as a fallback if present.'
+        }
+        placeholder={settingsQ.data.aiApiKeyConfigured ? '••••••••' : 'paste API key'}
+        onChange={(e) => setForm((f) => ({ ...f, aiApiKey: e.target.value || null }))}
+      />
+      <FormField
+        label="Base URL (optional)"
+        defaultValue={settingsQ.data.aiBaseUrl ?? ''}
+        hint="Required for OpenAI-compatible / Ollama endpoints. Leave blank for Anthropic."
+        onChange={(e) => setForm((f) => ({ ...f, aiBaseUrl: e.target.value || null }))}
+      />
+      <FormField
+        label="Daily NL correction limit (per employee)"
+        type="number"
+        min={0}
+        max={500}
+        defaultValue={settingsQ.data.aiDailyCorrectionLimit}
+        onChange={(e) =>
+          setForm((f) => ({ ...f, aiDailyCorrectionLimit: Number(e.target.value) }))
+        }
+      />
+
+      <p className="text-xs text-slate-500">
+        Tool-calling (needed for NL corrections) currently works only on
+        Anthropic. OpenAI-compatible and Ollama backends power the support
+        chat only.
+      </p>
     </SectionShell>
   );
 }

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { NLCorrectionWidget } from '../components/NLCorrectionWidget';
 import { TimesheetView } from '../components/TimesheetView';
 import { ApiError } from '../lib/api';
 import { employees, timesheets } from '../lib/resources';
@@ -144,6 +145,15 @@ export function TimesheetsReviewPage() {
               )}
             </div>
             <TimesheetView data={sheet.data} />
+            <NLCorrectionWidget
+              companyId={companyId}
+              employeeId={sheet.data.employee.id}
+              periodStart={sheet.data.period.start}
+              periodEnd={sheet.data.period.end}
+              onApplied={() =>
+                qc.invalidateQueries({ queryKey: ['timesheet', companyId, effectiveId] })
+              }
+            />
             {(approve.isError || unapprove.isError) && (
               <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 Approval action failed.

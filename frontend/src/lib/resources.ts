@@ -21,8 +21,16 @@ import type {
   KioskDevice,
   KioskPairingCodeResponse,
   Membership,
+  AISettings,
+  ChatRequest,
+  ChatResponse,
+  NLCorrectionApplyRequest,
+  NLCorrectionApplyResult,
+  NLCorrectionPreview,
+  NLCorrectionRequest,
   NotificationsLogRow,
   PayrollExport,
+  UpdateAISettingsRequest,
   PreflightRequest,
   PreflightResponse,
   ReportCatalogResponse,
@@ -349,4 +357,33 @@ export const notifications = {
       `/companies/${companyId}/notifications-log${suffix}`,
     );
   },
+};
+
+// ---------------------------------------------------------------------------
+// AI (settings, NL corrections, support chat)
+// ---------------------------------------------------------------------------
+
+export const ai = {
+  getSettings: (companyId: number) =>
+    apiFetch<AISettings>(`/companies/${companyId}/ai/settings`),
+  updateSettings: (companyId: number, body: UpdateAISettingsRequest) =>
+    apiFetch<AISettings>(`/companies/${companyId}/ai/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  previewCorrection: (companyId: number, body: NLCorrectionRequest) =>
+    apiFetch<NLCorrectionPreview>(
+      `/companies/${companyId}/ai/nl-correction/preview`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  applyCorrection: (companyId: number, body: NLCorrectionApplyRequest) =>
+    apiFetch<NLCorrectionApplyResult>(
+      `/companies/${companyId}/ai/nl-correction/apply`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  chat: (companyId: number, body: ChatRequest) =>
+    apiFetch<ChatResponse>(`/companies/${companyId}/ai/chat`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 };

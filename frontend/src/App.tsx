@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { OfflineBanner } from './components/OfflineBanner';
+import { SupportChatWidget } from './components/SupportChatWidget';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
 import { CompaniesListPage } from './pages/CompaniesListPage';
@@ -29,6 +30,7 @@ function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-slate-50">
       {children}
       <OfflineBanner />
+      <SupportChatWidget />
     </div>
   );
 }

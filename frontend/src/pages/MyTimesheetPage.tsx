@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
+import { NLCorrectionWidget } from '../components/NLCorrectionWidget';
 import { TimesheetView } from '../components/TimesheetView';
 import { TopBar } from '../components/TopBar';
 import { useSession } from '../hooks/useSession';
@@ -73,7 +74,16 @@ export function MyTimesheetPage() {
           </p>
         )}
         {sheet.data && (
-          <TimesheetView data={sheet.data} onRequestCorrection={setCorrection} />
+          <div className="flex flex-col gap-6">
+            <TimesheetView data={sheet.data} onRequestCorrection={setCorrection} />
+            <NLCorrectionWidget
+              companyId={sheet.data.employee.companyId}
+              employeeId={sheet.data.employee.id}
+              periodStart={sheet.data.period.start}
+              periodEnd={sheet.data.period.end}
+              onApplied={() => qc.invalidateQueries({ queryKey: ['my-timesheet', companyId] })}
+            />
+          </div>
         )}
       </main>
 
