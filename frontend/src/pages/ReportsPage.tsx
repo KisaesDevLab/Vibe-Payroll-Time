@@ -24,7 +24,7 @@ export function ReportsPage() {
       <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold text-slate-900">Reports</h2>
         <p className="mb-3 text-xs text-slate-500">
-          All reports export to CSV. PDF export comes in Phase 13.
+          Run + export to CSV, or <strong>Print</strong> → "Save as PDF" for a shareable copy.
         </p>
         {catalog.isPending && <p className="text-xs text-slate-500">Loading…</p>}
         <ul className="flex flex-col gap-1">
@@ -100,12 +100,17 @@ function ReportRunner({ companyId, report }: { companyId: number; report: Report
           <h1 className="text-xl font-semibold text-slate-900">{report.label}</h1>
           <p className="mt-1 text-sm text-slate-600">{report.description}</p>
         </div>
-        <CsvDownloadButton
-          companyId={companyId}
-          name={report.name}
-          params={queryForApi(form)}
-          disabled={!canRun}
-        />
+        <div className="flex gap-2">
+          <Button variant="secondary" disabled={!run.data} onClick={() => window.print()}>
+            Print / PDF
+          </Button>
+          <CsvDownloadButton
+            companyId={companyId}
+            name={report.name}
+            params={queryForApi(form)}
+            disabled={!canRun}
+          />
+        </div>
       </header>
 
       <form

@@ -46,9 +46,14 @@ export function TopBar() {
             </>
           )}
           {session?.user.roleGlobal === 'super_admin' && (
-            <Link to="/companies" className="hover:text-slate-900">
-              All companies
-            </Link>
+            <>
+              <Link to="/companies" className="hover:text-slate-900">
+                All companies
+              </Link>
+              <Link to="/appliance" className="hover:text-slate-900">
+                Appliance
+              </Link>
+            </>
           )}
         </nav>
 

@@ -6,6 +6,7 @@ import { API_PREFIX } from '@vibept/shared';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { errorHandler, notFoundHandler } from './errors.js';
+import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { authRouter } from './routes/auth.js';
 import { companiesRouter } from './routes/companies.js';
@@ -64,6 +65,7 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/kiosk`, kioskRouter);
   app.use(`${API_PREFIX}/timesheets`, timesheetsRouter);
   app.use(`${API_PREFIX}/notifications`, notificationsRouter);
+  app.use(`${API_PREFIX}/admin`, adminRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

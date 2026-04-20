@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Vibe Payroll Time — restore a Level-2 backup into a fresh Postgres.
+#
+# Usage:
+#   ./scripts/appliance/restore.sh <path-to-dump.sql.gz>
+#
+# The script STOPS the backend + frontend + caddy services while the
+# database is being rewritten, drops the public schema, restores, and
+# restarts everything. Intended for use during a restore drill or real
+# recovery. WAL-based PITR is a manual procedure — see docs/restore.md.
+#
+# WARNING: this is destructive. You will lose any data in the current
+# database. Confirmation is required unless FORCE=1 is set.
+
+set -euo pipefail
+
+INSTALL_DIR="${INSTALL_DIR:-/opt/vibept}"
+COMPOSE_FILE="${COMPOSE_FILE:-$INSTALL_DIR/docker-compose.prod.yml}"
+
+log() { printf '\033[1;34m[restore]\033[0m %s\n' "$*"; }
+err() { printf '\033[1;31m[restore]\033[0m %s\n' "$*" >&2; }
+
+if [[ $# -lt 1 ]]; then
+  err "usage: $0 <dump.sql.gz>"
+  exit 1
+fi
+
+DUMP="$1"
+
+if [[ ! -f "$DUMP" ]]; then
+  err "dump file not found: $DUMP"
+  exit 1
+fi
+
+if [[ -f "$INSTALL_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$INSTALL_DIR/.env"
+  set +a
+fi
+
+POSTGRES_USER="${POSTGRES_USER:-vibept}"
+POSTGRES_DB="${POSTGRES_DB:-vibept}"
+
+if [[ "${FORCE:-0}" != "1" ]]; then
+  printf 'About to OVERWRITE database "%s" from %s.\nType "yes" to proceed: ' "$POSTGRES_DB" "$DUMP"
+  read -r answer
+  [[ "$answer" == "yes" ]] || { err "aborted"; exit 1; }
+fi
+
+log "stopping backend + frontend + caddy"
+docker compose -f "$COMPOSE_FILE" stop backend frontend caddy || true
+
+log "dropping and recreating public schema"
+docker compose -f "$COMPOSE_FILE" exec -T postgres \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'SQL'
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+SQL
+
+log "restoring from $DUMP"
+gunzip -c "$DUMP" | docker compose -f "$COMPOSE_FILE" exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+
+log "running migrations in case the dump predates the running code"
+docker compose -f "$COMPOSE_FILE" run --rm -e MIGRATE_ON_BOOT=true backend \
+  node --input-type=module -e 'import("./backend/src/db/migrate.js").then(m => m.runMigrations())' \
+  || log "migrate runner not wired; skip (backend boot will migrate)"
+
+log "starting services back up"
+docker compose -f "$COMPOSE_FILE" up -d backend frontend caddy
+
+log "restore complete. verify at the health endpoint."

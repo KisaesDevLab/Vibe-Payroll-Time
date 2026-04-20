@@ -36,8 +36,20 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-vibept}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-vibept}
+    # Level-1 backup: enable WAL archiving so we have PITR capability. The
+    # archive target is a plain directory mounted from the host — the weekly
+    # S3 job (scripts/appliance/backup-weekly-s3.sh) picks it up from there.
+    # Overridable via WAL_ARCHIVE_MODE=off if a customer insists.
+    command: >
+      postgres
+        -c wal_level=${WAL_LEVEL:-replica}
+        -c archive_mode=${WAL_ARCHIVE_MODE:-on}
+        -c archive_command='test ! -f /wal-archive/%f && cp %p /wal-archive/%f'
+        -c archive_timeout=${WAL_ARCHIVE_TIMEOUT:-300}
+        -c max_wal_senders=${MAX_WAL_SENDERS:-3}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ${WAL_ARCHIVE_DIR:-/var/backups/vibept-wal}:/wal-archive
     networks: [internal]
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-vibept} -d ${POSTGRES_DB:-vibept}']

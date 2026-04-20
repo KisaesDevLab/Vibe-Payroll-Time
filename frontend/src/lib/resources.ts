@@ -379,3 +379,44 @@ export const licensing = {
       body: JSON.stringify({ isInternal }),
     }),
 };
+
+// ---------------------------------------------------------------------------
+// Appliance admin (SuperAdmin only)
+// ---------------------------------------------------------------------------
+
+export interface ApplianceHealth {
+  appliance: {
+    id: string;
+    version: string;
+    gitSha: string;
+    buildDate: string;
+    nodeEnv: string;
+  };
+  checks: {
+    db: 'ok' | 'fail';
+    licensingEnforced: boolean;
+    notificationsDisabled: boolean;
+    aiProviderDefault: string;
+  };
+  companies: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    isInternal: boolean;
+    licenseState: string;
+    employeeCount: number;
+  }>;
+  runtime: {
+    openTimeEntries: number;
+    notifications24h: Record<string, number>;
+  };
+  timestamp: string;
+}
+
+export const admin = {
+  health: () => apiFetch<ApplianceHealth>('/admin/health'),
+  exportCompanyUrl: (companyId: number) => {
+    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    return `${apiBase}/admin/companies/${companyId}/export-all`;
+  },
+};

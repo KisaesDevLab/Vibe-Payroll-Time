@@ -40,7 +40,7 @@ Identical to Vibe Trial Balance / Vibe MyBooks conventions unless noted.
 | Queue / cron  | `node-cron` for scheduled jobs (auto-clock-out, missed-punch reminders, heartbeat). BullMQ **not** used v1 — no long-running async work |
 | Auth          | JWT (access + refresh), bcrypt for passwords, `otplib` for PIN TOTP rotation (kiosk)                                                    |
 | AI            | Multi-provider LLM abstraction (ported from Vibe TB): Anthropic / Ollama / OpenAI-compatible                                            |
-| Email         | Nodemailer with configurable SMTP relay (BYO per company)                                                                               |
+| Email         | EmailIt.com transactional API (BYO API key per company, appliance-wide fallback)                                                        |
 | SMS           | Twilio SDK, BYO credentials per company                                                                                                 |
 | Ingress       | Cloudflare Tunnel (`cloudflared`) and/or Tailscale Funnel, bundled as sidecar containers                                                |
 | Reverse proxy | Caddy (auto-TLS for non-tunnel deployments)                                                                                             |
@@ -248,6 +248,24 @@ docker compose -f docker-compose.prod.yml build
 ## Where to look when you're stuck
 
 1. `BUILD_PLAN.md` — the phased checklist; find the current phase and the specific item
-2. Vibe MyBooks source for: JWT enforcement, license state machine, company/employee data patterns
-3. Vibe TB source for: LLM abstraction, migrations style, TanStack Table patterns, four-level backup
-4. This file
+2. `CHANGELOG.md` — what v1.0.0 actually shipped with, grouped by phase
+3. `docs/` — operator + user-facing guides (`admin-guide`, `employee-guide`, `kiosk-setup`, `integrations`, `security`, `security-review`, `restore`, `troubleshooting`, `deployment`, `exports/`)
+4. Vibe MyBooks source for: JWT enforcement, license state machine, company/employee data patterns
+5. Vibe TB source for: LLM abstraction, migrations style, TanStack Table patterns, four-level backup
+6. This file
+
+---
+
+## v1.0.0 decisions worth knowing
+
+Changes from the pre-v1 BUILD_PLAN assumptions, captured so they don't drift:
+
+- **Email transport is EmailIt.com, not Nodemailer.** Fetch-based HTTP client, BYO API key per company, appliance-wide fallback. Rationale: no SMTP relay to run, good per-tenant API-key story, one less moving piece.
+- **Licensing ships disabled (`LICENSING_ENFORCED=false`).** The machinery is wired end-to-end but the middleware short-circuits. Flip to `true` once the license portal is live for this product.
+- **No license public key is bundled in the image.** `LICENSE_PUBKEY_PEM` must be set explicitly before enforcement will accept any JWT. Prevents a leaked dev key from signing prod licenses.
+- **Four-level backup:** Level 1 = WAL archive (continuous), Level 2 = `pg_dump` nightly, Level 3 = rclone to S3 weekly, Level 4 = per-company logical ZIP on demand. See `docs/restore.md`.
+- **Retention sweep** runs nightly at 03:41 UTC and prunes `auth_events` (365d), `notifications_log` (180d), `ai_correction_usage` (90d), `kiosk_pairing_codes` (30d), and export files on disk (365d). `time_entries` + `time_entry_audit` are never pruned.
+- **PDF export is print-based**, not server-rendered. `@media print` CSS + a Print/PDF button that opens the browser's Save-as-PDF dialog. Rationale: no puppeteer, no headless chromium, works on constrained appliances.
+- **SuperAdmin appliance health** is a single `/admin/health` endpoint + a `/appliance` dashboard route. No Prometheus / external observability in v1.
+- **Types:** we renamed `time-math/summary.ts` exports to `DaySummaryInternal` + `WeekSummaryInternal` to avoid a collision with HTTP types in `schemas/timesheets.ts`. Don't re-export `LicenseState` from `schemas/licensing.ts` — it lives in `enums.ts`.
+- **tsconfig:** no `composite: true`, no project references. `tsc --noEmit` at build time; `tsx` at runtime for both dev and prod.
