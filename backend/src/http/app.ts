@@ -9,6 +9,7 @@ import { errorHandler, notFoundHandler } from './errors.js';
 import { authRouter } from './routes/auth.js';
 import { companiesRouter } from './routes/companies.js';
 import { healthRouter, versionRouter } from './routes/health.js';
+import { kioskRouter } from './routes/kiosk.js';
 import { setupRouter } from './routes/setup.js';
 
 export function createApp(): Express {
@@ -46,6 +47,7 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/setup`, setupRouter);
   app.use(`${API_PREFIX}/auth`, authRouter);
   app.use(`${API_PREFIX}/companies`, companiesRouter);
+  app.use(`${API_PREFIX}/kiosk`, kioskRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

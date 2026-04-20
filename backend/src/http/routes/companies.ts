@@ -2,8 +2,10 @@ import {
   createCompanyRequestSchema,
   createEmployeeRequestSchema,
   createJobRequestSchema,
+  createKioskPairingCodeRequestSchema,
   csvImportRequestSchema,
   inviteMembershipRequestSchema,
+  renameKioskDeviceRequestSchema,
   updateCompanyRequestSchema,
   updateCompanySettingsRequestSchema,
   updateEmployeeRequestSchema,
@@ -34,6 +36,12 @@ import {
   unarchiveJob,
   updateJob,
 } from '../../services/jobs.js';
+import {
+  issuePairingCode,
+  listKioskDevices,
+  renameKioskDevice,
+  revokeKioskDevice,
+} from '../../services/kiosk-pairing.js';
 import {
   inviteMembership,
   listMembershipsForCompany,
@@ -429,6 +437,82 @@ companiesRouter.post(
         Number(req.params.jobId),
       );
       res.json({ data: job });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Kiosk devices (admin side)
+// ---------------------------------------------------------------------------
+
+companiesRouter.get(
+  '/:companyId/kiosks',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      const rows = await listKioskDevices(companyIdFromParams(req));
+      res.json({ data: rows });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.post(
+  '/:companyId/kiosks/pairing-codes',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const body = createKioskPairingCodeRequestSchema.parse(req.body ?? {});
+      const result = await issuePairingCode(
+        companyIdFromParams(req),
+        req.user.id,
+        body,
+      );
+      res.status(201).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.patch(
+  '/:companyId/kiosks/:deviceId',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      const body = renameKioskDeviceRequestSchema.parse(req.body);
+      const updated = await renameKioskDevice(
+        companyIdFromParams(req),
+        Number(req.params.deviceId),
+        body.name,
+      );
+      res.json({ data: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.delete(
+  '/:companyId/kiosks/:deviceId',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      await revokeKioskDevice(
+        companyIdFromParams(req),
+        Number(req.params.deviceId),
+        req.user.id,
+      );
+      res.status(204).end();
     } catch (err) {
       next(err);
     }
