@@ -12,6 +12,7 @@ import { healthRouter, versionRouter } from './routes/health.js';
 import { kioskRouter } from './routes/kiosk.js';
 import { punchRouter } from './routes/punch.js';
 import { setupRouter } from './routes/setup.js';
+import { correctionsRouter, timesheetsRouter } from './routes/timesheets.js';
 
 export function createApp(): Express {
   const app = express();
@@ -48,8 +49,10 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/setup`, setupRouter);
   app.use(`${API_PREFIX}/auth`, authRouter);
   app.use(`${API_PREFIX}/companies`, companiesRouter);
+  app.use(`${API_PREFIX}/companies`, correctionsRouter);
   app.use(`${API_PREFIX}/punch`, punchRouter);
   app.use(`${API_PREFIX}/kiosk`, kioskRouter);
+  app.use(`${API_PREFIX}/timesheets`, timesheetsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
