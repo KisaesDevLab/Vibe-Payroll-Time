@@ -2,9 +2,13 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { closeDb } from './db/knex.js';
 import { runMigrations } from './db/migrate.js';
+import { waitForDb } from './db/wait.js';
 import { createApp } from './http/app.js';
 
 async function main() {
+  logger.info('waiting for database');
+  await waitForDb();
+
   if (env.MIGRATE_ON_BOOT) {
     logger.info('running pending migrations');
     try {

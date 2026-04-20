@@ -26,7 +26,7 @@
     "test": "npm run test --workspaces --if-present",
     "migrate": "npm run migrate --workspace=backend",
     "migrate:make": "npm run migrate:make --workspace=backend --",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",

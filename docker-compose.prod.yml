@@ -1,0 +1,151 @@
+## Vibe Payroll Time — production appliance stack.
+##
+## Everything runs on a single Docker host (e.g., a GMKtec NucBox M6 on Ubuntu
+## Server 24.04 LTS). Caddy terminates TLS for the `public` profile, or
+## forwards from a Cloudflare/Tailscale tunnel sidecar for the `tunnel`
+## profiles.
+##
+##   Public internet direct:     docker compose -f docker-compose.prod.yml --profile public up -d
+##   Cloudflare Tunnel:          docker compose -f docker-compose.prod.yml --profile cloudflare up -d
+##   Tailscale Funnel:           docker compose -f docker-compose.prod.yml --profile tailscale up -d
+
+name: vibept-prod
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  APPLIANCE_ID: ${APPLIANCE_ID:?set APPLIANCE_ID}
+  BACKEND_HOST: 0.0.0.0
+  BACKEND_PORT: 4000
+  CORS_ORIGIN: ${CORS_ORIGIN:-https://${APP_DOMAIN}}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: ${POSTGRES_USER:-vibept}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+  POSTGRES_DB: ${POSTGRES_DB:-vibept}
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (>=32 chars)}
+  SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:?set SECRETS_ENCRYPTION_KEY (64-char hex)}
+  MIGRATE_ON_BOOT: ${MIGRATE_ON_BOOT:-true}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vibept-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vibept}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-vibept}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-vibept} -d ${POSTGRES_DB:-vibept}']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    # Postgres is never exposed to the host; backend reaches it via the
+    # `internal` network only.
+
+  backend:
+    image: ghcr.io/kisaesdevlab/vibept-backend:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.0.0}
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+    container_name: vibept-backend
+    restart: unless-stopped
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  frontend:
+    image: ghcr.io/kisaesdevlab/vibept-frontend:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+        VITE_APP_NAME: ${VITE_APP_NAME:-Vibe Payroll Time}
+    container_name: vibept-frontend
+    restart: unless-stopped
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: vibept-caddy
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+      CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:-admin@example.com}
+    ports:
+      # Exposed for the `public` profile; tunnel profiles reach Caddy via the
+      # internal network only and can comment these out safely.
+      - '${CADDY_HTTP_PORT:-80}:80'
+      - '${CADDY_HTTPS_PORT:-443}:443'
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+      - frontend
+    networks: [internal]
+
+  # --------------------------------------------------------------------------
+  # Cloudflare Tunnel sidecar (profile: cloudflare)
+  #
+  # Provision a tunnel at https://one.dash.cloudflare.com, paste the generated
+  # token into CLOUDFLARE_TUNNEL_TOKEN, and configure the tunnel to route to
+  # `http://caddy:8080`. No ports are exposed on the host.
+  # --------------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: vibept-cloudflared
+    restart: unless-stopped
+    profiles: ['cloudflare']
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - caddy
+    networks: [internal]
+
+  # --------------------------------------------------------------------------
+  # Tailscale Funnel sidecar (profile: tailscale)
+  #
+  # Auth with a reusable ephemeral key from https://login.tailscale.com.
+  # The sidecar joins the tailnet and funnels :443 → caddy:8080.
+  # --------------------------------------------------------------------------
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: vibept-tailscale
+    restart: unless-stopped
+    profiles: ['tailscale']
+    hostname: ${TAILSCALE_HOSTNAME:-vibept}
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY:?set TAILSCALE_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: 'true'
+      TS_EXTRA_ARGS: --advertise-tags=tag:vibept-appliance
+      TS_SERVE_CONFIG: /config/tailscale-serve.json
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./caddy/tailscale-serve.json:/config/tailscale-serve.json:ro
+    depends_on:
+      - caddy
+    networks: [internal]
+
+volumes:
+  pgdata:
+  caddy-data:
+  caddy-config:
+  tailscale-state:
+
+networks:
+  internal:
+    driver: bridge
