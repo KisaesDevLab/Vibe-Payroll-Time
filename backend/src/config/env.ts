@@ -29,6 +29,10 @@ const envSchema = z.object({
     .string()
     .default('true')
     .transform((v) => v === 'true'),
+
+  /** Where payroll-export CSV files are written. Relative paths resolve
+   *  against the backend's cwd. The directory is created lazily. */
+  EXPORTS_DIR: z.string().default('./exports'),
 });
 
 const parsed = envSchema.safeParse(process.env);

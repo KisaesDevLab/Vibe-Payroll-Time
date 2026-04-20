@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth.js';
 import { companiesRouter } from './routes/companies.js';
 import { healthRouter, versionRouter } from './routes/health.js';
 import { kioskRouter } from './routes/kiosk.js';
+import { payrollExportsRouter } from './routes/payroll-exports.js';
 import { punchRouter } from './routes/punch.js';
 import { reportsRouter } from './routes/reports.js';
 import { setupRouter } from './routes/setup.js';
@@ -52,6 +53,7 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/companies`, companiesRouter);
   app.use(`${API_PREFIX}/companies`, correctionsRouter);
   app.use(`${API_PREFIX}/companies`, reportsRouter);
+  app.use(`${API_PREFIX}/companies`, payrollExportsRouter);
   app.use(`${API_PREFIX}/punch`, punchRouter);
   app.use(`${API_PREFIX}/kiosk`, kioskRouter);
   app.use(`${API_PREFIX}/timesheets`, timesheetsRouter);

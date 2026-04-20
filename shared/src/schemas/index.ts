@@ -5,6 +5,7 @@ export * from './companies.js';
 export * from './employees.js';
 export * from './jobs.js';
 export * from './kiosk.js';
+export * from './payroll-exports.js';
 export * from './punch.js';
 export * from './reports.js';
 export * from './timesheets.js';
