@@ -23,21 +23,17 @@ export const overtimeReport: ReportHandler<typeof overtimeParamsSchema> = {
     { key: 'overtimeSeconds', label: 'OT hours', type: 'hours' },
     { key: 'status', label: 'Flag', type: 'string' },
   ],
-  paramFields: [
-    { key: 'periodStart', label: 'Reference date', type: 'date', required: false },
-  ],
+  paramFields: [{ key: 'periodStart', label: 'Reference date', type: 'date', required: false }],
   paramsSchema: overtimeParamsSchema,
   async *rows(companyId: number, params: OvertimeParams) {
     const company = await db('companies')
       .where({ id: companyId })
       .first<{ timezone: string; week_start_day: number }>();
     if (!company) throw NotFound('Company not found');
-    const settings = await db('company_settings')
-      .where({ company_id: companyId })
-      .first<{
-        punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
-        punch_rounding_grace_minutes: number;
-      }>();
+    const settings = await db('company_settings').where({ company_id: companyId }).first<{
+      punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
+      punch_rounding_grace_minutes: number;
+    }>();
     if (!settings) throw NotFound('Company settings not found');
 
     const reference = params.referenceDate ? new Date(params.referenceDate) : new Date();

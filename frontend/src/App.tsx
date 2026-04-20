@@ -91,10 +91,7 @@ export function App() {
   return (
     <AppShell>
       <Routes>
-        <Route
-          path="/login"
-          element={session ? <Navigate to="/" replace /> : <LoginPage />}
-        />
+        <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
         <Route path="/setup" element={<Navigate to="/" replace />} />
 
         <Route path="/kiosk" element={<KioskRoot />} />

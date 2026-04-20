@@ -21,9 +21,7 @@ const DEFAULT_MODELS: Record<ProviderConfig['provider'], string> = {
 };
 
 async function loadRow(companyId: number): Promise<AIRow> {
-  const row = await db('company_settings')
-    .where({ company_id: companyId })
-    .first<AIRow>();
+  const row = await db('company_settings').where({ company_id: companyId }).first<AIRow>();
   if (!row) throw NotFound('Company settings not found');
   return row;
 }
@@ -84,12 +82,12 @@ export async function resolveProviderConfig(companyId: number): Promise<Provider
 
   const apiKey = row.ai_api_key_encrypted
     ? decryptSecret(row.ai_api_key_encrypted)
-    : env.AI_API_KEY ?? null;
+    : (env.AI_API_KEY ?? null);
 
   return {
     provider: row.ai_provider,
     apiKey,
-    model: row.ai_model ?? env.AI_MODEL ?? DEFAULT_MODELS[row.ai_provider],
+    model: row.ai_model ?? env.AI_MODEL ?? DEFAULT_MODELS[row.ai_provider] ?? 'claude-sonnet-4-6',
     baseUrl: row.ai_base_url ?? env.AI_BASE_URL ?? null,
   };
 }

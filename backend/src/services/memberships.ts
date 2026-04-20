@@ -28,14 +28,9 @@ export async function listMembershipsForCompany(companyId: number): Promise<Memb
     .join('users as u', 'u.id', 'm.user_id')
     .where('m.company_id', companyId)
     .orderBy('m.created_at', 'asc')
-    .select<MembershipRow[]>(
-      'm.id',
-      'm.user_id',
-      'm.company_id',
-      'm.role',
-      'm.created_at',
-      'u.email',
-    );
+    .select<
+      MembershipRow[]
+    >('m.id', 'm.user_id', 'm.company_id', 'm.role', 'm.created_at', 'u.email');
   return rows.map(rowToMembership);
 }
 
@@ -102,14 +97,9 @@ export async function updateMembershipRole(
   const rows = await db('company_memberships as m')
     .join('users as u', 'u.id', 'm.user_id')
     .where('m.id', membershipId)
-    .select<MembershipRow[]>(
-      'm.id',
-      'm.user_id',
-      'm.company_id',
-      'm.role',
-      'm.created_at',
-      'u.email',
-    );
+    .select<
+      MembershipRow[]
+    >('m.id', 'm.user_id', 'm.company_id', 'm.role', 'm.created_at', 'u.email');
   const fresh = rows[0];
   if (!fresh) throw new Error('membership vanished after update');
   return rowToMembership(fresh);

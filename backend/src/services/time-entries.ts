@@ -25,9 +25,7 @@ export async function getCurrentPunch(
     .whereNull('deleted_at')
     .first();
 
-  const company = await db('companies')
-    .where({ id: companyId })
-    .first<{ timezone: string }>();
+  const company = await db('companies').where({ id: companyId }).first<{ timezone: string }>();
   const tz = company?.timezone ?? 'UTC';
 
   // Sum completed work entries that started today in the company's tz,
@@ -52,8 +50,7 @@ export async function getCurrentPunch(
       [openRow.started_at, tz, tz],
     );
     const sameDay =
-      openStartedToday.rows[0]?.same_day === true ||
-      openStartedToday.rows[0]?.same_day === 't';
+      openStartedToday.rows[0]?.same_day === true || openStartedToday.rows[0]?.same_day === 't';
     if (sameDay) {
       todayWorkSeconds += Math.floor((Date.now() - openRow.started_at.getTime()) / 1000);
     }

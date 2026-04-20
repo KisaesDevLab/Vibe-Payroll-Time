@@ -28,11 +28,7 @@ exports.up = async function up(knex) {
       .references('id')
       .inTable('companies')
       .onDelete('CASCADE');
-    t.bigInteger('user_id')
-      .nullable()
-      .references('id')
-      .inTable('users')
-      .onDelete('SET NULL');
+    t.bigInteger('user_id').nullable().references('id').inTable('users').onDelete('SET NULL');
     t.string('feature', 32).notNullable(); // 'nl_correction' | 'support_chat'
     t.string('provider', 32).notNullable();
     t.string('model', 128).nullable();

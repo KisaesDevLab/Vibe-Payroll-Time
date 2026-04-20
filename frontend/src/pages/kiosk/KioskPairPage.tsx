@@ -39,8 +39,8 @@ export function KioskPairPage() {
       <div className="w-full max-w-md rounded-xl bg-slate-800 p-8 shadow-2xl">
         <h1 className="text-2xl font-semibold text-white">Pair this tablet</h1>
         <p className="mt-2 text-sm text-slate-300">
-          Ask an admin to generate a pairing code in the company settings → Kiosks, then
-          enter it below.
+          Ask an admin to generate a pairing code in the company settings → Kiosks, then enter it
+          below.
         </p>
         <form
           className="mt-6 flex flex-col gap-4"

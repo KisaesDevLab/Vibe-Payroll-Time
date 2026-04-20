@@ -29,13 +29,7 @@ import {
   regeneratePin,
   updateEmployee,
 } from '../../services/employees.js';
-import {
-  archiveJob,
-  createJob,
-  listJobs,
-  unarchiveJob,
-  updateJob,
-} from '../../services/jobs.js';
+import { archiveJob, createJob, listJobs, unarchiveJob, updateJob } from '../../services/jobs.js';
 import {
   issuePairingCode,
   listKioskDevices,
@@ -49,11 +43,7 @@ import {
   updateMembershipRole,
 } from '../../services/memberships.js';
 import { Forbidden, Unauthorized } from '../errors.js';
-import {
-  requireAuth,
-  requireCompanyRole,
-  requireSuperAdmin,
-} from '../middleware/auth.js';
+import { requireAuth, requireCompanyRole, requireSuperAdmin } from '../middleware/auth.js';
 
 export const companiesRouter: Router = Router({ mergeParams: true });
 
@@ -93,7 +83,11 @@ companiesRouter.post('/', requireAuth, requireSuperAdmin, async (req, res, next)
 });
 
 // Per-company routes below this point run through `assertCompanyAccess`.
-async function assertCompanyAccess(req: Request, _res: Response, next: NextFunction): Promise<void> {
+async function assertCompanyAccess(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
   try {
     if (!req.user) return next(Unauthorized());
     const companyId = companyIdFromParams(req);
@@ -297,10 +291,7 @@ companiesRouter.get(
   }),
   async (req, res, next) => {
     try {
-      const row = await getEmployee(
-        companyIdFromParams(req),
-        Number(req.params.employeeId),
-      );
+      const row = await getEmployee(companyIdFromParams(req), Number(req.params.employeeId));
       res.json({ data: row });
     } catch (err) {
       next(err);
@@ -400,11 +391,7 @@ companiesRouter.patch(
   async (req, res, next) => {
     try {
       const body = updateJobRequestSchema.parse(req.body);
-      const job = await updateJob(
-        companyIdFromParams(req),
-        Number(req.params.jobId),
-        body,
-      );
+      const job = await updateJob(companyIdFromParams(req), Number(req.params.jobId), body);
       res.json({ data: job });
     } catch (err) {
       next(err);
@@ -432,10 +419,7 @@ companiesRouter.post(
   requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
   async (req, res, next) => {
     try {
-      const job = await unarchiveJob(
-        companyIdFromParams(req),
-        Number(req.params.jobId),
-      );
+      const job = await unarchiveJob(companyIdFromParams(req), Number(req.params.jobId));
       res.json({ data: job });
     } catch (err) {
       next(err);
@@ -469,11 +453,7 @@ companiesRouter.post(
     try {
       if (!req.user) return next(Unauthorized());
       const body = createKioskPairingCodeRequestSchema.parse(req.body ?? {});
-      const result = await issuePairingCode(
-        companyIdFromParams(req),
-        req.user.id,
-        body,
-      );
+      const result = await issuePairingCode(companyIdFromParams(req), req.user.id, body);
       res.status(201).json({ data: result });
     } catch (err) {
       next(err);
@@ -507,11 +487,7 @@ companiesRouter.delete(
   async (req, res, next) => {
     try {
       if (!req.user) return next(Unauthorized());
-      await revokeKioskDevice(
-        companyIdFromParams(req),
-        Number(req.params.deviceId),
-        req.user.id,
-      );
+      await revokeKioskDevice(companyIdFromParams(req), Number(req.params.deviceId), req.user.id);
       res.status(204).end();
     } catch (err) {
       next(err);

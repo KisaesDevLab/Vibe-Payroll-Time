@@ -74,7 +74,7 @@ export function SupportChatWidget() {
             </button>
           </header>
 
-          {(session.user.memberships.length > 1 && companyId != null) && (
+          {session.user.memberships.length > 1 && companyId != null && (
             <label className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-600">
               Company
               <select
@@ -94,10 +94,7 @@ export function SupportChatWidget() {
             </label>
           )}
 
-          <div
-            ref={scrollRef}
-            className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm"
-          >
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm">
             {messages.length === 0 && (
               <p className="text-center text-xs text-slate-400">
                 Ask how a feature works — e.g. "How do I approve a pay period?"

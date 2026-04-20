@@ -43,11 +43,7 @@ exports.up = async function up(knex) {
       .notNullable()
       .defaultTo('pending');
 
-    t.bigInteger('reviewed_by')
-      .nullable()
-      .references('id')
-      .inTable('users')
-      .onDelete('SET NULL');
+    t.bigInteger('reviewed_by').nullable().references('id').inTable('users').onDelete('SET NULL');
     t.timestamp('reviewed_at', { useTz: true }).nullable();
     t.text('review_note').nullable();
 

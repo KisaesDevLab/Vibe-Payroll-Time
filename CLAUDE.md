@@ -9,10 +9,12 @@ This file is the primary context document for Claude Code when working on **Vibe
 A self-hosted, multi-tenant **employee time tracking** application for hourly/shift workers. Positioned between QuickBooks Time, OnTheClock, and Homebase — but narrower, simpler, self-hosted, and CPA-firm-friendly.
 
 **Target users:**
+
 - **Internal path:** CPA firm staff tracking their own hours (PolyForm Internal Use, free)
 - **Commercial path (client-portal):** CPA firms reselling it to their small-business clients; small-business owners deploying the appliance direct (PolyForm commercial tier)
 
 **Explicit non-goals (v1):**
+
 - ❌ Payroll processing (gross-to-net, tax withholding, direct deposit, 941/940/W-2 filings) — export-only to Payroll Relief / Gusto / QBO Payroll / generic CSV
 - ❌ Scheduling (shifts, templates, trades, availability, time-off requests, PTO accruals)
 - ❌ GPS / geofencing / photo / biometric / device-binding — anti-buddy-punching is auth-based only
@@ -29,20 +31,20 @@ A self-hosted, multi-tenant **employee time tracking** application for hourly/sh
 
 Identical to Vibe Trial Balance / Vibe MyBooks conventions unless noted.
 
-| Layer | Tech |
-|---|---|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, TanStack Table |
-| PWA | Workbox, IndexedDB (offline punch queue), Background Sync API |
-| Backend | Node.js 20, Express, Knex.js (plain JS migrations for Windows compat), Zod |
-| Database | PostgreSQL 16 |
-| Queue / cron | `node-cron` for scheduled jobs (auto-clock-out, missed-punch reminders, heartbeat). BullMQ **not** used v1 — no long-running async work |
-| Auth | JWT (access + refresh), bcrypt for passwords, `otplib` for PIN TOTP rotation (kiosk) |
-| AI | Multi-provider LLM abstraction (ported from Vibe TB): Anthropic / Ollama / OpenAI-compatible |
-| Email | Nodemailer with configurable SMTP relay (BYO per company) |
-| SMS | Twilio SDK, BYO credentials per company |
-| Ingress | Cloudflare Tunnel (`cloudflared`) and/or Tailscale Funnel, bundled as sidecar containers |
-| Reverse proxy | Caddy (auto-TLS for non-tunnel deployments) |
-| Deployment | Docker Compose, distributed as appliance for GMKtec NucBox M6 (Ubuntu Server 24.04 LTS) |
+| Layer         | Tech                                                                                                                                    |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend      | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, TanStack Table                                                                |
+| PWA           | Workbox, IndexedDB (offline punch queue), Background Sync API                                                                           |
+| Backend       | Node.js 20, Express, Knex.js (plain JS migrations for Windows compat), Zod                                                              |
+| Database      | PostgreSQL 16                                                                                                                           |
+| Queue / cron  | `node-cron` for scheduled jobs (auto-clock-out, missed-punch reminders, heartbeat). BullMQ **not** used v1 — no long-running async work |
+| Auth          | JWT (access + refresh), bcrypt for passwords, `otplib` for PIN TOTP rotation (kiosk)                                                    |
+| AI            | Multi-provider LLM abstraction (ported from Vibe TB): Anthropic / Ollama / OpenAI-compatible                                            |
+| Email         | Nodemailer with configurable SMTP relay (BYO per company)                                                                               |
+| SMS           | Twilio SDK, BYO credentials per company                                                                                                 |
+| Ingress       | Cloudflare Tunnel (`cloudflared`) and/or Tailscale Funnel, bundled as sidecar containers                                                |
+| Reverse proxy | Caddy (auto-TLS for non-tunnel deployments)                                                                                             |
+| Deployment    | Docker Compose, distributed as appliance for GMKtec NucBox M6 (Ubuntu Server 24.04 LTS)                                                 |
 
 ---
 
@@ -174,6 +176,7 @@ Company timezone is a required setting. All pay period math, daily boundaries, a
 Kiosk mode and personal-device mode **both** need offline punch capability — Wi-Fi hiccups at a shared kiosk are common, and a phone on cellular in a basement is common.
 
 Offline punch queue:
+
 - IndexedDB stores pending punches with local timestamps
 - Background Sync API flushes on reconnect
 - Server accepts punches with `client_started_at` + `client_clock_skew` metadata, stamps its own `started_at` based on client time adjusted for clock skew, and flags the entry as `source_offline = true`

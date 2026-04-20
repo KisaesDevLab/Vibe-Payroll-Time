@@ -1,8 +1,4 @@
-import {
-  buildTimesheetSummary,
-  timeCardParamsSchema,
-  type TimeCardParams,
-} from '@vibept/shared';
+import { buildTimesheetSummary, timeCardParamsSchema, type TimeCardParams } from '@vibept/shared';
 import { db } from '../../db/knex.js';
 import { NotFound } from '../../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from '../punch.js';
@@ -11,8 +7,7 @@ import type { ReportHandler } from './types.js';
 export const timeCardReport: ReportHandler<typeof timeCardParamsSchema> = {
   name: 'time_card',
   label: 'Time card by employee',
-  description:
-    'Every entry for one employee across one pay period, with daily and period totals.',
+  description: 'Every entry for one employee across one pay period, with daily and period totals.',
   columns: [
     { key: 'date', label: 'Date', type: 'date' },
     { key: 'type', label: 'Type', type: 'string' },
@@ -48,11 +43,7 @@ export const timeCardReport: ReportHandler<typeof timeCardParamsSchema> = {
       })
       .where('t.started_at', '<', end)
       .orderBy('t.started_at', 'asc')
-      .select<
-        Array<
-          TimeEntryRow & { job_code: string | null }
-        >
-      >('t.*', 'j.code as job_code');
+      .select<Array<TimeEntryRow & { job_code: string | null }>>('t.*', 'j.code as job_code');
 
     for (const r of rows) {
       const entry = rowToTimeEntry(r);
@@ -71,18 +62,14 @@ export const timeCardReport: ReportHandler<typeof timeCardParamsSchema> = {
 
     // Trailing summary row — visually separated in the UI, included in CSV
     // so payroll processors get a total line.
-    const company = await db('companies')
-      .where({ id: companyId })
-      .first<{
-        timezone: string;
-        week_start_day: number;
-      }>();
-    const settings = await db('company_settings')
-      .where({ company_id: companyId })
-      .first<{
-        punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
-        punch_rounding_grace_minutes: number;
-      }>();
+    const company = await db('companies').where({ id: companyId }).first<{
+      timezone: string;
+      week_start_day: number;
+    }>();
+    const settings = await db('company_settings').where({ company_id: companyId }).first<{
+      punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
+      punch_rounding_grace_minutes: number;
+    }>();
 
     if (company && settings) {
       const entries = rows.map((r) => {

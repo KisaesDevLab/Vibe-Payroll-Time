@@ -36,7 +36,15 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
       .whereNotNull('t.ended_at')
       .where('t.started_at', '>=', start)
       .where('t.started_at', '<', end)
-      .groupBy(['e.id', 'e.last_name', 'e.first_name', 'e.employee_number', 'j.id', 'j.code', 'j.name'])
+      .groupBy([
+        'e.id',
+        'e.last_name',
+        'e.first_name',
+        'e.employee_number',
+        'j.id',
+        'j.code',
+        'j.name',
+      ])
       .orderBy(['e.last_name', 'e.first_name', 'j.code'])
       .select<
         Array<{
@@ -48,15 +56,7 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
           job_name: string | null;
           total_seconds: string;
         }>
-      >(
-        'e.id as employee_id',
-        'e.first_name',
-        'e.last_name',
-        'e.employee_number',
-        'j.code as job_code',
-        'j.name as job_name',
-        db.raw('COALESCE(SUM(t.duration_seconds), 0) as total_seconds'),
-      );
+      >('e.id as employee_id', 'e.first_name', 'e.last_name', 'e.employee_number', 'j.code as job_code', 'j.name as job_name', db.raw('COALESCE(SUM(t.duration_seconds), 0) as total_seconds'));
 
     for (const r of rows) {
       yield {

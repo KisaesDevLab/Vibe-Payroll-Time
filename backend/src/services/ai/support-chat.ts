@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResponse } from '@vibept/shared';
+import type { ChatMessage, ChatRequest, ChatResponse } from '@vibept/shared';
 import { loadCorpus } from './corpus.js';
 import { recordTokenUsage, resolveProviderConfig } from './config.js';
 import { complete } from './provider.js';
@@ -21,7 +21,7 @@ export async function supportChat(
 DOCUMENTATION:
 ${corpus}`;
 
-  const messages = body.messages.map((m) => ({
+  const messages = body.messages.map((m: ChatMessage) => ({
     role: m.role,
     content: sanitizeUserInput(m.content),
   }));

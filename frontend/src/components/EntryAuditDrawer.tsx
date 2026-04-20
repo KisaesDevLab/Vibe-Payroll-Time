@@ -20,9 +20,7 @@ export function EntryAuditDrawer({
   return (
     <Drawer open onClose={onClose} title={`Entry #${entryId} history`}>
       {audit.isPending && <p className="text-sm text-slate-500">Loading…</p>}
-      {audit.isError && (
-        <p className="text-sm text-red-700">Could not load audit trail.</p>
-      )}
+      {audit.isError && <p className="text-sm text-red-700">Could not load audit trail.</p>}
       {audit.data && audit.data.length === 0 && (
         <p className="text-sm text-slate-500">No audit rows.</p>
       )}
@@ -44,16 +42,10 @@ function AuditRow({ row }: { row: EntryAuditRow }) {
   return (
     <div className="flex flex-col gap-1 text-sm">
       <div className="flex items-center gap-2">
-        <span
-          className={
-            'rounded-full px-2 py-0.5 text-xs font-medium ' + badgeClass(row.action)
-          }
-        >
+        <span className={'rounded-full px-2 py-0.5 text-xs font-medium ' + badgeClass(row.action)}>
           {row.action.replace('_', ' ')}
         </span>
-        <span className="text-xs text-slate-500">
-          {new Date(row.createdAt).toLocaleString()}
-        </span>
+        <span className="text-xs text-slate-500">{new Date(row.createdAt).toLocaleString()}</span>
       </div>
       {row.field && (
         <p className="text-slate-700">

@@ -20,7 +20,9 @@ exports.up = async function up(knex) {
     t.timestamp('disabled_at', { useTz: true }).nullable();
   });
 
-  await knex.raw('CREATE INDEX users_disabled_idx ON users (disabled_at) WHERE disabled_at IS NULL');
+  await knex.raw(
+    'CREATE INDEX users_disabled_idx ON users (disabled_at) WHERE disabled_at IS NULL',
+  );
 };
 
 exports.down = async function down(knex) {

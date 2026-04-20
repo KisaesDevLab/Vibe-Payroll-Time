@@ -100,9 +100,7 @@ notificationsRouter.patch('/preferences', requireAuth, async (req, res, next) =>
     // SMS opt-in requires a verified phone number. Enforce here and
     // return a clear error rather than quietly ignoring the flag.
     if (patch.smsNotificationsEnabled === true && !self.phoneVerifiedAt) {
-      return next(
-        Forbidden('Verify your phone number before enabling SMS notifications'),
-      );
+      return next(Forbidden('Verify your phone number before enabling SMS notifications'));
     }
 
     const updates: Record<string, unknown> = { updated_at: db.fn.now() };
@@ -123,43 +121,35 @@ notificationsRouter.patch('/preferences', requireAuth, async (req, res, next) =>
 // Phone verification flow
 // ---------------------------------------------------------------------------
 
-notificationsRouter.post(
-  '/phone-verification/request',
-  requireAuth,
-  async (req, res, next) => {
-    try {
-      if (!req.user) return next(Unauthorized());
-      const companyId = Number(req.query.companyId);
-      if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
-      const body = requestPhoneVerificationSchema.parse(req.body);
-      assertValidPhone(body.phone);
-      const self = await resolveSelf(req.user.id, companyId);
-      const result = await startPhoneVerification(companyId, self.id, body.phone);
-      res.status(201).json({ data: result });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+notificationsRouter.post('/phone-verification/request', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const companyId = Number(req.query.companyId);
+    if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
+    const body = requestPhoneVerificationSchema.parse(req.body);
+    assertValidPhone(body.phone);
+    const self = await resolveSelf(req.user.id, companyId);
+    const result = await startPhoneVerification(companyId, self.id, body.phone);
+    res.status(201).json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
 
-notificationsRouter.post(
-  '/phone-verification/confirm',
-  requireAuth,
-  async (req, res, next) => {
-    try {
-      if (!req.user) return next(Unauthorized());
-      const companyId = Number(req.query.companyId);
-      if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
-      const body = confirmPhoneVerificationSchema.parse(req.body);
-      const self = await resolveSelf(req.user.id, companyId);
-      await confirmPhoneVerification(companyId, self.id, body.code);
-      const fresh = await resolveSelf(req.user.id, companyId);
-      res.json({ data: toPreferences(fresh) });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+notificationsRouter.post('/phone-verification/confirm', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const companyId = Number(req.query.companyId);
+    if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
+    const body = confirmPhoneVerificationSchema.parse(req.body);
+    const self = await resolveSelf(req.user.id, companyId);
+    await confirmPhoneVerification(companyId, self.id, body.code);
+    const fresh = await resolveSelf(req.user.id, companyId);
+    res.json({ data: toPreferences(fresh) });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Admin notifications log (nested under /companies/:id)

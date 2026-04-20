@@ -10,8 +10,7 @@ export default defineConfig({
       LOG_LEVEL: 'silent',
       APPLIANCE_ID: 'vitest',
       JWT_SECRET: 'test-jwt-secret-0123456789abcdef0123456789abcdef0123456789',
-      SECRETS_ENCRYPTION_KEY:
-        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      SECRETS_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       MIGRATE_ON_BOOT: 'false',
       POSTGRES_HOST: process.env.POSTGRES_HOST ?? 'localhost',
       POSTGRES_PORT: process.env.POSTGRES_PORT ?? '5432',

@@ -61,8 +61,7 @@ export function requireCompanyRole(
       if (!req.user) return next(Unauthorized());
 
       const raw =
-        opts.companyIdFrom?.(req) ??
-        Number(req.params.companyId ?? req.params.company_id);
+        opts.companyIdFrom?.(req) ?? Number(req.params.companyId ?? req.params.company_id);
 
       if (!Number.isFinite(raw) || raw <= 0) {
         return next(Forbidden('Company context required'));

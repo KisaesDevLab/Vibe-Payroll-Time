@@ -65,8 +65,7 @@ export const companies = {
 // ---------------------------------------------------------------------------
 
 export const companySettings = {
-  get: (companyId: number) =>
-    apiFetch<CompanySettings>(`/companies/${companyId}/settings`),
+  get: (companyId: number) => apiFetch<CompanySettings>(`/companies/${companyId}/settings`),
   update: (companyId: number, body: UpdateCompanySettingsRequest) =>
     apiFetch<CompanySettings>(`/companies/${companyId}/settings`, {
       method: 'PATCH',
@@ -79,25 +78,17 @@ export const companySettings = {
 // ---------------------------------------------------------------------------
 
 export const memberships = {
-  list: (companyId: number) =>
-    apiFetch<Membership[]>(`/companies/${companyId}/memberships`),
+  list: (companyId: number) => apiFetch<Membership[]>(`/companies/${companyId}/memberships`),
   invite: (companyId: number, body: InviteMembershipRequest) =>
     apiFetch<Membership>(`/companies/${companyId}/memberships`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  updateRole: (
-    companyId: number,
-    membershipId: number,
-    role: Membership['role'],
-  ) =>
-    apiFetch<Membership>(
-      `/companies/${companyId}/memberships/${membershipId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ role }),
-      },
-    ),
+  updateRole: (companyId: number, membershipId: number, role: Membership['role']) =>
+    apiFetch<Membership>(`/companies/${companyId}/memberships/${membershipId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }),
   revoke: (companyId: number, membershipId: number) =>
     apiFetch<void>(`/companies/${companyId}/memberships/${membershipId}`, {
       method: 'DELETE',
@@ -172,16 +163,12 @@ export const jobs = {
 // ---------------------------------------------------------------------------
 
 export const kiosks = {
-  list: (companyId: number) =>
-    apiFetch<KioskDevice[]>(`/companies/${companyId}/kiosks`),
+  list: (companyId: number) => apiFetch<KioskDevice[]>(`/companies/${companyId}/kiosks`),
   issueCode: (companyId: number, body: CreateKioskPairingCodeRequest = {}) =>
-    apiFetch<KioskPairingCodeResponse>(
-      `/companies/${companyId}/kiosks/pairing-codes`,
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-      },
-    ),
+    apiFetch<KioskPairingCodeResponse>(`/companies/${companyId}/kiosks/pairing-codes`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   rename: (companyId: number, deviceId: number, name: string) =>
     apiFetch<KioskDevice>(`/companies/${companyId}/kiosks/${deviceId}`, {
       method: 'PATCH',
@@ -219,48 +206,44 @@ export const timesheets = {
       body: JSON.stringify(body),
     }),
   unapprove: (companyId: number, body: ApprovePeriodRequest) =>
-    apiFetch<{ unapprovedEntryCount: number }>(
-      `/timesheets/unapprove?companyId=${companyId}`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<{ unapprovedEntryCount: number }>(`/timesheets/unapprove?companyId=${companyId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   editEntry: (companyId: number, entryId: number, body: EditEntryRequest) =>
-    apiFetch<TimeEntry>(
-      `/timesheets/entries/${entryId}?companyId=${companyId}`,
-      { method: 'PATCH', body: JSON.stringify(body) },
-    ),
+    apiFetch<TimeEntry>(`/timesheets/entries/${entryId}?companyId=${companyId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   deleteEntry: (companyId: number, entryId: number, reason: string) =>
-    apiFetch<void>(
-      `/timesheets/entries/${entryId}?companyId=${companyId}`,
-      { method: 'DELETE', body: JSON.stringify({ reason }) },
-    ),
+    apiFetch<void>(`/timesheets/entries/${entryId}?companyId=${companyId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    }),
   audit: (companyId: number, entryId: number) =>
-    apiFetch<EntryAuditRow[]>(
-      `/timesheets/entries/${entryId}/audit?companyId=${companyId}`,
-    ),
+    apiFetch<EntryAuditRow[]>(`/timesheets/entries/${entryId}/audit?companyId=${companyId}`),
   createCorrection: (companyId: number, body: CreateCorrectionRequest) =>
-    apiFetch<CorrectionRequest>(
-      `/timesheets/correction-requests?companyId=${companyId}`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<CorrectionRequest>(`/timesheets/correction-requests?companyId=${companyId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 };
 
 export const corrections = {
   list: (companyId: number, status?: 'pending' | 'approved' | 'rejected') => {
     const qs = status ? `?status=${status}` : '';
-    return apiFetch<CorrectionRequest[]>(
-      `/companies/${companyId}/correction-requests${qs}`,
-    );
+    return apiFetch<CorrectionRequest[]>(`/companies/${companyId}/correction-requests${qs}`);
   },
   approve: (companyId: number, id: number, body: DecideCorrectionRequest = {}) =>
-    apiFetch<CorrectionRequest>(
-      `/companies/${companyId}/correction-requests/${id}/approve`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<CorrectionRequest>(`/companies/${companyId}/correction-requests/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   reject: (companyId: number, id: number, body: DecideCorrectionRequest = {}) =>
-    apiFetch<CorrectionRequest>(
-      `/companies/${companyId}/correction-requests/${id}/reject`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<CorrectionRequest>(`/companies/${companyId}/correction-requests/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 };
 
 // ---------------------------------------------------------------------------
@@ -270,19 +253,13 @@ export const corrections = {
 export const reports = {
   catalog: (companyId: number) =>
     apiFetch<ReportCatalogResponse>(`/companies/${companyId}/reports`),
-  run: (
-    companyId: number,
-    name: string,
-    params: Record<string, string | number | undefined>,
-  ) => {
+  run: (companyId: number, name: string, params: Record<string, string | number | undefined>) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
       if (v === undefined || v === null || v === '') continue;
       qs.set(k, String(v));
     }
-    return apiFetch<ReportResult>(
-      `/companies/${companyId}/reports/${name}?${qs.toString()}`,
-    );
+    return apiFetch<ReportResult>(`/companies/${companyId}/reports/${name}?${qs.toString()}`);
   },
   csvUrl: (
     companyId: number,
@@ -305,10 +282,10 @@ export const reports = {
 
 export const payrollExports = {
   preflight: (companyId: number, body: PreflightRequest) =>
-    apiFetch<PreflightResponse>(
-      `/companies/${companyId}/payroll-exports/preflight`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<PreflightResponse>(`/companies/${companyId}/payroll-exports/preflight`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   run: (companyId: number, body: RunExportRequest) =>
     apiFetch<PayrollExport>(`/companies/${companyId}/payroll-exports`, {
       method: 'POST',
@@ -344,18 +321,13 @@ export const notifications = {
       `/notifications/phone-verification/confirm?companyId=${companyId}`,
       { method: 'POST', body: JSON.stringify({ code }) },
     ),
-  log: (
-    companyId: number,
-    opts: { status?: string; channel?: string; limit?: number } = {},
-  ) => {
+  log: (companyId: number, opts: { status?: string; channel?: string; limit?: number } = {}) => {
     const qs = new URLSearchParams();
     if (opts.status) qs.set('status', opts.status);
     if (opts.channel) qs.set('channel', opts.channel);
     if (opts.limit) qs.set('limit', String(opts.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
-    return apiFetch<NotificationsLogRow[]>(
-      `/companies/${companyId}/notifications-log${suffix}`,
-    );
+    return apiFetch<NotificationsLogRow[]>(`/companies/${companyId}/notifications-log${suffix}`);
   },
 };
 
@@ -364,23 +336,22 @@ export const notifications = {
 // ---------------------------------------------------------------------------
 
 export const ai = {
-  getSettings: (companyId: number) =>
-    apiFetch<AISettings>(`/companies/${companyId}/ai/settings`),
+  getSettings: (companyId: number) => apiFetch<AISettings>(`/companies/${companyId}/ai/settings`),
   updateSettings: (companyId: number, body: UpdateAISettingsRequest) =>
     apiFetch<AISettings>(`/companies/${companyId}/ai/settings`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
   previewCorrection: (companyId: number, body: NLCorrectionRequest) =>
-    apiFetch<NLCorrectionPreview>(
-      `/companies/${companyId}/ai/nl-correction/preview`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<NLCorrectionPreview>(`/companies/${companyId}/ai/nl-correction/preview`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   applyCorrection: (companyId: number, body: NLCorrectionApplyRequest) =>
-    apiFetch<NLCorrectionApplyResult>(
-      `/companies/${companyId}/ai/nl-correction/apply`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<NLCorrectionApplyResult>(`/companies/${companyId}/ai/nl-correction/apply`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   chat: (companyId: number, body: ChatRequest) =>
     apiFetch<ChatResponse>(`/companies/${companyId}/ai/chat`, {
       method: 'POST',

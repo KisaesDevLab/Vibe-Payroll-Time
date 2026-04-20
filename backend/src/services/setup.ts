@@ -24,9 +24,8 @@ export async function getSetupStatus(): Promise<{
 
   return {
     setupRequired: superAdmins === 0,
-    installationId: settings?.installation_id === 'pending-setup'
-      ? null
-      : (settings?.installation_id ?? null),
+    installationId:
+      settings?.installation_id === 'pending-setup' ? null : (settings?.installation_id ?? null),
   };
 }
 
@@ -50,13 +49,11 @@ export async function runInitialSetup(
 
     // Appliance settings: stamp a permanent installation_id.
     const installationId = crypto.randomUUID();
-    await trx('appliance_settings')
-      .where({ id: 1 })
-      .update({
-        installation_id: installationId,
-        timezone_default: body.appliance.timezone,
-        updated_at: trx.fn.now(),
-      });
+    await trx('appliance_settings').where({ id: 1 }).update({
+      installation_id: installationId,
+      timezone_default: body.appliance.timezone,
+      updated_at: trx.fn.now(),
+    });
 
     // Create the SuperAdmin.
     const passwordHash = await hashPassword(body.admin.password);

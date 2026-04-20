@@ -39,7 +39,7 @@ describe('detectInjectionHeuristic', () => {
 
 describe('SUPPORT_CHAT_GUARDRAIL', () => {
   it('forbids taking actions and cites the assistant alternative', () => {
-    expect(SUPPORT_CHAT_GUARDRAIL).toMatch(/never take actions/i);
+    expect(SUPPORT_CHAT_GUARDRAIL).toMatch(/never\s+take\s+actions/i);
     expect(SUPPORT_CHAT_GUARDRAIL).toMatch(/ask assistant/i);
   });
 });

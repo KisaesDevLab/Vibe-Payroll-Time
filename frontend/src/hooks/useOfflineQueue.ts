@@ -1,18 +1,12 @@
 import { useEffect, useState } from 'react';
-import {
-  drainQueue,
-  queueSize,
-  subscribeQueueSize,
-} from '../lib/offline-queue';
+import { drainQueue, queueSize, subscribeQueueSize } from '../lib/offline-queue';
 
 export function useOfflineQueue(): {
   online: boolean;
   pending: number;
   sync: () => Promise<void>;
 } {
-  const [online, setOnline] = useState(
-    typeof navigator === 'undefined' ? true : navigator.onLine,
-  );
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [pending, setPending] = useState(0);
 
   useEffect(() => {

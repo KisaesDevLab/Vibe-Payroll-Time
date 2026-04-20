@@ -66,8 +66,8 @@ export function NLCorrectionWidget({
         <div>
           <h3 className="text-sm font-semibold text-slate-900">Ask assistant</h3>
           <p className="mt-0.5 text-xs text-slate-500">
-            Describe a correction. The assistant shows a preview; nothing changes until
-            you apply it.
+            Describe a correction. The assistant shows a preview; nothing changes until you apply
+            it.
           </p>
         </div>
         {preview && (
@@ -105,10 +105,7 @@ export function NLCorrectionWidget({
           </Button>
         )}
         {preview && preview.toolCalls.length > 0 && (
-          <Button
-            loading={applyMutation.isPending}
-            onClick={() => applyMutation.mutate()}
-          >
+          <Button loading={applyMutation.isPending} onClick={() => applyMutation.mutate()}>
             Apply {preview.toolCalls.length} change
             {preview.toolCalls.length === 1 ? '' : 's'}
           </Button>
@@ -138,10 +135,7 @@ export function NLCorrectionWidget({
           {preview.toolCalls.length > 0 && (
             <ol className="flex flex-col gap-2 text-sm">
               {preview.toolCalls.map((t) => (
-                <li
-                  key={t.id}
-                  className="rounded-md border border-slate-200 bg-slate-50 p-3"
-                >
+                <li key={t.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
                   <p className="font-medium text-slate-900">{t.summary}</p>
                   <pre className="mt-1 overflow-x-auto text-[11px] text-slate-600">
                     {t.name}({JSON.stringify(t.arguments)})
@@ -159,8 +153,7 @@ export function NLCorrectionWidget({
                   : 'border-amber-200 bg-amber-50 text-amber-900')
               }
             >
-              Applied {applyMutation.data.applied}, skipped{' '}
-              {applyMutation.data.skipped}.
+              Applied {applyMutation.data.applied}, skipped {applyMutation.data.skipped}.
               {applyMutation.data.errors.length > 0 && (
                 <ul className="mt-1 list-disc pl-5">
                   {applyMutation.data.errors.map((e) => (

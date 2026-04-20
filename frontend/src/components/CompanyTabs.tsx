@@ -8,9 +8,7 @@ export function CompanyTabs({ companyId }: { companyId: number }) {
   const isAdmin = membership?.role === 'company_admin' || isSuper;
 
   const isSupervisor =
-    membership?.role === 'company_admin' ||
-    membership?.role === 'supervisor' ||
-    isSuper;
+    membership?.role === 'company_admin' || membership?.role === 'supervisor' || isSuper;
 
   const tabs = [
     { to: `/companies/${companyId}/employees`, label: 'Employees' },

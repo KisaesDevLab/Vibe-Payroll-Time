@@ -43,9 +43,6 @@ export async function sendViaTwilio(
     return { messageId: message.sid };
   } catch (err) {
     const e = err as { status?: number; message?: string };
-    throw new SmsDeliveryError(
-      e.message ?? 'Twilio send failed',
-      e.status,
-    );
+    throw new SmsDeliveryError(e.message ?? 'Twilio send failed', e.status);
   }
 }

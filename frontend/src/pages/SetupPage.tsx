@@ -83,9 +83,7 @@ export function SetupPage() {
             label="Appliance default timezone"
             hint="Used as the default for new companies created on this appliance."
             value={form.appliance.timezone}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, appliance: { timezone: e.target.value } }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, appliance: { timezone: e.target.value } }))}
           />
           <div className="flex justify-end">
             <Button disabled={!canContinueStep0} onClick={() => setStep(1)}>

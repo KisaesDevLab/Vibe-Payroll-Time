@@ -82,10 +82,7 @@ export async function sendViaEmailIt(
   }
 
   if (!res.ok) {
-    logger.warn(
-      { status: res.status, body: parsed, to: payload.to },
-      'EmailIt send failed',
-    );
+    logger.warn({ status: res.status, body: parsed, to: payload.to }, 'EmailIt send failed');
     throw new EmailDeliveryError(
       `EmailIt responded ${res.status}: ${truncate(bodyText, 200)}`,
       res.status,

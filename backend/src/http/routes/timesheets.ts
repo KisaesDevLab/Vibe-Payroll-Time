@@ -26,10 +26,7 @@ import {
   unapprovePeriod,
 } from '../../services/timesheets.js';
 import { Forbidden, Unauthorized } from '../errors.js';
-import {
-  requireAuth,
-  requireCompanyRole,
-} from '../middleware/auth.js';
+import { requireAuth, requireCompanyRole } from '../middleware/auth.js';
 
 export const timesheetsRouter: Router = Router();
 
@@ -69,15 +66,12 @@ timesheetsRouter.get('/', requireAuth, async (req, res, next) => {
     // Employees can only read their own timesheet; supervisors+ can read any
     // employee in companies they belong to.
     const role = await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, q.companyId);
-    if (
-      role === 'employee' &&
-      req.user.roleGlobal !== 'super_admin'
-    ) {
+    if (role === 'employee' && req.user.roleGlobal !== 'super_admin') {
       const ownEmployee = await db('employees')
         .where({ company_id: q.companyId, user_id: req.user.id })
         .first<{ id: number }>();
       if (!ownEmployee || ownEmployee.id !== q.employeeId) {
-        return next(Forbidden('Cannot read another employee\'s timesheet'));
+        return next(Forbidden("Cannot read another employee's timesheet"));
       }
     }
 
@@ -120,12 +114,7 @@ timesheetsRouter.post('/approve', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
     const { companyId } = approveQuery.parse(req.query);
-    await assertCallerOwnsCompany(
-      req.user.id,
-      req.user.roleGlobal,
-      companyId,
-      'supervisor',
-    );
+    await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, companyId, 'supervisor');
     const body = approvePeriodRequestSchema.parse(req.body);
     const result = await approvePeriod(
       companyId,
@@ -142,12 +131,7 @@ timesheetsRouter.post('/unapprove', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
     const { companyId } = approveQuery.parse(req.query);
-    await assertCallerOwnsCompany(
-      req.user.id,
-      req.user.roleGlobal,
-      companyId,
-      'supervisor',
-    );
+    await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, companyId, 'supervisor');
     const body = approvePeriodRequestSchema.parse(req.body);
     const result = await unapprovePeriod(companyId, { userId: req.user.id }, body);
     res.json({ data: result });
@@ -270,12 +254,7 @@ timesheetsRouter.post('/correction-requests', requireAuth, async (req, res, next
       .first<{ id: number }>();
     if (!employee) return next(Forbidden('Not an active employee at this company'));
 
-    const created = await createCorrectionRequest(
-      companyId,
-      employee.id,
-      req.user.id,
-      body,
-    );
+    const created = await createCorrectionRequest(companyId, employee.id, req.user.id, body);
     res.status(201).json({ data: created });
   } catch (err) {
     next(err);

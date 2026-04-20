@@ -5,15 +5,13 @@
  */
 require('dotenv-flow').config({ silent: true });
 
-const connection =
-  process.env.DATABASE_URL ||
-  {
-    host: process.env.POSTGRES_HOST || 'localhost',
-    port: Number(process.env.POSTGRES_PORT || 5432),
-    user: process.env.POSTGRES_USER || 'vibept',
-    password: process.env.POSTGRES_PASSWORD || 'vibept_dev',
-    database: process.env.POSTGRES_DB || 'vibept',
-  };
+const connection = process.env.DATABASE_URL || {
+  host: process.env.POSTGRES_HOST || 'localhost',
+  port: Number(process.env.POSTGRES_PORT || 5432),
+  user: process.env.POSTGRES_USER || 'vibept',
+  password: process.env.POSTGRES_PASSWORD || 'vibept_dev',
+  database: process.env.POSTGRES_DB || 'vibept',
+};
 
 /** @type {import('knex').Knex.Config} */
 const base = {
@@ -37,7 +35,9 @@ module.exports = {
     ...base,
     connection:
       process.env.DATABASE_URL_TEST ||
-      (typeof connection === 'string' ? `${connection}_test` : { ...connection, database: `${connection.database}_test` }),
+      (typeof connection === 'string'
+        ? `${connection}_test`
+        : { ...connection, database: `${connection.database}_test` }),
   },
   production: base,
 };

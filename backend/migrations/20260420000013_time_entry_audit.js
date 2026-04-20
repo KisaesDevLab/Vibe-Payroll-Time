@@ -21,17 +21,12 @@ exports.up = async function up(knex) {
       .inTable('companies')
       .onDelete('CASCADE');
 
-    t.bigInteger('actor_user_id')
-      .nullable()
-      .references('id')
-      .inTable('users')
-      .onDelete('SET NULL');
+    t.bigInteger('actor_user_id').nullable().references('id').inTable('users').onDelete('SET NULL');
 
-    t.enu(
-      'action',
-      ['create', 'edit', 'approve', 'unapprove', 'delete', 'auto_close'],
-      { useNative: true, enumName: 'time_entry_audit_action' },
-    ).notNullable();
+    t.enu('action', ['create', 'edit', 'approve', 'unapprove', 'delete', 'auto_close'], {
+      useNative: true,
+      enumName: 'time_entry_audit_action',
+    }).notNullable();
 
     t.string('field', 64).nullable();
     t.jsonb('old_value').nullable();

@@ -7,15 +7,15 @@ overtime hours for the pay period.
 
 ## Columns
 
-| Column         | Type | Source                                             |
-| -------------- | ---- | -------------------------------------------------- |
-| EmployeeID     | str  | `employees.employee_number` (falls back to `id`)  |
-| LastName       | str  | `employees.last_name`                              |
-| FirstName      | str  | `employees.first_name`                             |
-| RegularHours   | num  | `buildTimesheetSummary → regularSeconds / 3600`   |
-| OvertimeHours  | num  | `buildTimesheetSummary → overtimeSeconds / 3600`  |
-| PeriodStart    | date | `period_start` (YYYY-MM-DD)                        |
-| PeriodEnd      | date | `period_end` (YYYY-MM-DD)                          |
+| Column        | Type | Source                                           |
+| ------------- | ---- | ------------------------------------------------ |
+| EmployeeID    | str  | `employees.employee_number` (falls back to `id`) |
+| LastName      | str  | `employees.last_name`                            |
+| FirstName     | str  | `employees.first_name`                           |
+| RegularHours  | num  | `buildTimesheetSummary → regularSeconds / 3600`  |
+| OvertimeHours | num  | `buildTimesheetSummary → overtimeSeconds / 3600` |
+| PeriodStart   | date | `period_start` (YYYY-MM-DD)                      |
+| PeriodEnd     | date | `period_end` (YYYY-MM-DD)                        |
 
 Employees with zero work hours in the period are omitted.
 

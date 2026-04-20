@@ -17,17 +17,14 @@ export function MyPunchPage() {
   const qc = useQueryClient();
   const memberships = useMemo(() => session?.user.memberships ?? [], [session]);
 
-  const [companyId, setCompanyId] = useState<number | null>(
-    memberships[0]?.companyId ?? null,
-  );
+  const [companyId, setCompanyId] = useState<number | null>(memberships[0]?.companyId ?? null);
   useEffect(() => {
     if (!companyId && memberships[0]) setCompanyId(memberships[0].companyId);
   }, [memberships, companyId]);
 
   const current = useQuery({
     queryKey: ['my-current-punch', companyId],
-    queryFn: () =>
-      apiFetch<CurrentPunchResponse>(`/punch/current?companyId=${companyId}`),
+    queryFn: () => apiFetch<CurrentPunchResponse>(`/punch/current?companyId=${companyId}`),
     enabled: companyId != null,
     refetchInterval: 30_000,
   });
@@ -80,9 +77,7 @@ export function MyPunchPage() {
 
   const pending =
     clockIn.isPending || clockOut.isPending || breakIn.isPending || breakOut.isPending;
-  const err = (clockIn.error ?? clockOut.error ?? breakIn.error ?? breakOut.error) as
-    | Error
-    | null;
+  const err = (clockIn.error ?? clockOut.error ?? breakIn.error ?? breakOut.error) as Error | null;
 
   return (
     <>
@@ -90,15 +85,12 @@ export function MyPunchPage() {
       <main className="mx-auto flex max-w-md flex-col gap-8 px-6 py-10">
         <header>
           <p className="text-xs uppercase tracking-widest text-slate-500">My time</p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-            {session.user.email}
-          </h1>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-900">{session.user.email}</h1>
         </header>
 
         {memberships.length === 0 && (
           <section className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            You're not an employee at any company on this appliance. Ask an admin to
-            invite you.
+            You're not an employee at any company on this appliance. Ask an admin to invite you.
           </section>
         )}
 
@@ -180,12 +172,7 @@ function PunchCard({
           <Button className="w-full py-4 text-lg" loading={pending} onClick={onClockOut}>
             Clock out
           </Button>
-          <Button
-            variant="secondary"
-            className="w-full py-3"
-            loading={pending}
-            onClick={onBreakIn}
-          >
+          <Button variant="secondary" className="w-full py-3" loading={pending} onClick={onBreakIn}>
             Start break
           </Button>
         </>

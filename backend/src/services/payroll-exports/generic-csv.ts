@@ -27,10 +27,18 @@ const HEADER_LABELS: Record<GenericColumnKey, string> = {
 };
 
 export const genericCsv: FormatFn = (ctx) => {
-  const columns =
-    (ctx.genericColumns && ctx.genericColumns.length > 0
+  const columns = (
+    ctx.genericColumns && ctx.genericColumns.length > 0
       ? ctx.genericColumns
-      : (['employee_number', 'last_name', 'first_name', 'regular_hours', 'overtime_hours', 'total_hours'] satisfies GenericColumnKey[])) as GenericColumnKey[];
+      : ([
+          'employee_number',
+          'last_name',
+          'first_name',
+          'regular_hours',
+          'overtime_hours',
+          'total_hours',
+        ] satisfies GenericColumnKey[])
+  ) as GenericColumnKey[];
 
   for (const c of columns) {
     if (!(GENERIC_COLUMN_KEYS as readonly string[]).includes(c)) {
@@ -44,9 +52,7 @@ export const genericCsv: FormatFn = (ctx) => {
 
   for (const e of ctx.employees) {
     if (e.workSeconds === 0) continue;
-    const cells = columns.map((c) =>
-      formatCellFor(c, e, periodStart, periodEnd),
-    );
+    const cells = columns.map((c) => formatCellFor(c, e, periodStart, periodEnd));
     rows.push(csvLine(cells));
   }
 
@@ -84,6 +90,9 @@ function formatCellFor(
       return periodStart;
     case 'period_end':
       return periodEnd;
+    default: {
+      const _exhaustive: never = column;
+      throw new Error(`unreachable: ${String(_exhaustive)}`);
+    }
   }
 }
-

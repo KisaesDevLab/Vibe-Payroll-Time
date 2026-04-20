@@ -83,10 +83,9 @@ export interface RunExportOpts {
 export async function runExport(opts: RunExportOpts): Promise<PayrollExport> {
   const preflight = await runPreflight(opts.companyId, opts.periodStart, opts.periodEnd);
   if (!preflight.ready) {
-    throw BadRequest(
-      `Preflight failed: ${preflight.blockingIssues.join('; ')}`,
-      { issues: preflight.blockingIssues },
-    );
+    throw BadRequest(`Preflight failed: ${preflight.blockingIssues.join('; ')}`, {
+      issues: preflight.blockingIssues,
+    });
   }
 
   const prior = await db('payroll_exports')
@@ -113,6 +112,7 @@ export async function runExport(opts: RunExportOpts): Promise<PayrollExport> {
     opts.periodEnd,
   );
   const fmt = FORMATS[opts.format];
+  if (!fmt) throw BadRequest(`Unknown format: ${opts.format}`);
   const csv = fmt({
     companyId: opts.companyId,
     companyName: opts.companyName,
@@ -150,14 +150,10 @@ export async function runExport(opts: RunExportOpts): Promise<PayrollExport> {
     if (!inserted) throw new Error('export insert returned no row');
 
     if (prior) {
-      await trx('payroll_exports')
-        .where({ id: prior.id })
-        .update({ replaced_by_id: inserted.id });
+      await trx('payroll_exports').where({ id: prior.id }).update({ replaced_by_id: inserted.id });
     }
 
-    const actor = await trx('users')
-      .where({ id: opts.actorUserId })
-      .first<{ email: string }>();
+    const actor = await trx('users').where({ id: opts.actorUserId }).first<{ email: string }>();
 
     return rowToExport(inserted, actor?.email ?? null);
   });
@@ -172,10 +168,7 @@ export async function listExports(companyId: number): Promise<PayrollExport[]> {
     .leftJoin('users as u', 'u.id', 'p.exported_by')
     .where({ 'p.company_id': companyId })
     .orderBy('p.exported_at', 'desc')
-    .select<Array<PayrollExportRow & { email: string | null }>>(
-      'p.*',
-      'u.email as email',
-    );
+    .select<Array<PayrollExportRow & { email: string | null }>>('p.*', 'u.email as email');
   return rows.map((r) => rowToExport(r, r.email));
 }
 

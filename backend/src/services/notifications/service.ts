@@ -64,14 +64,12 @@ interface LogOutcome {
 // ---------------------------------------------------------------------------
 
 async function resolveEmailConfig(companyId: number): Promise<EmailItConfig | null> {
-  const row = await db('company_settings')
-    .where({ company_id: companyId })
-    .first<{
-      emailit_api_key_encrypted: string | null;
-      emailit_from_email: string | null;
-      emailit_from_name: string | null;
-      emailit_reply_to: string | null;
-    }>();
+  const row = await db('company_settings').where({ company_id: companyId }).first<{
+    emailit_api_key_encrypted: string | null;
+    emailit_from_email: string | null;
+    emailit_from_name: string | null;
+    emailit_reply_to: string | null;
+  }>();
 
   // Per-company first; fall back to the appliance-wide default if the
   // company hasn't configured its own.
@@ -96,13 +94,11 @@ async function resolveEmailConfig(companyId: number): Promise<EmailItConfig | nu
 }
 
 async function resolveTwilioConfig(companyId: number): Promise<TwilioConfig | null> {
-  const row = await db('company_settings')
-    .where({ company_id: companyId })
-    .first<{
-      twilio_account_sid: string | null;
-      twilio_auth_token_encrypted: string | null;
-      twilio_from_number: string | null;
-    }>();
+  const row = await db('company_settings').where({ company_id: companyId }).first<{
+    twilio_account_sid: string | null;
+    twilio_auth_token_encrypted: string | null;
+    twilio_from_number: string | null;
+  }>();
   if (!row?.twilio_account_sid || !row.twilio_auth_token_encrypted || !row.twilio_from_number) {
     return null;
   }
@@ -255,18 +251,13 @@ async function sendEmail(
     const res = await sendViaEmailIt(config, payload);
     return { status: 'sent', providerMessageId: res.messageId, error: null };
   } catch (err) {
-    const msg =
-      err instanceof EmailDeliveryError ? err.message : (err as Error).message;
+    const msg = err instanceof EmailDeliveryError ? err.message : (err as Error).message;
     logger.error({ err, to }, 'email send failed');
     return { status: 'failed', providerMessageId: null, error: msg };
   }
 }
 
-async function sendSms(
-  input: NotifyInput,
-  to: string,
-  payload: SmsPayload,
-): Promise<LogOutcome> {
+async function sendSms(input: NotifyInput, to: string, payload: SmsPayload): Promise<LogOutcome> {
   if (env.NOTIFICATIONS_DISABLED) {
     return { status: 'disabled', providerMessageId: null, error: null };
   }
@@ -297,17 +288,15 @@ export async function retryLoggedNotification(
   companyId: number,
   logId: number,
 ): Promise<NotifyResult> {
-  const row = await db('notifications_log')
-    .where({ id: logId, company_id: companyId })
-    .first<{
-      id: number;
-      recipient_type: 'employee' | 'user';
-      recipient_id: number | null;
-      recipient_address: string;
-      channel: 'email' | 'sms';
-      type: NotificationType;
-      payload: Record<string, unknown> | null;
-    }>();
+  const row = await db('notifications_log').where({ id: logId, company_id: companyId }).first<{
+    id: number;
+    recipient_type: 'employee' | 'user';
+    recipient_id: number | null;
+    recipient_address: string;
+    channel: 'email' | 'sms';
+    type: NotificationType;
+    payload: Record<string, unknown> | null;
+  }>();
   if (!row) {
     return {};
   }

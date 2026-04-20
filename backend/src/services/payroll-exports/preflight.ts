@@ -1,8 +1,4 @@
-import type {
-  PayrollFormat,
-  PreflightEmployeeStatus,
-  PreflightResponse,
-} from '@vibept/shared';
+import type { PayrollFormat, PreflightEmployeeStatus, PreflightResponse } from '@vibept/shared';
 import { buildTimesheetSummary } from '@vibept/shared';
 import { db } from '../../db/knex.js';
 import { NotFound } from '../../http/errors.js';
@@ -30,12 +26,10 @@ export async function runPreflight(
     .where({ id: companyId })
     .first<{ id: number; timezone: string; week_start_day: number }>();
   if (!company) throw NotFound('Company not found');
-  const settings = await db('company_settings')
-    .where({ company_id: companyId })
-    .first<{
-      punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
-      punch_rounding_grace_minutes: number;
-    }>();
+  const settings = await db('company_settings').where({ company_id: companyId }).first<{
+    punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
+    punch_rounding_grace_minutes: number;
+  }>();
   if (!settings) throw NotFound('Company settings not found');
 
   const employees = await db('employees')
@@ -60,10 +54,9 @@ export async function runPreflight(
 
   const pendingCorrections = await db('correction_requests')
     .where({ company_id: companyId, status: 'pending' })
-    .select<Array<{ employee_id: number; time_entry_id: number | null }>>(
-      'employee_id',
-      'time_entry_id',
-    );
+    .select<
+      Array<{ employee_id: number; time_entry_id: number | null }>
+    >('employee_id', 'time_entry_id');
 
   const pendingByEmployee = new Set(pendingCorrections.map((c) => c.employee_id));
   const entriesByEmployee = new Map<number, TimeEntryRow[]>();
@@ -171,12 +164,10 @@ export async function collectEmployeeSummaries(
     .where({ id: companyId })
     .first<{ id: number; timezone: string; week_start_day: number }>();
   if (!company) throw NotFound('Company not found');
-  const settings = await db('company_settings')
-    .where({ company_id: companyId })
-    .first<{
-      punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
-      punch_rounding_grace_minutes: number;
-    }>();
+  const settings = await db('company_settings').where({ company_id: companyId }).first<{
+    punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
+    punch_rounding_grace_minutes: number;
+  }>();
   if (!settings) throw NotFound('Company settings not found');
 
   const employees = await db('employees')
@@ -251,7 +242,7 @@ export async function collectEmployeeSummaries(
       overtimeSeconds: summary.periodTotal.overtimeSeconds,
       breakSeconds: summary.periodTotal.breakSeconds,
       workSeconds: summary.periodTotal.workSeconds,
-      byJob: summary.jobBreakdown.map((j) => ({
+      byJob: summary.jobBreakdown.map((j: { jobId: number | null; workSeconds: number }) => ({
         jobId: j.jobId,
         jobCode: j.jobId != null ? (jobCode.get(j.jobId) ?? null) : null,
         workSeconds: j.workSeconds,

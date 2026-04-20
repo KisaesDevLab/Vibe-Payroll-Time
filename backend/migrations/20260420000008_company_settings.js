@@ -9,11 +9,7 @@
  */
 exports.up = async function up(knex) {
   await knex.schema.createTable('company_settings', (t) => {
-    t.bigInteger('company_id')
-      .primary()
-      .references('id')
-      .inTable('companies')
-      .onDelete('CASCADE');
+    t.bigInteger('company_id').primary().references('id').inTable('companies').onDelete('CASCADE');
 
     // --- Punch rules -----------------------------------------------------
     t.enu('punch_rounding_mode', ['none', '1min', '5min', '6min', '15min'], {

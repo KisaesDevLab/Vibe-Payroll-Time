@@ -63,9 +63,7 @@ export async function updateJob(
   patch: UpdateJobRequest,
 ): Promise<Job> {
   return db.transaction(async (trx) => {
-    const existing = await trx<JobRow>('jobs')
-      .where({ company_id: companyId, id: jobId })
-      .first();
+    const existing = await trx<JobRow>('jobs').where({ company_id: companyId, id: jobId }).first();
     if (!existing) throw NotFound('Job not found');
 
     if (patch.code && patch.code !== existing.code) {
@@ -76,7 +74,7 @@ export async function updateJob(
       if (clash) throw Conflict(`Job code "${patch.code}" is already in use`);
     }
 
-    const updates: Partial<JobRow> & { updated_at?: unknown } = { updated_at: trx.fn.now() };
+    const updates: Record<string, unknown> = { updated_at: trx.fn.now() };
     if (patch.code !== undefined) updates.code = patch.code;
     if (patch.name !== undefined) updates.name = patch.name;
     if (patch.description !== undefined) updates.description = patch.description;
@@ -91,9 +89,7 @@ export async function updateJob(
 }
 
 export async function archiveJob(companyId: number, jobId: number): Promise<void> {
-  const existing = await db<JobRow>('jobs')
-    .where({ company_id: companyId, id: jobId })
-    .first();
+  const existing = await db<JobRow>('jobs').where({ company_id: companyId, id: jobId }).first();
   if (!existing) throw NotFound('Job not found');
   if (existing.archived_at) return;
   await db('jobs').where({ id: jobId }).update({
@@ -104,9 +100,7 @@ export async function archiveJob(companyId: number, jobId: number): Promise<void
 }
 
 export async function unarchiveJob(companyId: number, jobId: number): Promise<Job> {
-  const existing = await db<JobRow>('jobs')
-    .where({ company_id: companyId, id: jobId })
-    .first();
+  const existing = await db<JobRow>('jobs').where({ company_id: companyId, id: jobId }).first();
   if (!existing) throw NotFound('Job not found');
   await db('jobs').where({ id: jobId }).update({
     archived_at: null,

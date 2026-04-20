@@ -42,9 +42,7 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
         </header>
         <div className="px-6 py-5">{children}</div>
         {footer && (
-          <footer className="border-t border-slate-200 bg-slate-50 px-6 py-4">
-            {footer}
-          </footer>
+          <footer className="border-t border-slate-200 bg-slate-50 px-6 py-4">{footer}</footer>
         )}
       </div>
     </div>

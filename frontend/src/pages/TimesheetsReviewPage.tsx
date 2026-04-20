@@ -43,8 +43,7 @@ export function TimesheetsReviewPage() {
         periodStart: sheet.data!.period.start,
         periodEnd: sheet.data!.period.end,
       }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['timesheet', companyId, effectiveId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['timesheet', companyId, effectiveId] }),
   });
 
   const unapprove = useMutation({
@@ -54,16 +53,13 @@ export function TimesheetsReviewPage() {
         periodStart: sheet.data!.period.start,
         periodEnd: sheet.data!.period.end,
       }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['timesheet', companyId, effectiveId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['timesheet', companyId, effectiveId] }),
   });
 
   // Exception flags surfaced on the employee list for quick triage.
   const exceptionIdsForEmployee = (employeeId: number): boolean => {
     if (sheet.data?.employee.id !== employeeId || !sheet.data) return false;
-    return sheet.data.entries.some(
-      (e) => e.isAutoClosed || e.endedAt === null,
-    );
+    return sheet.data.entries.some((e) => e.isAutoClosed || e.endedAt === null);
   };
 
   return (
@@ -112,9 +108,7 @@ export function TimesheetsReviewPage() {
         {sheet.isPending && <p className="text-sm text-slate-500">Loading timesheet…</p>}
         {sheet.isError && (
           <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {sheet.error instanceof ApiError
-              ? sheet.error.message
-              : 'Failed to load timesheet.'}
+            {sheet.error instanceof ApiError ? sheet.error.message : 'Failed to load timesheet.'}
           </p>
         )}
         {sheet.data && (
@@ -136,8 +130,7 @@ export function TimesheetsReviewPage() {
                   loading={approve.isPending}
                   disabled={sheet.data.entries.length === 0}
                   onClick={() => {
-                    if (confirm('Approve every closed entry in this period?'))
-                      approve.mutate();
+                    if (confirm('Approve every closed entry in this period?')) approve.mutate();
                   }}
                 >
                   Approve period

@@ -89,9 +89,7 @@ export type OvertimeParams = z.infer<typeof overtimeParamsSchema>;
 export const auditTrailParamsSchema = z.object({
   periodStart: z.string().datetime(),
   periodEnd: z.string().datetime(),
-  action: z
-    .enum(['create', 'edit', 'approve', 'unapprove', 'delete', 'auto_close'])
-    .optional(),
+  action: z.enum(['create', 'edit', 'approve', 'unapprove', 'delete', 'auto_close']).optional(),
   actorUserId: z.coerce.number().int().positive().optional(),
 });
 export type AuditTrailParams = z.infer<typeof auditTrailParamsSchema>;

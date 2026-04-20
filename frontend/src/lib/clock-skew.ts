@@ -46,9 +46,7 @@ export async function measureSkew(): Promise<number> {
   try {
     const res = await fetch(`${apiBase}/health`, { method: 'GET' });
     if (!res.ok) return currentSkewMs;
-    const body = (await res.json().catch(() => null)) as
-      | { data?: { timestamp?: string } }
-      | null;
+    const body = (await res.json().catch(() => null)) as { data?: { timestamp?: string } } | null;
     const t1 = Date.now();
     const serverIso = body?.data?.timestamp;
     if (!serverIso) return currentSkewMs;

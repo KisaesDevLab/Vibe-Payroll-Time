@@ -1,15 +1,8 @@
-import {
-  preflightRequestSchema,
-  runExportRequestSchema,
-} from '@vibept/shared';
+import { preflightRequestSchema, runExportRequestSchema } from '@vibept/shared';
 import { Router } from 'express';
 import fs from 'node:fs';
 import { db } from '../../db/knex.js';
-import {
-  listExports,
-  openExportFile,
-  runExport,
-} from '../../services/payroll-exports/engine.js';
+import { listExports, openExportFile, runExport } from '../../services/payroll-exports/engine.js';
 import { runPreflight } from '../../services/payroll-exports/preflight.js';
 import { NotFound, Unauthorized } from '../errors.js';
 import { requireAuth, requireCompanyRole } from '../middleware/auth.js';
@@ -46,9 +39,7 @@ payrollExportsRouter.post(
       const companyId = Number(req.params.companyId);
       const body = runExportRequestSchema.parse(req.body);
 
-      const company = await db('companies')
-        .where({ id: companyId })
-        .first<{ name: string }>();
+      const company = await db('companies').where({ id: companyId }).first<{ name: string }>();
       if (!company) return next(NotFound('Company not found'));
 
       const result = await runExport({
@@ -89,10 +80,7 @@ payrollExportsRouter.get(
   requireCompanyRole(['company_admin']),
   async (req, res, next) => {
     try {
-      const resolved = await openExportFile(
-        Number(req.params.companyId),
-        Number(req.params.id),
-      );
+      const resolved = await openExportFile(Number(req.params.companyId), Number(req.params.id));
       if (!resolved) {
         res.status(410).json({
           error: {

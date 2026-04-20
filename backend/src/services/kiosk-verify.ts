@@ -6,11 +6,7 @@ import { db } from '../db/knex.js';
 import { Unauthorized } from '../http/errors.js';
 import { recordAuthEvent } from './auth-events.js';
 import { pinFingerprint } from './crypto.js';
-import {
-  isDeviceLocked,
-  recordBadPin,
-  recordGoodPin,
-} from './kiosk-pin-lockout.js';
+import { isDeviceLocked, recordBadPin, recordGoodPin } from './kiosk-pin-lockout.js';
 import { verifyPin } from './passwords.js';
 
 /** Kiosk employee session TTL — short so a walk-away from the tablet

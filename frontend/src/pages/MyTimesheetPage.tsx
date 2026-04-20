@@ -19,9 +19,7 @@ import { timesheets } from '../lib/resources';
 export function MyTimesheetPage() {
   const session = useSession();
   const memberships = useMemo(() => session?.user.memberships ?? [], [session]);
-  const [companyId, setCompanyId] = useState<number | null>(
-    memberships[0]?.companyId ?? null,
-  );
+  const [companyId, setCompanyId] = useState<number | null>(memberships[0]?.companyId ?? null);
   useEffect(() => {
     if (!companyId && memberships[0]) setCompanyId(memberships[0].companyId);
   }, [companyId, memberships]);
@@ -43,9 +41,7 @@ export function MyTimesheetPage() {
       <main className="mx-auto max-w-5xl px-6 py-8">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-              My timesheet
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">My timesheet</h1>
             <p className="mt-1 text-sm text-slate-600">
               Current pay period. Request a fix on any entry that needs correcting.
             </p>
@@ -68,9 +64,7 @@ export function MyTimesheetPage() {
         {sheet.isPending && <p className="text-sm text-slate-500">Loading timesheet…</p>}
         {sheet.isError && (
           <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {sheet.error instanceof ApiError
-              ? sheet.error.message
-              : 'Could not load timesheet.'}
+            {sheet.error instanceof ApiError ? sheet.error.message : 'Could not load timesheet.'}
           </p>
         )}
         {sheet.data && (
@@ -162,8 +156,7 @@ function CorrectionRequestModal({
     >
       <div className="flex flex-col gap-4">
         <p className="text-sm text-slate-600">
-          A manager will review this request. The original entry isn't changed until
-          approved.
+          A manager will review this request. The original entry isn't changed until approved.
         </p>
         <FormField
           label="Start"

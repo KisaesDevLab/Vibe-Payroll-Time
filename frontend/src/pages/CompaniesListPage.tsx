@@ -51,9 +51,7 @@ export function CompaniesListPage() {
       <main className="mx-auto max-w-7xl px-6 py-8">
         <header className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-              All companies
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">All companies</h1>
             <p className="mt-1 text-sm text-slate-600">
               SuperAdmin view. All companies hosted on this appliance.
             </p>
@@ -91,12 +89,8 @@ export function CompaniesListPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">
-                    {c.licenseState.replace('_', ' ')}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">
-                    {c.payPeriodType.replace('_', '-')}
-                  </td>
+                  <td className="px-4 py-3 text-slate-700">{c.licenseState.replace('_', ' ')}</td>
+                  <td className="px-4 py-3 text-slate-700">{c.payPeriodType.replace('_', '-')}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-900">
                     {c.employeeCount ?? 0}
                   </td>
@@ -151,9 +145,7 @@ export function CompaniesListPage() {
             label="Slug"
             hint="kebab-case, used in URLs"
             value={form.slug}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, slug: e.target.value.toLowerCase() }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value.toLowerCase() }))}
           />
           <FormField
             label="Timezone"

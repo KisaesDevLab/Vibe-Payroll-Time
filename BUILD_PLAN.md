@@ -338,7 +338,7 @@ Goal: commercial licensing works end-to-end, reusing the `kisaes-license-portal`
   - [ ] `trial`: full access, banner warning with countdown
   - [ ] `grace`: full access, prominent warning, daily email to CompanyAdmin
   - [ ] `expired`: read-only + export-only; no new punches, no edits, no approvals
-- [ ] **Philosophy enforced in code:** data export is *always* accessible regardless of license state
+- [ ] **Philosophy enforced in code:** data export is _always_ accessible regardless of license state
 - [ ] **Philosophy enforced in code:** internal firm staff (users whose active company context is an internal company) are never blocked by licensing
 - [ ] Daily heartbeat cron (optional per company): phones home to license portal with `{appliance_id, company_id, employee_count}`; portal returns updated license status; offline-tolerant
 - [ ] License upload UI for CompanyAdmin: paste JWT, validate, display parsed claims

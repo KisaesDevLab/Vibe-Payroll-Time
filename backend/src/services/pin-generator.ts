@@ -19,14 +19,50 @@ import { hashPin } from './passwords.js';
  */
 
 const WEAK_PATTERNS = new Set([
-  '0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999',
-  '1234', '2345', '3456', '4567', '5678', '6789',
-  '4321', '5432', '6543', '7654', '8765', '9876',
-  '0123', '9870',
-  '000000', '111111', '222222', '333333', '444444', '555555',
-  '666666', '777777', '888888', '999999',
-  '123456', '234567', '345678', '456789', '567890',
-  '654321', '765432', '876543', '987654', '098765',
+  '0000',
+  '1111',
+  '2222',
+  '3333',
+  '4444',
+  '5555',
+  '6666',
+  '7777',
+  '8888',
+  '9999',
+  '1234',
+  '2345',
+  '3456',
+  '4567',
+  '5678',
+  '6789',
+  '4321',
+  '5432',
+  '6543',
+  '7654',
+  '8765',
+  '9876',
+  '0123',
+  '9870',
+  '000000',
+  '111111',
+  '222222',
+  '333333',
+  '444444',
+  '555555',
+  '666666',
+  '777777',
+  '888888',
+  '999999',
+  '123456',
+  '234567',
+  '345678',
+  '456789',
+  '567890',
+  '654321',
+  '765432',
+  '876543',
+  '987654',
+  '098765',
 ]);
 
 export function isWeakPin(pin: string): boolean {
@@ -48,7 +84,7 @@ function randomPin(length: number): string {
   for (let i = 0; i < length; i++) {
     // Map each byte to a digit. Acceptance ratio 250/256 so modulo bias
     // is <2.5% per digit — well within our tolerance for 4–6 digit PINs.
-    out += (((buf[i] as number) % 10)).toString();
+    out += ((buf[i] as number) % 10).toString();
   }
   return out;
 }
@@ -73,7 +109,8 @@ export async function generateUniquePin(opts: GeneratePinOptions): Promise<strin
   const length = opts.length ?? 6;
   const maxAttempts = opts.maxAttempts ?? 64;
 
-  const rows = await opts.trx('employees')
+  const rows = await opts
+    .trx('employees')
     .where({ company_id: opts.companyId, status: 'active' })
     .whereNotNull('pin_fingerprint')
     .select<Array<{ pin_fingerprint: string }>>('pin_fingerprint');

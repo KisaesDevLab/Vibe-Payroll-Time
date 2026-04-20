@@ -16,9 +16,7 @@ import { notifications } from '../lib/resources';
 export function NotificationPreferencesPage() {
   const session = useSession();
   const memberships = useMemo(() => session?.user.memberships ?? [], [session]);
-  const [companyId, setCompanyId] = useState<number | null>(
-    memberships[0]?.companyId ?? null,
-  );
+  const [companyId, setCompanyId] = useState<number | null>(memberships[0]?.companyId ?? null);
   useEffect(() => {
     if (!companyId && memberships[0]) setCompanyId(memberships[0].companyId);
   }, [companyId, memberships]);
@@ -54,12 +52,9 @@ export function NotificationPreferencesPage() {
       <TopBar />
       <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-8">
         <header>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Notifications
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Notifications</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Choose how you're notified about missed punches, approvals, and correction
-            decisions.
+            Choose how you're notified about missed punches, approvals, and correction decisions.
           </p>
         </header>
 
@@ -116,11 +111,7 @@ export function NotificationPreferencesPage() {
         )}
 
         {companyId != null && prefs.data && (
-          <PhoneVerificationCard
-            companyId={companyId}
-            prefs={prefs.data}
-            onVerified={invalidate}
-          />
+          <PhoneVerificationCard companyId={companyId} prefs={prefs.data} onVerified={invalidate} />
         )}
       </main>
     </>
@@ -234,8 +225,7 @@ function PhoneVerificationCard({
 
       {(request.isError || confirm.isError) && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {((request.error ?? confirm.error) as Error | null)?.message ??
-            'Verification failed'}
+          {((request.error ?? confirm.error) as Error | null)?.message ?? 'Verification failed'}
         </div>
       )}
 

@@ -96,9 +96,7 @@ export async function revokeKioskDevice(
     .first();
   if (!existing) throw NotFound('Kiosk device not found');
   if (existing.revoked_at) return;
-  await db('kiosk_devices')
-    .where({ id: deviceId })
-    .update({ revoked_at: db.fn.now() });
+  await db('kiosk_devices').where({ id: deviceId }).update({ revoked_at: db.fn.now() });
   await recordAuthEvent({
     eventType: 'logout',
     userId: actorUserId,
@@ -131,9 +129,7 @@ export async function pairKiosk(
       throw Unauthorized('Pairing code has expired');
     }
 
-    const company = await trx('companies')
-      .where({ id: code.company_id })
-      .first<{ name: string }>();
+    const company = await trx('companies').where({ id: code.company_id }).first<{ name: string }>();
     if (!company) throw NotFound('Company not found');
 
     const deviceToken = crypto.randomBytes(48).toString('base64url');
@@ -147,9 +143,7 @@ export async function pairKiosk(
       .returning('*');
     if (!device) throw new Error('failed to create kiosk device');
 
-    await trx('kiosk_pairing_codes')
-      .where({ id: code.id })
-      .update({ consumed_at: trx.fn.now() });
+    await trx('kiosk_pairing_codes').where({ id: code.id }).update({ consumed_at: trx.fn.now() });
 
     await recordAuthEvent(
       {

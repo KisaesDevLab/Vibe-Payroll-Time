@@ -145,11 +145,7 @@ export function KioskPinPage() {
           <span className="font-semibold text-slate-200">{kiosk.companyName}</span>
           <span className="ml-2 text-slate-500">· {kiosk.deviceName}</span>
         </div>
-        <button
-          type="button"
-          onClick={clearKiosk}
-          className="text-slate-500 hover:text-slate-300"
-        >
+        <button type="button" onClick={clearKiosk} className="text-slate-500 hover:text-slate-300">
           Unpair
         </button>
       </header>
@@ -176,7 +172,11 @@ export function KioskPinPage() {
           />
         )}
         {screen === 'confirmation' && confirmMessage && (
-          <Confirmation message={confirmMessage} seconds={confirmCountdown} onDismiss={resetToPin} />
+          <Confirmation
+            message={confirmMessage}
+            seconds={confirmCountdown}
+            onDismiss={resetToPin}
+          />
         )}
       </main>
     </div>
@@ -226,12 +226,7 @@ function PinKeypad({
           ←
         </KeyButton>
       </div>
-      <Button
-        type="button"
-        className="w-full py-4 text-lg"
-        onClick={onSubmit}
-        loading={submitting}
-      >
+      <Button type="button" className="w-full py-4 text-lg" onClick={onSubmit} loading={submitting}>
         Enter
       </Button>
     </div>
@@ -298,21 +293,13 @@ function EmployeeMenu({
 
       <div className="grid w-full gap-3">
         {isClockedOut && (
-          <Button
-            className="py-5 text-lg"
-            loading={pending}
-            onClick={() => onAction('clockIn')}
-          >
+          <Button className="py-5 text-lg" loading={pending} onClick={() => onAction('clockIn')}>
             Clock in
           </Button>
         )}
         {isClockedIn && (
           <>
-            <Button
-              className="py-5 text-lg"
-              loading={pending}
-              onClick={() => onAction('clockOut')}
-            >
+            <Button className="py-5 text-lg" loading={pending} onClick={() => onAction('clockOut')}>
               Clock out
             </Button>
             <Button
@@ -326,11 +313,7 @@ function EmployeeMenu({
           </>
         )}
         {isOnBreak && (
-          <Button
-            className="py-5 text-lg"
-            loading={pending}
-            onClick={() => onAction('breakOut')}
-          >
+          <Button className="py-5 text-lg" loading={pending} onClick={() => onAction('breakOut')}>
             End break
           </Button>
         )}
@@ -366,9 +349,7 @@ function Confirmation({
     <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
       <div className="rounded-full bg-emerald-500/20 p-6 text-6xl">✓</div>
       <h2 className="text-3xl font-semibold text-white">{message}</h2>
-      <p className="text-sm text-slate-400">
-        Returning to the PIN screen in {seconds}s
-      </p>
+      <p className="text-sm text-slate-400">Returning to the PIN screen in {seconds}s</p>
       <Button variant="secondary" onClick={onDismiss}>
         Done
       </Button>

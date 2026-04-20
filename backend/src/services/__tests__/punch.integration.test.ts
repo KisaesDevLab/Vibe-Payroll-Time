@@ -1,19 +1,21 @@
 /**
  * Punch-engine integration tests. Run against the dev Postgres (see
  * docker-compose.dev.yml) or the CI service container. Skipped when the
- * database is unreachable.
+ * database is unreachable so `npm test` exits clean locally without
+ * `docker compose up`.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/knex.js';
 import { runMigrations } from '../../db/migrate.js';
 import { hashPassword } from '../passwords.js';
-import {
-  breakIn,
-  breakOut,
-  clockIn,
-  clockOut,
-  switchJob,
-} from '../punch.js';
+import { breakIn, breakOut, clockIn, clockOut, switchJob } from '../punch.js';
+
+// Probe once at module load so `describe.skipIf` gets a synchronous
+// boolean. Top-level await is supported under NodeNext ESM.
+const dbReachable = await db
+  .raw('select 1')
+  .then(() => true)
+  .catch(() => false);
 
 let companyId: number;
 let employeeId: number;
@@ -98,18 +100,8 @@ function ctx() {
   };
 }
 
-describe('punch service (DB-backed)', () => {
-  // Tests require a reachable Postgres (docker compose up for local dev, or
-  // the service container in CI). Fail fast with a clear error if missing.
+describe.skipIf(!dbReachable)('punch service (DB-backed)', () => {
   beforeAll(async () => {
-    try {
-      await db.raw('select 1');
-    } catch (err) {
-      throw new Error(
-        'Punch integration tests need a reachable Postgres. Run `docker compose -f docker-compose.dev.yml up -d` or set SKIP. Underlying error: ' +
-          String(err),
-      );
-    }
     await runMigrations();
   });
 

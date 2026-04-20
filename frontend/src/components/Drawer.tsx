@@ -42,9 +42,7 @@ export function Drawer({ open, onClose, title, children, footer }: DrawerProps) 
         </header>
         <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
         {footer && (
-          <footer className="border-t border-slate-200 bg-slate-50 px-6 py-4">
-            {footer}
-          </footer>
+          <footer className="border-t border-slate-200 bg-slate-50 px-6 py-4">{footer}</footer>
         )}
       </aside>
     </div>

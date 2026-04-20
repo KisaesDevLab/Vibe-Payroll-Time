@@ -1,10 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type {
-  Employee,
-  ReportColumn,
-  ReportDefinition,
-  ReportResult,
-} from '@vibept/shared';
+import type { Employee, ReportColumn, ReportDefinition, ReportResult } from '@vibept/shared';
 import { useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
@@ -69,17 +64,9 @@ export function ReportsPage() {
   );
 }
 
-function ReportRunner({
-  companyId,
-  report,
-}: {
-  companyId: number;
-  report: ReportDefinition;
-}) {
+function ReportRunner({ companyId, report }: { companyId: number; report: ReportDefinition }) {
   const now = new Date();
-  const firstOfMonth = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-  ).toISOString();
+  const firstOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   const firstOfNextMonth = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
   ).toISOString();
@@ -250,9 +237,7 @@ function ResultTable({
           {new Date(result.generatedAt).toLocaleTimeString()}
         </p>
         <details className="relative">
-          <summary className="cursor-pointer text-slate-700 hover:underline">
-            Columns
-          </summary>
+          <summary className="cursor-pointer text-slate-700 hover:underline">Columns</summary>
           <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded-md border border-slate-200 bg-white p-2 shadow-lg">
             {result.columns.map((c) => (
               <label
@@ -280,9 +265,7 @@ function ResultTable({
                   key={c.key}
                   className={
                     'px-4 py-2 font-medium ' +
-                    (c.type === 'hours' || c.type === 'number'
-                      ? 'text-right'
-                      : 'text-left')
+                    (c.type === 'hours' || c.type === 'number' ? 'text-right' : 'text-left')
                   }
                 >
                   {c.label}
@@ -328,8 +311,7 @@ function ResultTable({
 function formatCell(v: unknown, column: ReportColumn): string {
   if (v === null || v === undefined) return '';
   if (column.type === 'hours' && typeof v === 'number') return (v / 3600).toFixed(2);
-  if (column.type === 'datetime' && typeof v === 'string')
-    return new Date(v).toLocaleString();
+  if (column.type === 'datetime' && typeof v === 'string') return new Date(v).toLocaleString();
   if (column.type === 'date' && typeof v === 'string')
     return new Date(v + 'T12:00:00Z').toLocaleDateString();
   if (column.type === 'boolean') return v ? 'yes' : 'no';

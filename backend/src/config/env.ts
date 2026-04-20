@@ -3,9 +3,7 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  LOG_LEVEL: z
-    .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent'])
-    .default('info'),
+  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
 
   APPLIANCE_ID: z.string().default('local-dev'),
 
@@ -52,9 +50,7 @@ const envSchema = z.object({
     .transform((v) => v === 'true'),
 
   // ---------- AI (appliance-wide fallback) ----------
-  AI_PROVIDER_DEFAULT: z
-    .enum(['anthropic', 'openai_compatible', 'ollama'])
-    .default('anthropic'),
+  AI_PROVIDER_DEFAULT: z.enum(['anthropic', 'openai_compatible', 'ollama']).default('anthropic'),
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().optional(),
   AI_BASE_URL: z.string().optional(),

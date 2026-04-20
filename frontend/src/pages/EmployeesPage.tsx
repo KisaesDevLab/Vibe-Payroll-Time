@@ -23,9 +23,7 @@ export function EmployeesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [selected, setSelected] = useState<Employee | null>(null);
-  const [revealedPin, setRevealedPin] = useState<{ employeeId: number; pin: string } | null>(
-    null,
-  );
+  const [revealedPin, setRevealedPin] = useState<{ employeeId: number; pin: string } | null>(null);
 
   const roster = useQuery({
     queryKey: ['employees', companyId, search],
@@ -224,9 +222,7 @@ function CreateEmployeeModal({
         <FormField
           label="Employee number"
           value={form.employeeNumber ?? ''}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, employeeNumber: e.target.value || undefined }))
-          }
+          onChange={(e) => setForm((f) => ({ ...f, employeeNumber: e.target.value || undefined }))}
         />
         <FormField
           label="Email"
@@ -272,8 +268,7 @@ function ImportCsvModal({
   const [result, setResult] = useState<CsvImportResponse | null>(null);
 
   const submit = useMutation({
-    mutationFn: () =>
-      employeesApi.importCsv(companyId, { csv, generatePins, pinLength: 6 }),
+    mutationFn: () => employeesApi.importCsv(companyId, { csv, generatePins, pinLength: 6 }),
     onSuccess: (res) => setResult(res),
   });
 
@@ -461,9 +456,7 @@ function EmployeeDetailDrawer({
         <FormField
           label="Employee number"
           defaultValue={employee.employeeNumber ?? ''}
-          onChange={(e) =>
-            setPatch((p) => ({ ...p, employeeNumber: e.target.value || null }))
-          }
+          onChange={(e) => setPatch((p) => ({ ...p, employeeNumber: e.target.value || null }))}
         />
         <FormField
           label="Email"

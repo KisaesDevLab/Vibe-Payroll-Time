@@ -21,7 +21,9 @@ exports.up = async function up(knex) {
     t.unique(['user_id', 'company_id']);
   });
 
-  await knex.raw('CREATE INDEX company_memberships_company_idx ON company_memberships (company_id)');
+  await knex.raw(
+    'CREATE INDEX company_memberships_company_idx ON company_memberships (company_id)',
+  );
 };
 
 exports.down = async function down(knex) {

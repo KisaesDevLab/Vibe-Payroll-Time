@@ -8,12 +8,12 @@ run until the preflight is green.
 
 Four formats ship in v1:
 
-| Format            | Vendor                             | Doc                                |
-| ----------------- | ---------------------------------- | ---------------------------------- |
-| `payroll_relief`  | Thomson Reuters Payroll Relief     | [payroll-relief.md](./payroll-relief.md) |
-| `gusto`           | Gusto                              | [gusto.md](./gusto.md)             |
-| `qbo_payroll`     | QuickBooks Online Payroll          | [qbo-payroll.md](./qbo-payroll.md) |
-| `generic_csv`     | Spreadsheet / firm-specific        | [generic-csv.md](./generic-csv.md) |
+| Format           | Vendor                         | Doc                                      |
+| ---------------- | ------------------------------ | ---------------------------------------- |
+| `payroll_relief` | Thomson Reuters Payroll Relief | [payroll-relief.md](./payroll-relief.md) |
+| `gusto`          | Gusto                          | [gusto.md](./gusto.md)                   |
+| `qbo_payroll`    | QuickBooks Online Payroll      | [qbo-payroll.md](./qbo-payroll.md)       |
+| `generic_csv`    | Spreadsheet / firm-specific    | [generic-csv.md](./generic-csv.md)       |
 
 > **Vendor formats evolve.** The columns and header names documented
 > here were accurate at the time of implementation but are not

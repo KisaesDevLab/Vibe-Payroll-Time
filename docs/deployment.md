@@ -36,11 +36,11 @@ this doc with hardening, backup automation (Phase 13), and licensing ingress
 Pick one based on your network constraints. You can switch later by
 re-running the install script with a different `PROFILE`.
 
-| Profile      | When to use                                                          |
-| ------------ | -------------------------------------------------------------------- |
-| `public`     | Static public IP, ports 80/443 forwarded, public DNS A record        |
+| Profile      | When to use                                                                       |
+| ------------ | --------------------------------------------------------------------------------- |
+| `public`     | Static public IP, ports 80/443 forwarded, public DNS A record                     |
 | `cloudflare` | Appliance sits behind CGNAT or no port forwarding; you own a domain on Cloudflare |
-| `tailscale`  | Restricted network or private-only access via Tailscale Funnel       |
+| `tailscale`  | Restricted network or private-only access via Tailscale Funnel                    |
 
 ## 3. Install the appliance
 
@@ -124,15 +124,15 @@ QUIC — you don't need to open 80/443 on the appliance.
 
 ## 6. Day-2 operations
 
-| Task                | Command                                                |
-| ------------------- | ------------------------------------------------------ |
-| View logs           | `docker compose -f /opt/vibept/docker-compose.prod.yml logs -f` |
-| Update appliance    | `sudo /opt/vibept/scripts/appliance/update.sh`         |
-| Manual backup       | `sudo /opt/vibept/scripts/appliance/backup.sh`         |
-| Run migrations      | `docker compose -f /opt/vibept/docker-compose.prod.yml exec backend npm run migrate` |
-| Open a psql shell   | `docker compose -f /opt/vibept/docker-compose.prod.yml exec postgres psql -U vibept` |
-| Restart stack       | `sudo systemctl restart vibept`                        |
-| Stop stack          | `sudo systemctl stop vibept`                           |
+| Task              | Command                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| View logs         | `docker compose -f /opt/vibept/docker-compose.prod.yml logs -f`                      |
+| Update appliance  | `sudo /opt/vibept/scripts/appliance/update.sh`                                       |
+| Manual backup     | `sudo /opt/vibept/scripts/appliance/backup.sh`                                       |
+| Run migrations    | `docker compose -f /opt/vibept/docker-compose.prod.yml exec backend npm run migrate` |
+| Open a psql shell | `docker compose -f /opt/vibept/docker-compose.prod.yml exec postgres psql -U vibept` |
+| Restart stack     | `sudo systemctl restart vibept`                                                      |
+| Stop stack        | `sudo systemctl stop vibept`                                                         |
 
 ### Nightly backups
 

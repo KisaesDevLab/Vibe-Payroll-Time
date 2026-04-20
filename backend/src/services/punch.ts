@@ -169,10 +169,8 @@ async function writeAudit(
     actor_user_id: input.actorUserId,
     action: input.action,
     field: input.field ?? null,
-    old_value:
-      input.oldValue === undefined ? null : JSON.stringify(input.oldValue),
-    new_value:
-      input.newValue === undefined ? null : JSON.stringify(input.newValue),
+    old_value: input.oldValue === undefined ? null : JSON.stringify(input.oldValue),
+    new_value: input.newValue === undefined ? null : JSON.stringify(input.newValue),
     reason: input.reason ?? null,
   });
 }
@@ -203,10 +201,7 @@ async function ensureJobBelongsToCompany(
 
 /** Return the `job_id` from the last non-break entry in a shift — used so
  *  breakOut resumes on the same job the employee left. */
-async function lastWorkJobForShift(
-  trx: Knex.Transaction,
-  shiftId: string,
-): Promise<number | null> {
+async function lastWorkJobForShift(trx: Knex.Transaction, shiftId: string): Promise<number | null> {
   const row = await trx<TimeEntryRow>('time_entries')
     .where({ shift_id: shiftId, entry_type: 'work' })
     .whereNull('deleted_at')
@@ -292,9 +287,7 @@ async function closeOpen(
   const open = await findOpenEntry(trx, ctx.companyId, ctx.employeeId);
   if (!open) throw Conflict('Employee has no open entry');
   if (requireType !== 'any' && open.entry_type !== requireType) {
-    throw Conflict(
-      `Employee's open entry is ${open.entry_type}, not ${requireType}`,
-    );
+    throw Conflict(`Employee's open entry is ${open.entry_type}, not ${requireType}`);
   }
   if (endedAt.getTime() < open.started_at.getTime()) {
     // Should not happen after clamping, but explicit guard.
@@ -332,8 +325,7 @@ export async function clockOut(ctx: PunchContext): Promise<TimeEntry> {
 export async function breakIn(ctx: PunchContext): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
     await lockEmployee(trx, ctx.employeeId);
-    const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } =
-      resolveStartedAt(ctx);
+    const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
 
     const closed = await closeOpen(trx, ctx, 'work', pivot);
     await writeAudit(trx, {
@@ -379,8 +371,7 @@ export async function breakIn(ctx: PunchContext): Promise<TimeEntry> {
 export async function breakOut(ctx: PunchContext): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
     await lockEmployee(trx, ctx.employeeId);
-    const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } =
-      resolveStartedAt(ctx);
+    const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
 
     const closed = await closeOpen(trx, ctx, 'break', pivot);
     await writeAudit(trx, {
@@ -430,8 +421,7 @@ export async function switchJob(ctx: PunchContext, newJobId: number): Promise<Ti
   return db.transaction(async (trx) => {
     await ensureJobBelongsToCompany(trx, ctx.companyId, newJobId);
     await lockEmployee(trx, ctx.employeeId);
-    const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } =
-      resolveStartedAt(ctx);
+    const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
 
     const closed = await closeOpen(trx, ctx, 'work', pivot);
     await writeAudit(trx, {
@@ -533,9 +523,7 @@ export async function editEntry(
       const effectiveStart = (updates.started_at as Date | undefined) ?? existing.started_at;
       const effectiveEnd =
         patch.endedAt !== undefined ? (updates.ended_at as Date | null) : existing.ended_at;
-      updates.duration_seconds = effectiveEnd
-        ? secondsBetween(effectiveStart, effectiveEnd)
-        : null;
+      updates.duration_seconds = effectiveEnd ? secondsBetween(effectiveStart, effectiveEnd) : null;
     }
     if (patch.jobId !== undefined) {
       updates.job_id = patch.jobId;

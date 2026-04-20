@@ -16,11 +16,7 @@ exports.up = async function up(knex) {
       .references('id')
       .inTable('companies')
       .onDelete('CASCADE');
-    t.bigInteger('exported_by')
-      .nullable()
-      .references('id')
-      .inTable('users')
-      .onDelete('SET NULL');
+    t.bigInteger('exported_by').nullable().references('id').inTable('users').onDelete('SET NULL');
 
     t.timestamp('period_start', { useTz: true }).notNullable();
     t.timestamp('period_end', { useTz: true }).notNullable();

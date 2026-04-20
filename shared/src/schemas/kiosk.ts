@@ -48,11 +48,7 @@ export const pairKioskResponseSchema = z.object({
 export type PairKioskResponse = z.infer<typeof pairKioskResponseSchema>;
 
 export const kioskVerifyPinRequestSchema = z.object({
-  pin: z
-    .string()
-    .min(4)
-    .max(6)
-    .regex(/^\d+$/, 'PIN must be numeric'),
+  pin: z.string().min(4).max(6).regex(/^\d+$/, 'PIN must be numeric'),
 });
 export type KioskVerifyPinRequest = z.infer<typeof kioskVerifyPinRequestSchema>;
 

@@ -107,8 +107,7 @@ export function TimesheetView({
                 </p>
               </div>
               <p className="text-xs text-slate-500">
-                Work {formatHours(day.workSeconds)} hrs · Break{' '}
-                {formatHours(day.breakSeconds)} hrs
+                Work {formatHours(day.workSeconds)} hrs · Break {formatHours(day.breakSeconds)} hrs
               </p>
             </header>
             <table className="min-w-full divide-y divide-slate-100 text-sm">
@@ -150,9 +149,7 @@ export function TimesheetView({
                       )}
                     </td>
                     <td className="px-5 py-2 font-mono text-xs text-slate-700">
-                      {e.durationSeconds != null
-                        ? formatHours(e.durationSeconds) + 'h'
-                        : '—'}
+                      {e.durationSeconds != null ? formatHours(e.durationSeconds) + 'h' : '—'}
                     </td>
                     <td className="px-5 py-2 text-xs text-slate-500">
                       {e.source}
@@ -222,8 +219,7 @@ function Total({
       <dt className="text-xs uppercase text-slate-500">{label}</dt>
       <dd
         className={
-          'mt-0.5 text-lg font-semibold ' +
-          (highlight ? 'text-amber-700' : 'text-slate-900')
+          'mt-0.5 text-lg font-semibold ' + (highlight ? 'text-amber-700' : 'text-slate-900')
         }
       >
         {value}

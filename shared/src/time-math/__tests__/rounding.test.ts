@@ -8,9 +8,9 @@ function at(h: number, m: number, s = 0): Date {
 describe('roundTimestamp — mode=none', () => {
   it('is the identity', () => {
     const t = at(10, 3);
-    expect(
-      roundTimestamp(t, { mode: 'none', graceMinutes: 0, direction: 'in' }).getTime(),
-    ).toBe(t.getTime());
+    expect(roundTimestamp(t, { mode: 'none', graceMinutes: 0, direction: 'in' }).getTime()).toBe(
+      t.getTime(),
+    );
   });
 });
 
@@ -56,17 +56,13 @@ describe('roundedDurationSeconds', () => {
     const end = at(12, 12);
     // 15-min grace=0: start 10:03→10:00 (in favors up-on-tie; here rounds down),
     // end 12:12→12:15. Duration: 135 min = 8100 s.
-    expect(
-      roundedDurationSeconds(start, end, { mode: '15min', graceMinutes: 0 }),
-    ).toBe(135 * 60);
+    expect(roundedDurationSeconds(start, end, { mode: '15min', graceMinutes: 0 })).toBe(135 * 60);
   });
 
   it('returns 0 when rounded interval is inverted', () => {
     const start = at(10, 14);
     const end = at(10, 16);
     // 15-min, grace=0: start 10:14 → 10:15; end 10:16 → 10:15. Duration 0.
-    expect(
-      roundedDurationSeconds(start, end, { mode: '15min', graceMinutes: 0 }),
-    ).toBe(0);
+    expect(roundedDurationSeconds(start, end, { mode: '15min', graceMinutes: 0 })).toBe(0);
   });
 });

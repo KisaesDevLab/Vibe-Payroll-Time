@@ -64,9 +64,7 @@ export function JobsPage() {
                 <td className="px-4 py-3 font-mono text-slate-900">{j.code}</td>
                 <td className="px-4 py-3">
                   <div className="font-medium text-slate-900">{j.name}</div>
-                  {j.description && (
-                    <div className="text-xs text-slate-500">{j.description}</div>
-                  )}
+                  {j.description && <div className="text-xs text-slate-500">{j.description}</div>}
                 </td>
                 <td className="px-4 py-3">
                   {j.archivedAt ? (
@@ -210,9 +208,7 @@ function JobEditorModal({
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
             rows={3}
             value={form.description ?? ''}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, description: e.target.value || undefined }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value || undefined }))}
           />
         </label>
         {submit.isError && (

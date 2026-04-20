@@ -20,15 +20,13 @@ interface CompanyCtx {
 }
 
 async function loadCompanyCtx(companyId: number): Promise<CompanyCtx> {
-  const row = await db('companies')
-    .where({ id: companyId })
-    .first<{
-      id: number;
-      timezone: string;
-      week_start_day: number;
-      pay_period_type: PayPeriodType;
-      pay_period_anchor: Date | null;
-    }>();
+  const row = await db('companies').where({ id: companyId }).first<{
+    id: number;
+    timezone: string;
+    week_start_day: number;
+    pay_period_type: PayPeriodType;
+    pay_period_anchor: Date | null;
+  }>();
   if (!row) throw NotFound('Company not found');
   return {
     id: row.id,
@@ -43,12 +41,10 @@ async function loadSettings(companyId: number): Promise<{
   roundingMode: 'none' | '1min' | '5min' | '6min' | '15min';
   roundingGraceMinutes: number;
 }> {
-  const row = await db('company_settings')
-    .where({ company_id: companyId })
-    .first<{
-      punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
-      punch_rounding_grace_minutes: number;
-    }>();
+  const row = await db('company_settings').where({ company_id: companyId }).first<{
+    punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
+    punch_rounding_grace_minutes: number;
+  }>();
   if (!row) throw NotFound('Company settings not found');
   return {
     roundingMode: row.punch_rounding_mode,
@@ -74,9 +70,12 @@ export async function getTimesheet(
   const company = await loadCompanyCtx(companyId);
   const settings = await loadSettings(companyId);
 
-  let periodStart = opts.periodStart;
-  let periodEnd = opts.periodEnd;
-  if (!periodStart || !periodEnd) {
+  let periodStart: Date;
+  let periodEnd: Date;
+  if (opts.periodStart && opts.periodEnd) {
+    periodStart = opts.periodStart;
+    periodEnd = opts.periodEnd;
+  } else {
     const resolved = resolvePayPeriod(new Date(), {
       type: company.payPeriodType,
       weekStartDay: company.weekStartDay,
@@ -119,14 +118,13 @@ export async function getTimesheet(
     },
   );
 
-  const allApproved =
-    entries.length > 0 && entries.every((e) => !!e.approvedAt && !!e.endedAt);
+  const allApproved = entries.length > 0 && entries.every((e) => !!e.approvedAt && !!e.endedAt);
   const approvedAt = allApproved
-    ? (entries.reduce<string | null>((latest, e) => {
+    ? entries.reduce<string | null>((latest, e) => {
         if (!e.approvedAt) return latest;
         if (!latest || e.approvedAt > latest) return e.approvedAt;
         return latest;
-      }, null))
+      }, null)
     : null;
 
   return {
@@ -247,10 +245,7 @@ export async function unapprovePeriod(
 // Audit trail reader
 // ---------------------------------------------------------------------------
 
-export async function getEntryAudit(
-  companyId: number,
-  entryId: number,
-): Promise<EntryAuditRow[]> {
+export async function getEntryAudit(companyId: number, entryId: number): Promise<EntryAuditRow[]> {
   const rows = await db('time_entry_audit as a')
     .leftJoin('users as u', 'u.id', 'a.actor_user_id')
     .where({ 'a.time_entry_id': entryId, 'a.company_id': companyId })
@@ -267,17 +262,7 @@ export async function getEntryAudit(
         actor_email: string | null;
         created_at: Date;
       }>
-    >(
-      'a.id',
-      'a.action',
-      'a.field',
-      'a.old_value',
-      'a.new_value',
-      'a.reason',
-      'a.actor_user_id',
-      'u.email as actor_email',
-      'a.created_at',
-    );
+    >('a.id', 'a.action', 'a.field', 'a.old_value', 'a.new_value', 'a.reason', 'a.actor_user_id', 'u.email as actor_email', 'a.created_at');
 
   return rows.map((r) => ({
     id: r.id,

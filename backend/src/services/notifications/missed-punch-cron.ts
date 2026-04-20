@@ -40,20 +40,7 @@ export async function runMissedPunchSweep(): Promise<number> {
         started_at: Date;
         company_name: string;
       }>
-    >(
-      't.id as entry_id',
-      't.employee_id',
-      't.company_id',
-      'e.first_name',
-      'e.last_name',
-      'e.email',
-      'e.phone',
-      'e.email_notifications_enabled as email_opt',
-      'e.sms_notifications_enabled as sms_opt',
-      'e.phone_verified_at as phone_verified',
-      't.started_at',
-      'c.name as company_name',
-    );
+    >('t.id as entry_id', 't.employee_id', 't.company_id', 'e.first_name', 'e.last_name', 'e.email', 'e.phone', 'e.email_notifications_enabled as email_opt', 'e.sms_notifications_enabled as sms_opt', 'e.phone_verified_at as phone_verified', 't.started_at', 'c.name as company_name');
 
   if (rows.length === 0) return 0;
 
@@ -65,16 +52,11 @@ export async function runMissedPunchSweep(): Promise<number> {
         recipient_id: r.employee_id,
         type: 'missed_punch_reminder',
       })
-      .whereRaw(`queued_at > now() - (?::integer || ' hours')::interval`, [
-        REMINDER_COOLDOWN_HOURS,
-      ])
+      .whereRaw(`queued_at > now() - (?::integer || ' hours')::interval`, [REMINDER_COOLDOWN_HOURS])
       .first<{ id: number }>();
     if (recent) continue;
 
-    const elapsedHours = (
-      (Date.now() - r.started_at.getTime()) /
-      3_600_000
-    ).toFixed(1);
+    const elapsedHours = ((Date.now() - r.started_at.getTime()) / 3_600_000).toFixed(1);
 
     try {
       await notify({
@@ -112,9 +94,7 @@ export async function runMissedPunchSweep(): Promise<number> {
 
 export function scheduleMissedPunchReminder(): () => void {
   const task = cron.schedule('*/5 * * * *', () => {
-    runMissedPunchSweep().catch((err) =>
-      logger.error({ err }, 'missed-punch sweep threw'),
-    );
+    runMissedPunchSweep().catch((err) => logger.error({ err }, 'missed-punch sweep threw'));
   });
   logger.info('missed-punch reminder sweep scheduled (every 5 minutes)');
   return () => task.stop();

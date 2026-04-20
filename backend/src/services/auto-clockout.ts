@@ -25,19 +25,11 @@ export async function runAutoClockoutSweep(): Promise<number> {
     .whereRaw(`t.started_at < now() - (s.auto_clockout_hours || ' hours')::interval`)
     .select<
       Array<
-        Pick<
-          TimeEntryRow,
-          'id' | 'company_id' | 'employee_id' | 'started_at' | 'entry_type'
-        > & { auto_clockout_hours: number }
+        Pick<TimeEntryRow, 'id' | 'company_id' | 'employee_id' | 'started_at' | 'entry_type'> & {
+          auto_clockout_hours: number;
+        }
       >
-    >(
-      't.id',
-      't.company_id',
-      't.employee_id',
-      't.started_at',
-      't.entry_type',
-      's.auto_clockout_hours',
-    );
+    >('t.id', 't.company_id', 't.employee_id', 't.started_at', 't.entry_type', 's.auto_clockout_hours');
 
   if (candidates.length === 0) return 0;
 
@@ -58,12 +50,8 @@ export async function runAutoClockoutSweep(): Promise<number> {
         // Close at started_at + auto_clockout_hours rather than now(). This
         // gives a defensible "shift ended at 12 hours" interval instead of
         // "shift ended whenever the cron happened to run."
-        const endedAt = new Date(
-          current.started_at.getTime() + c.auto_clockout_hours * 3_600_000,
-        );
-        const duration = Math.floor(
-          (endedAt.getTime() - current.started_at.getTime()) / 1000,
-        );
+        const endedAt = new Date(current.started_at.getTime() + c.auto_clockout_hours * 3_600_000);
+        const duration = Math.floor((endedAt.getTime() - current.started_at.getTime()) / 1000);
 
         await trx('time_entries').where({ id: current.id }).update({
           ended_at: endedAt,
@@ -100,9 +88,7 @@ export async function runAutoClockoutSweep(): Promise<number> {
 /** Schedule the sweep on a 5-minute cadence. Call once at boot. */
 export function scheduleAutoClockout(): () => void {
   const task = cron.schedule('*/5 * * * *', () => {
-    runAutoClockoutSweep().catch((err) =>
-      logger.error({ err }, 'auto-clockout sweep threw'),
-    );
+    runAutoClockoutSweep().catch((err) => logger.error({ err }, 'auto-clockout sweep threw'));
   });
   logger.info('auto-clockout sweep scheduled (every 5 minutes)');
   return () => task.stop();

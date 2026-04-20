@@ -21,6 +21,7 @@ interface CorrectionRow {
   reviewed_at: Date | null;
   review_note: string | null;
   created_at: Date;
+  updated_at: Date;
 }
 
 function rowToRequest(r: CorrectionRow): CorrectionRequest {
@@ -76,10 +77,7 @@ export async function createCorrectionRequest(
       time_entry_id: body.timeEntryId ?? null,
       requester_user_id: requesterUserId,
       request_type: body.requestType,
-      proposed_changes: JSON.stringify(body.proposedChanges) as unknown as Record<
-        string,
-        unknown
-      >,
+      proposed_changes: JSON.stringify(body.proposedChanges) as unknown as Record<string, unknown>,
       reason: body.reason,
     })
     .returning('*');

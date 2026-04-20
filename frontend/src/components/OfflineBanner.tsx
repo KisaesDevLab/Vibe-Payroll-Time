@@ -13,9 +13,7 @@ export function OfflineBanner() {
   return (
     <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow-lg">
       <span
-        className={
-          'h-2 w-2 rounded-full ' + (online ? 'bg-amber-500' : 'bg-red-500 animate-pulse')
-        }
+        className={'h-2 w-2 rounded-full ' + (online ? 'bg-amber-500' : 'bg-red-500 animate-pulse')}
       />
       {!online && <span className="font-medium text-slate-700">Offline</span>}
       {pending > 0 && (

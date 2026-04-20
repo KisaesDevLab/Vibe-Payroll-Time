@@ -14,9 +14,7 @@ export async function streamCsv(
 ): Promise<void> {
   out.write(columns.map((c) => csvCell(c.label)).join(',') + '\r\n');
   for await (const row of rows) {
-    const line = columns
-      .map((c) => csvCell(formatValue(row[c.key], c.type)))
-      .join(',');
+    const line = columns.map((c) => csvCell(formatValue(row[c.key], c.type))).join(',');
     out.write(line + '\r\n');
   }
 }

@@ -54,12 +54,7 @@ export async function listMemberships(userId: number): Promise<MembershipSummary
     .whereNull('c.disabled_at')
     .select<
       Array<{ company_id: number; company_name: string; company_slug: string; role: string }>
-    >(
-      'cm.company_id as company_id',
-      'c.name as company_name',
-      'c.slug as company_slug',
-      'cm.role as role',
-    );
+    >('cm.company_id as company_id', 'c.name as company_name', 'c.slug as company_slug', 'cm.role as role');
 
   return rows.map((r) => ({
     companyId: r.company_id,

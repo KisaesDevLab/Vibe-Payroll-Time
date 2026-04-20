@@ -73,9 +73,7 @@ export async function createCompany(
         pay_period_anchor: body.payPeriodAnchor ?? null,
         is_internal: body.isInternal,
         license_state: body.isInternal ? 'internal_free' : 'trial',
-        license_expires_at: body.isInternal
-          ? null
-          : t.raw("now() + interval '14 days'"),
+        license_expires_at: body.isInternal ? null : t.raw("now() + interval '14 days'"),
       })
       .returning<CompanyRow[]>('*');
 
@@ -135,10 +133,7 @@ export async function findCompanyById(
   return row ? rowToCompany(row) : undefined;
 }
 
-export async function requireCompany(
-  companyId: number,
-  trx?: Knex.Transaction,
-): Promise<Company> {
+export async function requireCompany(companyId: number, trx?: Knex.Transaction): Promise<Company> {
   const found = await findCompanyById(companyId, trx);
   if (!found) throw NotFound('Company not found');
   return found;
@@ -189,5 +184,5 @@ export async function userCanAccessCompany(
     supervisor: 2,
     company_admin: 3,
   };
-  return rank[m.role] >= rank[minRole];
+  return (rank[m.role] ?? 0) >= (rank[minRole] ?? 0);
 }

@@ -8,11 +8,7 @@ import type {
 import { db } from '../../db/knex.js';
 import { Conflict, Forbidden, NotFound } from '../../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow, deleteEntry, editEntry } from '../punch.js';
-import {
-  dailyCorrectionLimit,
-  recordTokenUsage,
-  resolveProviderConfig,
-} from './config.js';
+import { dailyCorrectionLimit, recordTokenUsage, resolveProviderConfig } from './config.js';
 import { complete, type ToolDef } from './provider.js';
 import { sanitizeUserInput, detectInjectionHeuristic } from './sanitize.js';
 
@@ -283,7 +279,12 @@ export async function applyNLCorrection(
             ? { entryType: call.arguments.entryType as 'work' | 'break' }
             : {}),
         };
-        await editEntry(entryId, patch, { userId: actor.userId, companyId: actor.companyId }, reason);
+        await editEntry(
+          entryId,
+          patch,
+          { userId: actor.userId, companyId: actor.companyId },
+          reason,
+        );
         applied += 1;
       } else if (call.name === 'delete_entry') {
         const entryId = Number(call.arguments.entryId);

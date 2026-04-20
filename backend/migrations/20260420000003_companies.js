@@ -23,11 +23,10 @@ exports.up = async function up(knex) {
     // Anchor used by bi_weekly pay periods. Null for other types.
     t.date('pay_period_anchor').nullable();
     t.boolean('is_internal').notNullable().defaultTo(false);
-    t.enu(
-      'license_state',
-      ['internal_free', 'trial', 'licensed', 'grace', 'expired'],
-      { useNative: true, enumName: 'license_state' },
-    )
+    t.enu('license_state', ['internal_free', 'trial', 'licensed', 'grace', 'expired'], {
+      useNative: true,
+      enumName: 'license_state',
+    })
       .notNullable()
       .defaultTo('trial');
     t.timestamp('license_expires_at', { useTz: true }).nullable();

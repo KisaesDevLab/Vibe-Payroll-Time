@@ -13,11 +13,7 @@ import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { ApiError } from '../lib/api';
-import {
-  ai,
-  companies as companiesApi,
-  companySettings as settingsApi,
-} from '../lib/resources';
+import { ai, companies as companiesApi, companySettings as settingsApi } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
 type Section = 'general' | 'punch' | 'approval' | 'notifications' | 'ai';
@@ -71,9 +67,7 @@ export function CompanySettingsPage() {
             onClick={() => setSection(s.id)}
             className={
               'rounded-md px-3 py-2 text-left text-sm font-medium transition ' +
-              (section === s.id
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100')
+              (section === s.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100')
             }
           >
             {s.label}
@@ -86,10 +80,7 @@ export function CompanySettingsPage() {
           <GeneralSection
             company={companyQ.data}
             onSubmit={(body) => {
-              if (
-                body.payPeriodType &&
-                body.payPeriodType !== companyQ.data!.payPeriodType
-              ) {
+              if (body.payPeriodType && body.payPeriodType !== companyQ.data!.payPeriodType) {
                 setConfirmPayPeriodChange(body.payPeriodType);
                 return;
               }
@@ -148,8 +139,8 @@ export function CompanySettingsPage() {
           }
         >
           <p className="text-sm text-slate-700">
-            Changing the pay period type affects every future timesheet and report
-            aggregation. Existing approved pay periods are untouched. Proceed?
+            Changing the pay period type affects every future timesheet and report aggregation.
+            Existing approved pay periods are untouched. Proceed?
           </p>
         </Modal>
       )}
@@ -173,10 +164,7 @@ function GeneralSection({
   error: unknown;
 }) {
   const [form, setForm] = useState<UpdateCompanyRequest>({});
-  const effective = useMemo(
-    () => ({ ...company, ...form }),
-    [company, form],
-  );
+  const effective = useMemo(() => ({ ...company, ...form }), [company, form]);
 
   return (
     <SectionShell
@@ -207,9 +195,7 @@ function GeneralSection({
           <select
             className="rounded-md border border-slate-300 bg-white px-3 py-2 shadow-sm"
             defaultValue={company.weekStartDay}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, weekStartDay: Number(e.target.value) }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, weekStartDay: Number(e.target.value) }))}
           >
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
               <option key={d} value={i}>
@@ -304,9 +290,7 @@ function PunchSection({
         min={4}
         max={24}
         defaultValue={settings.autoClockoutHours}
-        onChange={(e) =>
-          setForm((f) => ({ ...f, autoClockoutHours: Number(e.target.value) }))
-        }
+        onChange={(e) => setForm((f) => ({ ...f, autoClockoutHours: Number(e.target.value) }))}
         hint="Closes entries left open this long. Flags them for admin review."
       />
       <FormField
@@ -320,9 +304,7 @@ function PunchSection({
         }
       />
       <fieldset className="rounded-md border border-slate-200 p-4">
-        <legend className="px-2 text-xs font-medium uppercase text-slate-500">
-          Auth surfaces
-        </legend>
+        <legend className="px-2 text-xs font-medium uppercase text-slate-500">Auth surfaces</legend>
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -337,9 +319,7 @@ function PunchSection({
             type="checkbox"
             className="h-4 w-4"
             defaultChecked={settings.personalDeviceEnabled}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, personalDeviceEnabled: e.target.checked }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, personalDeviceEnabled: e.target.checked }))}
           />
           Personal devices (PWA) enabled
         </label>
@@ -378,9 +358,7 @@ function ApprovalSection({
           type="checkbox"
           className="h-4 w-4"
           defaultChecked={settings.supervisorApprovalRequired}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, supervisorApprovalRequired: e.target.checked }))
-          }
+          onChange={(e) => setForm((f) => ({ ...f, supervisorApprovalRequired: e.target.checked }))}
         />
         Supervisor approval required before pay period close
       </label>
@@ -426,9 +404,7 @@ function NotificationsSection({
       <FormField
         label="Account SID"
         defaultValue={settings.twilioAccountSid ?? ''}
-        onChange={(e) =>
-          setForm((f) => ({ ...f, twilioAccountSid: e.target.value || null }))
-        }
+        onChange={(e) => setForm((f) => ({ ...f, twilioAccountSid: e.target.value || null }))}
       />
       <FormField
         label="Auth token"
@@ -438,34 +414,23 @@ function NotificationsSection({
             ? 'A token is currently stored. Leave blank to keep; enter a new value to replace.'
             : 'Not configured. Paste your Twilio auth token to enable SMS.'
         }
-        placeholder={
-          settings.twilioAuthTokenConfigured ? '••••••••' : 'paste auth token'
-        }
-        onChange={(e) =>
-          setForm((f) => ({ ...f, twilioAuthToken: e.target.value || null }))
-        }
+        placeholder={settings.twilioAuthTokenConfigured ? '••••••••' : 'paste auth token'}
+        onChange={(e) => setForm((f) => ({ ...f, twilioAuthToken: e.target.value || null }))}
       />
       <FormField
         label="From number"
         defaultValue={settings.twilioFromNumber ?? ''}
-        onChange={(e) =>
-          setForm((f) => ({ ...f, twilioFromNumber: e.target.value || null }))
-        }
+        onChange={(e) => setForm((f) => ({ ...f, twilioFromNumber: e.target.value || null }))}
       />
 
       <h3 className="mt-4 text-sm font-semibold text-slate-900">EmailIt (email)</h3>
       <p className="-mt-2 text-xs text-slate-500">
         Transactional email goes through EmailIt.com. Get an API key at{' '}
-        <a
-          href="https://emailit.com"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
+        <a href="https://emailit.com" target="_blank" rel="noreferrer" className="underline">
           emailit.com
         </a>
-        , then paste below. Leave the key blank to use the appliance-wide fallback
-        (if the administrator has configured one).
+        , then paste below. Leave the key blank to use the appliance-wide fallback (if the
+        administrator has configured one).
       </p>
       <FormField
         label="API key"
@@ -483,25 +448,19 @@ function NotificationsSection({
           label="From email"
           type="email"
           defaultValue={settings.emailitFromEmail ?? ''}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, emailitFromEmail: e.target.value || null }))
-          }
+          onChange={(e) => setForm((f) => ({ ...f, emailitFromEmail: e.target.value || null }))}
         />
         <FormField
           label="From name"
           defaultValue={settings.emailitFromName ?? ''}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, emailitFromName: e.target.value || null }))
-          }
+          onChange={(e) => setForm((f) => ({ ...f, emailitFromName: e.target.value || null }))}
         />
       </div>
       <FormField
         label="Reply-to (optional)"
         type="email"
         defaultValue={settings.emailitReplyTo ?? ''}
-        onChange={(e) =>
-          setForm((f) => ({ ...f, emailitReplyTo: e.target.value || null }))
-        }
+        onChange={(e) => setForm((f) => ({ ...f, emailitReplyTo: e.target.value || null }))}
       />
     </SectionShell>
   );
@@ -539,9 +498,8 @@ function AISection({ companyId }: { companyId: number }) {
       disabled={Object.keys(form).length === 0}
     >
       <p className="-mt-2 text-xs text-slate-500">
-        Enables natural-language timesheet corrections and the support chat.
-        Disabled by default. Credentials are stored per-company; the
-        appliance-wide env value is used as a fallback.
+        Enables natural-language timesheet corrections and the support chat. Disabled by default.
+        Credentials are stored per-company; the appliance-wide env value is used as a fallback.
       </p>
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input
@@ -575,9 +533,7 @@ function AISection({ companyId }: { companyId: number }) {
           label="Model"
           defaultValue={settingsQ.data.aiModel ?? ''}
           placeholder="defaults to a sensible per-provider pick"
-          onChange={(e) =>
-            setForm((f) => ({ ...f, aiModel: e.target.value || null }))
-          }
+          onChange={(e) => setForm((f) => ({ ...f, aiModel: e.target.value || null }))}
         />
       </div>
 
@@ -604,15 +560,12 @@ function AISection({ companyId }: { companyId: number }) {
         min={0}
         max={500}
         defaultValue={settingsQ.data.aiDailyCorrectionLimit}
-        onChange={(e) =>
-          setForm((f) => ({ ...f, aiDailyCorrectionLimit: Number(e.target.value) }))
-        }
+        onChange={(e) => setForm((f) => ({ ...f, aiDailyCorrectionLimit: Number(e.target.value) }))}
       />
 
       <p className="text-xs text-slate-500">
-        Tool-calling (needed for NL corrections) currently works only on
-        Anthropic. OpenAI-compatible and Ollama backends power the support
-        chat only.
+        Tool-calling (needed for NL corrections) currently works only on Anthropic.
+        OpenAI-compatible and Ollama backends power the support chat only.
       </p>
     </SectionShell>
   );

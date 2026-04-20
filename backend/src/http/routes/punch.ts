@@ -17,7 +17,7 @@ import {
   type PunchContext,
 } from '../../services/punch.js';
 import { getCurrentPunch } from '../../services/time-entries.js';
-import { Forbidden, NotFound, Unauthorized } from '../errors.js';
+import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth } from '../middleware/auth.js';
 
 export const punchRouter: Router = Router();

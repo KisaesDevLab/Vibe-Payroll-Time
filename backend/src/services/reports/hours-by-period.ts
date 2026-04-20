@@ -32,12 +32,10 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
       .where({ id: companyId })
       .first<{ timezone: string; week_start_day: number }>();
     if (!company) throw NotFound('Company not found');
-    const settings = await db('company_settings')
-      .where({ company_id: companyId })
-      .first<{
-        punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
-        punch_rounding_grace_minutes: number;
-      }>();
+    const settings = await db('company_settings').where({ company_id: companyId }).first<{
+      punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
+      punch_rounding_grace_minutes: number;
+    }>();
     if (!settings) throw NotFound('Company settings not found');
 
     const start = new Date(params.periodStart);

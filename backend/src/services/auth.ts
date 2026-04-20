@@ -3,12 +3,7 @@ import { Unauthorized } from '../http/errors.js';
 import { recordAuthEvent } from './auth-events.js';
 import { verifyPassword } from './passwords.js';
 import { issueAccessToken, issueRefreshToken } from './tokens.js';
-import {
-  findActiveUserByEmail,
-  listMemberships,
-  markLoginSuccess,
-  type UserRow,
-} from './users.js';
+import { findActiveUserByEmail, listMemberships, markLoginSuccess, type UserRow } from './users.js';
 
 interface RequestContext {
   ip?: string | null;
@@ -25,7 +20,11 @@ async function buildAuthUser(user: UserRow): Promise<AuthUser> {
   };
 }
 
-async function mintSession(user: UserRow, remember: boolean, ctx: RequestContext): Promise<AuthResponse> {
+async function mintSession(
+  user: UserRow,
+  remember: boolean,
+  ctx: RequestContext,
+): Promise<AuthResponse> {
   const access = issueAccessToken({
     id: user.id,
     email: user.email,

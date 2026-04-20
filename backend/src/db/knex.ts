@@ -1,15 +1,13 @@
 import knex, { type Knex } from 'knex';
 import { env } from '../config/env.js';
 
-const connection =
-  env.DATABASE_URL ??
-  {
-    host: env.POSTGRES_HOST,
-    port: env.POSTGRES_PORT,
-    user: env.POSTGRES_USER,
-    password: env.POSTGRES_PASSWORD,
-    database: env.POSTGRES_DB,
-  };
+const connection = env.DATABASE_URL ?? {
+  host: env.POSTGRES_HOST,
+  port: env.POSTGRES_PORT,
+  user: env.POSTGRES_USER,
+  password: env.POSTGRES_PASSWORD,
+  database: env.POSTGRES_DB,
+};
 
 const config: Knex.Config = {
   client: 'pg',

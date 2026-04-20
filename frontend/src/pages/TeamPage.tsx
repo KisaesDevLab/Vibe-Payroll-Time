@@ -42,9 +42,7 @@ export function TeamPage() {
   return (
     <>
       <header className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-slate-600">
-          Users with access to this company.
-        </p>
+        <p className="text-sm text-slate-600">Users with access to this company.</p>
         <Button onClick={() => setInviteOpen(true)}>Invite user</Button>
       </header>
 
@@ -146,8 +144,7 @@ function InviteModal({
   });
 
   const passwordNeeded = (form.initialPassword?.length ?? 0) >= 12;
-  const canSubmit =
-    form.email.includes('@') && (form.initialPassword === '' || passwordNeeded);
+  const canSubmit = form.email.includes('@') && (form.initialPassword === '' || passwordNeeded);
 
   return (
     <Modal
@@ -159,11 +156,7 @@ function InviteModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            loading={submit.isPending}
-            disabled={!canSubmit}
-            onClick={() => submit.mutate()}
-          >
+          <Button loading={submit.isPending} disabled={!canSubmit} onClick={() => submit.mutate()}>
             Invite
           </Button>
         </div>
@@ -181,9 +174,7 @@ function InviteModal({
           <select
             className="rounded-md border border-slate-300 bg-white px-3 py-2 shadow-sm"
             value={form.role}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, role: e.target.value as Membership['role'] }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Membership['role'] }))}
           >
             {Object.entries(ROLE_LABELS).map(([v, l]) => (
               <option key={v} value={v}>
@@ -199,9 +190,7 @@ function InviteModal({
           value={form.initialPassword ?? ''}
           onChange={(e) => setForm((f) => ({ ...f, initialPassword: e.target.value }))}
           error={
-            form.initialPassword && !passwordNeeded
-              ? 'Must be at least 12 characters'
-              : undefined
+            form.initialPassword && !passwordNeeded ? 'Must be at least 12 characters' : undefined
           }
         />
         {submit.isError && (

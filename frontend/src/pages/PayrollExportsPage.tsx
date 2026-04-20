@@ -48,17 +48,15 @@ export function PayrollExportsPage() {
     queryFn: () => payrollExports.history(companyId),
   });
 
-  const invalidate = () =>
-    qc.invalidateQueries({ queryKey: ['payroll-exports', companyId] });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['payroll-exports', companyId] });
 
   return (
     <div className="flex flex-col gap-8">
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Run an export</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Every export starts with a preflight. Payroll destinations don't tolerate
-          half-finished pay periods — the server refuses if any entry is still open or
-          unapproved.
+          Every export starts with a preflight. Payroll destinations don't tolerate half-finished
+          pay periods — the server refuses if any entry is still open or unapproved.
         </p>
 
         <div className="mt-4 flex flex-wrap items-end gap-4">
@@ -87,9 +85,7 @@ export function PayrollExportsPage() {
 
         {preflight.isError && (
           <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {preflight.error instanceof ApiError
-              ? preflight.error.message
-              : 'Preflight failed.'}
+            {preflight.error instanceof ApiError ? preflight.error.message : 'Preflight failed.'}
           </div>
         )}
 
@@ -200,14 +196,12 @@ function PreflightPanel({
 
       {data.priorExports.length > 0 && (
         <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-          <p className="font-semibold text-slate-900">
-            This period was already exported:
-          </p>
+          <p className="font-semibold text-slate-900">This period was already exported:</p>
           <ul className="mt-1">
             {data.priorExports.map((p) => (
               <li key={p.id}>
-                #{p.id} · {FORMAT_LABELS[p.format]} ·{' '}
-                {new Date(p.exportedAt).toLocaleString()} by {p.exportedBy ?? 'system'}
+                #{p.id} · {FORMAT_LABELS[p.format]} · {new Date(p.exportedAt).toLocaleString()} by{' '}
+                {p.exportedBy ?? 'system'}
               </li>
             ))}
           </ul>
@@ -313,11 +307,7 @@ function RunExportModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            disabled={disabled}
-            loading={run.isPending}
-            onClick={() => run.mutate()}
-          >
+          <Button disabled={disabled} loading={run.isPending} onClick={() => run.mutate()}>
             Run export
           </Button>
         </div>
@@ -333,9 +323,8 @@ function RunExportModal({
               onChange={(e) => setAck(e.target.checked)}
             />
             <span>
-              This period was already exported in this format. I understand a new
-              export will supersede the prior one (the old file remains available
-              for download).
+              This period was already exported in this format. I understand a new export will
+              supersede the prior one (the old file remains available for download).
             </span>
           </label>
         )}

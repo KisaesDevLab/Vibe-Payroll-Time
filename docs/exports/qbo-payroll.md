@@ -6,15 +6,15 @@ worked multiple jobs in the period, they get multiple rows.
 
 ## Columns
 
-| Column          | Value                                             |
-| --------------- | ------------------------------------------------- |
-| EmployeeName    | `first_name + ' ' + last_name`                    |
-| EmployeeEmail   | `employees.email` (blank if not on file)         |
-| ServiceItem     | `jobs.code` for the row's job (blank for "none") |
-| RegularHours    | Pro-rated regular hours for this job              |
-| OvertimeHours   | Pro-rated overtime hours for this job             |
-| PayDate         | Period end (YYYY-MM-DD)                           |
-| Memo            | "Vibe PT pay period YYYY-MM-DD"                   |
+| Column        | Value                                            |
+| ------------- | ------------------------------------------------ |
+| EmployeeName  | `first_name + ' ' + last_name`                   |
+| EmployeeEmail | `employees.email` (blank if not on file)         |
+| ServiceItem   | `jobs.code` for the row's job (blank for "none") |
+| RegularHours  | Pro-rated regular hours for this job             |
+| OvertimeHours | Pro-rated overtime hours for this job            |
+| PayDate       | Period end (YYYY-MM-DD)                          |
+| Memo          | "Vibe PT pay period YYYY-MM-DD"                  |
 
 ## Pro-ration
 

@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  _resetState,
-  isDeviceLocked,
-  recordBadPin,
-  recordGoodPin,
-} from '../kiosk-pin-lockout.js';
+import { _resetState, isDeviceLocked, recordBadPin, recordGoodPin } from '../kiosk-pin-lockout.js';
 
 const DEVICE = 42;
 

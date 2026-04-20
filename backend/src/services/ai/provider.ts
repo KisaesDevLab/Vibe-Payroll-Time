@@ -64,10 +64,7 @@ export class ProviderError extends Error {
 // Dispatcher
 // ---------------------------------------------------------------------------
 
-export async function complete(
-  cfg: ProviderConfig,
-  input: CompletionInput,
-): Promise<LLMResponse> {
+export async function complete(cfg: ProviderConfig, input: CompletionInput): Promise<LLMResponse> {
   switch (cfg.provider) {
     case 'anthropic':
       return completeAnthropic(cfg, input);
@@ -75,6 +72,10 @@ export async function complete(
       return completeOpenAICompat(cfg, input);
     case 'ollama':
       return completeOllama(cfg, input);
+    default: {
+      const _exhaustive: never = cfg.provider;
+      throw new ProviderError(`Unknown provider: ${String(_exhaustive)}`);
+    }
   }
 }
 
@@ -87,7 +88,10 @@ async function completeAnthropic(
   input: CompletionInput,
 ): Promise<LLMResponse> {
   if (!cfg.apiKey) throw new ProviderError('Anthropic API key not configured', 503);
-  const client = new Anthropic({ apiKey: cfg.apiKey, ...(cfg.baseUrl ? { baseURL: cfg.baseUrl } : {}) });
+  const client = new Anthropic({
+    apiKey: cfg.apiKey,
+    ...(cfg.baseUrl ? { baseURL: cfg.baseUrl } : {}),
+  });
 
   const response = await client.messages.create({
     model: cfg.model,
@@ -144,10 +148,7 @@ async function completeOpenAICompat(
   if (!cfg.apiKey) throw new ProviderError('OpenAI API key not configured', 503);
   const base = (cfg.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
   if (input.tools && input.tools.length > 0) {
-    throw new ProviderError(
-      'Tool calling is only supported on Anthropic in this release',
-      501,
-    );
+    throw new ProviderError('Tool calling is only supported on Anthropic in this release', 501);
   }
   const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
@@ -165,10 +166,7 @@ async function completeOpenAICompat(
     }),
   });
   if (!res.ok) {
-    throw new ProviderError(
-      `OpenAI-compatible backend: ${res.status} ${await res.text()}`,
-      502,
-    );
+    throw new ProviderError(`OpenAI-compatible backend: ${res.status} ${await res.text()}`, 502);
   }
   const body = (await res.json()) as OpenAIChatResponse;
   const text = body.choices?.[0]?.message?.content ?? '';
@@ -192,10 +190,7 @@ interface OllamaChatResponse {
   eval_count?: number;
 }
 
-async function completeOllama(
-  cfg: ProviderConfig,
-  input: CompletionInput,
-): Promise<LLMResponse> {
+async function completeOllama(cfg: ProviderConfig, input: CompletionInput): Promise<LLMResponse> {
   const base = (cfg.baseUrl ?? 'http://localhost:11434').replace(/\/+$/, '');
   if (input.tools && input.tools.length > 0) {
     throw new ProviderError('Tool calling is only supported on Anthropic in this release', 501);

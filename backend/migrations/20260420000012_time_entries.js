@@ -71,11 +71,7 @@ exports.up = async function up(knex) {
     t.timestamp('created_at', { useTz: true }).notNullable().defaultTo(knex.fn.now());
     t.timestamp('updated_at', { useTz: true }).notNullable().defaultTo(knex.fn.now());
 
-    t.check(
-      'ended_at IS NULL OR ended_at >= started_at',
-      [],
-      'time_entries_ended_after_started',
-    );
+    t.check('ended_at IS NULL OR ended_at >= started_at', [], 'time_entries_ended_after_started');
   });
 
   // One open entry per employee. The index also speeds up the "find my
@@ -101,9 +97,7 @@ exports.up = async function up(knex) {
   );
 
   // Shift reconstruction.
-  await knex.raw(
-    `CREATE INDEX time_entries_shift_idx ON time_entries (shift_id)`,
-  );
+  await knex.raw(`CREATE INDEX time_entries_shift_idx ON time_entries (shift_id)`);
 };
 
 exports.down = async function down(knex) {

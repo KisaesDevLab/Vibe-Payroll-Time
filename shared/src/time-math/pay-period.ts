@@ -59,8 +59,7 @@ function biWeekly(date: Date, opts: PayPeriodOptions): PayPeriod {
   // Anchor default: 1970-01-04 (a Sunday), to make bi-weekly math
   // deterministic when no anchor is set yet. Callers with a configured
   // anchor pass it explicitly.
-  const anchor =
-    opts.anchorDate ?? new Date(Date.UTC(1970, 0, 4)); // Sun, 1970-01-04
+  const anchor = opts.anchorDate ?? new Date(Date.UTC(1970, 0, 4)); // Sun, 1970-01-04
   const anchorStart = weekly(anchor, opts).start;
 
   const periodDays = 14;

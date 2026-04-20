@@ -40,8 +40,8 @@ export function KiosksPage() {
     <>
       <header className="mb-4 flex items-center justify-between">
         <p className="text-sm text-slate-600">
-          Paired tablets that employees use to punch in. Revoking a device invalidates
-          its token immediately.
+          Paired tablets that employees use to punch in. Revoking a device invalidates its token
+          immediately.
         </p>
         <Button loading={issueCode.isPending} onClick={() => issueCode.mutate()}>
           Generate pairing code
@@ -98,8 +98,8 @@ export function KiosksPage() {
           }
         >
           <p className="text-sm text-slate-600">
-            On the tablet, open <code className="rounded bg-slate-100 px-1">/kiosk/pair</code>{' '}
-            and enter this code. It expires at{' '}
+            On the tablet, open <code className="rounded bg-slate-100 px-1">/kiosk/pair</code> and
+            enter this code. It expires at{' '}
             <span className="font-medium">
               {new Date(activeCode.expiresAt).toLocaleTimeString()}
             </span>
@@ -113,9 +113,7 @@ export function KiosksPage() {
 
       {issueCode.isError && (
         <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {issueCode.error instanceof ApiError
-            ? issueCode.error.message
-            : 'Failed to issue code.'}
+          {issueCode.error instanceof ApiError ? issueCode.error.message : 'Failed to issue code.'}
         </div>
       )}
     </>

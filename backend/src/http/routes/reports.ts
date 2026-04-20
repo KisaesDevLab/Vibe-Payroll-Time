@@ -47,10 +47,7 @@ reportsRouter.get(
       if (asCsv) {
         const stamp = new Date().toISOString().slice(0, 10);
         res.setHeader('content-type', 'text/csv; charset=utf-8');
-        res.setHeader(
-          'content-disposition',
-          `attachment; filename="vibept-${name}-${stamp}.csv"`,
-        );
+        res.setHeader('content-disposition', `attachment; filename="vibept-${name}-${stamp}.csv"`);
         await streamCsv(report.columns, report.rows(companyId, params), res);
         res.end();
         return;

@@ -40,9 +40,7 @@ exports.up = async function up(knex) {
      WHERE status = 'active' AND pin_hash IS NOT NULL`,
   );
 
-  await knex.raw(
-    'CREATE INDEX employees_company_status_idx ON employees (company_id, status)',
-  );
+  await knex.raw('CREATE INDEX employees_company_status_idx ON employees (company_id, status)');
 };
 
 exports.down = async function down(knex) {

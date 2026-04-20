@@ -61,7 +61,8 @@ export async function listEmployees(
   if (opts.search) {
     const needle = `%${opts.search.replace(/[%_]/g, '\\$&')}%`;
     q.where((w) =>
-      w.whereILike('first_name', needle)
+      w
+        .whereILike('first_name', needle)
         .orWhereILike('last_name', needle)
         .orWhereILike('employee_number', needle)
         .orWhereILike('email', needle),
@@ -191,13 +192,11 @@ export async function regeneratePin(
     if (!existing) throw NotFound('Active employee not found');
 
     const pin = await generatePinMaterial({ companyId, trx, length });
-    await trx('employees')
-      .where({ id: employeeId })
-      .update({
-        pin_hash: pin.hash,
-        pin_fingerprint: pin.fingerprint,
-        updated_at: trx.fn.now(),
-      });
+    await trx('employees').where({ id: employeeId }).update({
+      pin_hash: pin.hash,
+      pin_fingerprint: pin.fingerprint,
+      updated_at: trx.fn.now(),
+    });
 
     const fresh = await trx<EmployeeRow>('employees').where({ id: employeeId }).first();
     if (!fresh) throw new Error('employee vanished');
@@ -268,7 +267,10 @@ function parseCsv(text: string): Array<Record<string, string>> {
   if (!headerRow) return [];
 
   const headers = headerRow.map((h) => {
-    const normalized = h.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const normalized = h
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
     return HEADER_ALIASES[normalized] ?? normalized;
   });
 

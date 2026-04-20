@@ -80,16 +80,14 @@ export async function updateCompanySettings(
       updates.missed_punch_reminder_hours = patch.missedPunchReminderHours;
     if (patch.supervisorApprovalRequired !== undefined)
       updates.supervisor_approval_required = patch.supervisorApprovalRequired;
-    if (patch.allowSelfApprove !== undefined)
-      updates.allow_self_approve = patch.allowSelfApprove;
+    if (patch.allowSelfApprove !== undefined) updates.allow_self_approve = patch.allowSelfApprove;
     if (patch.kioskEnabled !== undefined) updates.kiosk_enabled = patch.kioskEnabled;
     if (patch.personalDeviceEnabled !== undefined)
       updates.personal_device_enabled = patch.personalDeviceEnabled;
 
     if (patch.twilioAccountSid !== undefined) updates.twilio_account_sid = patch.twilioAccountSid;
     if (patch.twilioFromNumber !== undefined) updates.twilio_from_number = patch.twilioFromNumber;
-    if (patch.emailitFromEmail !== undefined)
-      updates.emailit_from_email = patch.emailitFromEmail;
+    if (patch.emailitFromEmail !== undefined) updates.emailit_from_email = patch.emailitFromEmail;
     if (patch.emailitFromName !== undefined) updates.emailit_from_name = patch.emailitFromName;
     if (patch.emailitReplyTo !== undefined) updates.emailit_reply_to = patch.emailitReplyTo;
 

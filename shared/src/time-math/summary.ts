@@ -32,7 +32,7 @@ export interface SummaryOptions {
   now?: Date;
 }
 
-export interface DaySummary {
+export interface DaySummaryInternal {
   /** YYYY-MM-DD in company tz. */
   date: string;
   workSeconds: number;
@@ -40,7 +40,7 @@ export interface DaySummary {
   entryIds: number[];
 }
 
-export interface WeekSummary {
+export interface WeekSummaryInternal {
   /** ISO UTC; the week's civil-midnight-in-tz start. */
   weekStart: string;
   workSeconds: number;
@@ -49,8 +49,8 @@ export interface WeekSummary {
 }
 
 export interface TimesheetSummary {
-  days: DaySummary[];
-  weeks: WeekSummary[];
+  days: DaySummaryInternal[];
+  weeks: WeekSummaryInternal[];
   periodTotal: {
     workSeconds: number;
     breakSeconds: number;
@@ -102,7 +102,7 @@ export function buildTimesheetSummary(
   const periodStart = opts.periodStart;
   const periodEnd = opts.periodEnd;
 
-  const dayMap = new Map<string, DaySummary>();
+  const dayMap = new Map<string, DaySummaryInternal>();
   const weekMap = new Map<
     string,
     {
@@ -157,10 +157,7 @@ export function buildTimesheetSummary(
         weekEnd: week.end,
         perDayWorkSeconds: new Map<string, number>(),
       };
-      wk.perDayWorkSeconds.set(
-        dayKey,
-        (wk.perDayWorkSeconds.get(dayKey) ?? 0) + secs,
-      );
+      wk.perDayWorkSeconds.set(dayKey, (wk.perDayWorkSeconds.get(dayKey) ?? 0) + secs);
       weekMap.set(week.start.toISOString(), wk);
 
       jobMap.set(entry.jobId, (jobMap.get(entry.jobId) ?? 0) + secs);
@@ -184,7 +181,7 @@ export function buildTimesheetSummary(
     periodBreakSeconds += d.breakSeconds;
   }
 
-  const weeks: WeekSummary[] = [];
+  const weeks: WeekSummaryInternal[] = [];
   for (const wk of weekMap.values()) {
     // We only have in-period work in perDayWorkSeconds (entries outside
     // the period were filtered). That's what we apportion OT across.
