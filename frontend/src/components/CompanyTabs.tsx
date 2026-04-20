@@ -18,6 +18,7 @@ export function CompanyTabs({ companyId }: { companyId: number }) {
       ? [
           { to: `/companies/${companyId}/timesheets`, label: 'Timesheets' },
           { to: `/companies/${companyId}/corrections`, label: 'Corrections' },
+          { to: `/companies/${companyId}/reports`, label: 'Reports' },
         ]
       : []),
     { to: `/companies/${companyId}/jobs`, label: 'Jobs' },

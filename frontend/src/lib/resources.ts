@@ -20,6 +20,8 @@ import type {
   KioskDevice,
   KioskPairingCodeResponse,
   Membership,
+  ReportCatalogResponse,
+  ReportResult,
   TimeEntry,
   TimesheetResponse,
   UpdateCompanyRequest,
@@ -244,4 +246,40 @@ export const corrections = {
       `/companies/${companyId}/correction-requests/${id}/reject`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
+};
+
+// ---------------------------------------------------------------------------
+// Reports
+// ---------------------------------------------------------------------------
+
+export const reports = {
+  catalog: (companyId: number) =>
+    apiFetch<ReportCatalogResponse>(`/companies/${companyId}/reports`),
+  run: (
+    companyId: number,
+    name: string,
+    params: Record<string, string | number | undefined>,
+  ) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null || v === '') continue;
+      qs.set(k, String(v));
+    }
+    return apiFetch<ReportResult>(
+      `/companies/${companyId}/reports/${name}?${qs.toString()}`,
+    );
+  },
+  csvUrl: (
+    companyId: number,
+    name: string,
+    params: Record<string, string | number | undefined>,
+  ) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null || v === '') continue;
+      qs.set(k, String(v));
+    }
+    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    return `${apiBase}/companies/${companyId}/reports/${name}.csv?${qs.toString()}`;
+  },
 };
