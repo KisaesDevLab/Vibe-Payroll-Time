@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { OfflineBanner } from './components/OfflineBanner';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
 import { CompaniesListPage } from './pages/CompaniesListPage';
@@ -17,7 +18,12 @@ import { SetupPage } from './pages/SetupPage';
 import { TeamPage } from './pages/TeamPage';
 
 function AppShell({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen bg-slate-50">{children}</div>;
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {children}
+      <OfflineBanner />
+    </div>
+  );
 }
 
 function RequireSession({ children }: { children: ReactNode }) {

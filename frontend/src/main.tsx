@@ -3,10 +3,14 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
+import { startSkewLoop } from './lib/clock-skew';
+import { startQueueFlusher } from './lib/offline-queue';
 import { registerServiceWorker } from './lib/sw';
 import './index.css';
 
 registerServiceWorker();
+startSkewLoop();
+startQueueFlusher();
 
 const queryClient = new QueryClient({
   defaultOptions: {

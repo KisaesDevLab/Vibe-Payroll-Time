@@ -5,6 +5,7 @@ import { Button } from '../components/Button';
 import { TopBar } from '../components/TopBar';
 import { useSession } from '../hooks/useSession';
 import { ApiError, apiFetch } from '../lib/api';
+import { enqueuePunch } from '../lib/offline-queue';
 
 /**
  * Personal-device punch interface. An employee with a user account hits
@@ -33,23 +34,45 @@ export function MyPunchPage() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['my-current-punch', companyId] });
 
-  const post = (path: string) =>
-    apiFetch('/' + path.replace(/^\//, ''), {
-      method: 'POST',
-      body: JSON.stringify({ companyId }),
-    });
+  /**
+   * Try the punch online first. If the network throws (TypeError from
+   * fetch, or a 5xx from the server), enqueue for later. Permanent
+   * failures (4xx from a reachable server) bubble up as an error the
+   * UI shows — queuing a malformed punch would just fail again.
+   */
+  const post = async (endpoint: string) => {
+    try {
+      return await apiFetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({ companyId }),
+      });
+    } catch (err) {
+      const isTransient =
+        !(err instanceof ApiError) ||
+        err.code === 'network_error' ||
+        (err.status >= 500 && err.status < 600);
+      if (isTransient && companyId != null) {
+        await enqueuePunch(endpoint, { companyId });
+        return { _queued: true };
+      }
+      throw err;
+    }
+  };
 
-  const clockIn = useMutation({ mutationFn: () => post('punch/clock-in'), onSuccess: invalidate });
+  const clockIn = useMutation({
+    mutationFn: () => post('/punch/clock-in'),
+    onSuccess: invalidate,
+  });
   const clockOut = useMutation({
-    mutationFn: () => post('punch/clock-out'),
+    mutationFn: () => post('/punch/clock-out'),
     onSuccess: invalidate,
   });
   const breakIn = useMutation({
-    mutationFn: () => post('punch/break-in'),
+    mutationFn: () => post('/punch/break-in'),
     onSuccess: invalidate,
   });
   const breakOut = useMutation({
-    mutationFn: () => post('punch/break-out'),
+    mutationFn: () => post('/punch/break-out'),
     onSuccess: invalidate,
   });
 
