@@ -16,6 +16,7 @@ import { KioskRoot } from './pages/kiosk/KioskRoot';
 import { LoginPage } from './pages/LoginPage';
 import { MyPunchPage } from './pages/MyPunchPage';
 import { MyTimesheetPage } from './pages/MyTimesheetPage';
+import { PayrollExportsPage } from './pages/PayrollExportsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SetupPage } from './pages/SetupPage';
 import { TeamPage } from './pages/TeamPage';
@@ -143,6 +144,7 @@ export function App() {
           <Route path="timesheets" element={<TimesheetsReviewPage />} />
           <Route path="corrections" element={<CorrectionsPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="exports" element={<PayrollExportsPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="kiosks" element={<KiosksPage />} />

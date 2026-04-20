@@ -20,8 +20,12 @@ import type {
   KioskDevice,
   KioskPairingCodeResponse,
   Membership,
+  PayrollExport,
+  PreflightRequest,
+  PreflightResponse,
   ReportCatalogResponse,
   ReportResult,
+  RunExportRequest,
   TimeEntry,
   TimesheetResponse,
   UpdateCompanyRequest,
@@ -281,5 +285,28 @@ export const reports = {
     }
     const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
     return `${apiBase}/companies/${companyId}/reports/${name}.csv?${qs.toString()}`;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Payroll exports
+// ---------------------------------------------------------------------------
+
+export const payrollExports = {
+  preflight: (companyId: number, body: PreflightRequest) =>
+    apiFetch<PreflightResponse>(
+      `/companies/${companyId}/payroll-exports/preflight`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  run: (companyId: number, body: RunExportRequest) =>
+    apiFetch<PayrollExport>(`/companies/${companyId}/payroll-exports`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  history: (companyId: number) =>
+    apiFetch<PayrollExport[]>(`/companies/${companyId}/payroll-exports`),
+  downloadUrl: (companyId: number, id: number) => {
+    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    return `${apiBase}/companies/${companyId}/payroll-exports/${id}/download`;
   },
 };
