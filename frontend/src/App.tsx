@@ -4,6 +4,7 @@ import { OfflineBanner } from './components/OfflineBanner';
 import { SupportChatWidget } from './components/SupportChatWidget';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
+import { ApplianceHealthPage } from './pages/ApplianceHealthPage';
 import { CompaniesListPage } from './pages/CompaniesListPage';
 import { CompanyLayout } from './pages/CompanyLayout';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
@@ -14,6 +15,7 @@ import { JobsPage } from './pages/JobsPage';
 import { KiosksPage } from './pages/KiosksPage';
 import { KioskPairPage } from './pages/kiosk/KioskPairPage';
 import { KioskRoot } from './pages/kiosk/KioskRoot';
+import { LicensePage } from './pages/LicensePage';
 import { LoginPage } from './pages/LoginPage';
 import { MyPunchPage } from './pages/MyPunchPage';
 import { MyTimesheetPage } from './pages/MyTimesheetPage';
@@ -141,6 +143,15 @@ export function App() {
         />
 
         <Route
+          path="/appliance"
+          element={
+            <RequireSuperAdmin>
+              <ApplianceHealthPage />
+            </RequireSuperAdmin>
+          }
+        />
+
+        <Route
           path="/companies/:companyId"
           element={
             <RequireSession>
@@ -155,6 +166,7 @@ export function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="exports" element={<PayrollExportsPage />} />
           <Route path="notifications-log" element={<NotificationsLogPage />} />
+          <Route path="license" element={<LicensePage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="kiosks" element={<KiosksPage />} />

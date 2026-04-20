@@ -20,6 +20,7 @@ import type {
   Job,
   KioskDevice,
   KioskPairingCodeResponse,
+  LicenseStatus,
   Membership,
   AISettings,
   ChatRequest,
@@ -357,4 +358,65 @@ export const ai = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+};
+
+// ---------------------------------------------------------------------------
+// Licensing
+// ---------------------------------------------------------------------------
+
+export const licensing = {
+  getStatus: (companyId: number) => apiFetch<LicenseStatus>(`/companies/${companyId}/license`),
+  upload: (companyId: number, jwt: string) =>
+    apiFetch<LicenseStatus>(`/companies/${companyId}/license`, {
+      method: 'POST',
+      body: JSON.stringify({ jwt }),
+    }),
+  clear: (companyId: number) =>
+    apiFetch<void>(`/companies/${companyId}/license`, { method: 'DELETE' }),
+  setInternalFlag: (companyId: number, isInternal: boolean) =>
+    apiFetch<LicenseStatus>(`/companies/${companyId}/license/internal-flag`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isInternal }),
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Appliance admin (SuperAdmin only)
+// ---------------------------------------------------------------------------
+
+export interface ApplianceHealth {
+  appliance: {
+    id: string;
+    version: string;
+    gitSha: string;
+    buildDate: string;
+    nodeEnv: string;
+  };
+  checks: {
+    db: 'ok' | 'fail';
+    licensingEnforced: boolean;
+    notificationsDisabled: boolean;
+    aiProviderDefault: string;
+  };
+  companies: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    isInternal: boolean;
+    licenseState: string;
+    employeeCount: number;
+  }>;
+  runtime: {
+    openTimeEntries: number;
+    notifications24h: Record<string, number>;
+  };
+  timestamp: string;
+}
+
+export const admin = {
+  health: () => apiFetch<ApplianceHealth>('/admin/health'),
+  exportCompanyUrl: (companyId: number) => {
+    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    return `${apiBase}/admin/companies/${companyId}/export-all`;
+  },
 };

@@ -54,6 +54,24 @@ const envSchema = z.object({
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().optional(),
   AI_BASE_URL: z.string().optional(),
+
+  // ---------- Licensing ----------
+  /** Master switch. When false (the default), the license middleware
+   *  short-circuits every check to pass — the appliance runs fully
+   *  unlicensed. Flip to true once the customer goes live and the
+   *  license portal is reachable. */
+  LICENSING_ENFORCED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  /** Override the bundled kisaes-license-portal RSA public key (PEM).
+   *  Leave blank in dev; set in prod via the appliance installer. */
+  LICENSE_PUBKEY_PEM: z.string().optional(),
+
+  /** URL of the license portal's heartbeat endpoint. When unset the
+   *  daily heartbeat cron is a no-op, useful for air-gapped previews. */
+  LICENSE_PORTAL_HEARTBEAT_URL: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

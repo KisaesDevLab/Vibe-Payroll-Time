@@ -7,3 +7,34 @@ body,
 #root {
   height: 100%;
 }
+
+/* Print styles: strip the chrome so the browser's "Save as PDF" dialog
+   produces a clean one-shot of the report or timesheet currently on
+   screen. Elements that should never print get .no-print. */
+@media print {
+  body {
+    background: white !important;
+  }
+  header.sticky,
+  nav,
+  aside,
+  form,
+  button,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  thead {
+    display: table-header-group;
+  }
+}

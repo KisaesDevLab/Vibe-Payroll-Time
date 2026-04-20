@@ -19,6 +19,7 @@ import {
 import { getCurrentPunch } from '../../services/time-entries.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth } from '../middleware/auth.js';
+import { enforceLicense } from '../middleware/license.js';
 
 export const punchRouter: Router = Router();
 
@@ -65,9 +66,18 @@ function baseCtx(
 
 // ---------------------------------------------------------------------------
 // Personal-device punches (user JWT)
+//
+// License enforcement reads companyId from the JSON body (instead of the
+// URL param used on company-scoped routes). When LICENSING_ENFORCED is
+// false (pre-live), the middleware short-circuits to pass.
 // ---------------------------------------------------------------------------
 
-punchRouter.post('/clock-in', requireAuth, async (req, res, next) => {
+const punchLicense = enforceLicense((req) => {
+  const raw = (req.body as { companyId?: number } | undefined)?.companyId;
+  return typeof raw === 'number' ? raw : undefined;
+});
+
+punchRouter.post('/clock-in', requireAuth, punchLicense, async (req, res, next) => {
   try {
     const body = clockInRequestSchema.parse(req.body);
     const { employeeId } = await resolveEmployeeForUser(req, body.companyId);
@@ -78,7 +88,7 @@ punchRouter.post('/clock-in', requireAuth, async (req, res, next) => {
   }
 });
 
-punchRouter.post('/clock-out', requireAuth, async (req, res, next) => {
+punchRouter.post('/clock-out', requireAuth, punchLicense, async (req, res, next) => {
   try {
     const body = clockOutRequestSchema.parse(req.body);
     const { employeeId } = await resolveEmployeeForUser(req, body.companyId);
@@ -89,7 +99,7 @@ punchRouter.post('/clock-out', requireAuth, async (req, res, next) => {
   }
 });
 
-punchRouter.post('/break-in', requireAuth, async (req, res, next) => {
+punchRouter.post('/break-in', requireAuth, punchLicense, async (req, res, next) => {
   try {
     const body = breakInRequestSchema.parse(req.body);
     const { employeeId } = await resolveEmployeeForUser(req, body.companyId);
@@ -100,7 +110,7 @@ punchRouter.post('/break-in', requireAuth, async (req, res, next) => {
   }
 });
 
-punchRouter.post('/break-out', requireAuth, async (req, res, next) => {
+punchRouter.post('/break-out', requireAuth, punchLicense, async (req, res, next) => {
   try {
     const body = breakOutRequestSchema.parse(req.body);
     const { employeeId } = await resolveEmployeeForUser(req, body.companyId);
@@ -111,7 +121,7 @@ punchRouter.post('/break-out', requireAuth, async (req, res, next) => {
   }
 });
 
-punchRouter.post('/switch-job', requireAuth, async (req, res, next) => {
+punchRouter.post('/switch-job', requireAuth, punchLicense, async (req, res, next) => {
   try {
     const body = switchJobRequestSchema.parse(req.body);
     const { employeeId } = await resolveEmployeeForUser(req, body.companyId);
