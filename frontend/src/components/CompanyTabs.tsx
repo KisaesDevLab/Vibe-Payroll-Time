@@ -13,6 +13,7 @@ export function CompanyTabs({ companyId }: { companyId: number }) {
     ...(isAdmin
       ? [
           { to: `/companies/${companyId}/team`, label: 'Team' },
+          { to: `/companies/${companyId}/kiosks`, label: 'Kiosks' },
           { to: `/companies/${companyId}/settings`, label: 'Settings' },
         ]
       : []),

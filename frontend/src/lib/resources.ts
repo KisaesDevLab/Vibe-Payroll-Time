@@ -3,12 +3,15 @@ import type {
   CompanySettings,
   CreateEmployeeRequest,
   CreateJobRequest,
+  CreateKioskPairingCodeRequest,
   CsvImportRequest,
   CsvImportResponse,
   Employee,
   EmployeeWithPinResponse,
   InviteMembershipRequest,
   Job,
+  KioskDevice,
+  KioskPairingCodeResponse,
   Membership,
   UpdateCompanyRequest,
   UpdateCompanySettingsRequest,
@@ -135,5 +138,31 @@ export const jobs = {
   unarchive: (companyId: number, jobId: number) =>
     apiFetch<Job>(`/companies/${companyId}/jobs/${jobId}/unarchive`, {
       method: 'POST',
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Kiosk devices (admin side)
+// ---------------------------------------------------------------------------
+
+export const kiosks = {
+  list: (companyId: number) =>
+    apiFetch<KioskDevice[]>(`/companies/${companyId}/kiosks`),
+  issueCode: (companyId: number, body: CreateKioskPairingCodeRequest = {}) =>
+    apiFetch<KioskPairingCodeResponse>(
+      `/companies/${companyId}/kiosks/pairing-codes`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    ),
+  rename: (companyId: number, deviceId: number, name: string) =>
+    apiFetch<KioskDevice>(`/companies/${companyId}/kiosks/${deviceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+  revoke: (companyId: number, deviceId: number) =>
+    apiFetch<void>(`/companies/${companyId}/kiosks/${deviceId}`, {
+      method: 'DELETE',
     }),
 };

@@ -8,7 +8,11 @@ import { CompanySettingsPage } from './pages/CompanySettingsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { EmployeesPage } from './pages/EmployeesPage';
 import { JobsPage } from './pages/JobsPage';
+import { KiosksPage } from './pages/KiosksPage';
+import { KioskPairPage } from './pages/kiosk/KioskPairPage';
+import { KioskRoot } from './pages/kiosk/KioskRoot';
 import { LoginPage } from './pages/LoginPage';
+import { MyPunchPage } from './pages/MyPunchPage';
 import { SetupPage } from './pages/SetupPage';
 import { TeamPage } from './pages/TeamPage';
 
@@ -33,6 +37,10 @@ export function App() {
   const setupStatus = useSetupStatus();
   const session = useSession();
 
+  // Kiosk routes render ahead of setup/session gating — a shared-device
+  // kiosk shouldn't depend on a user session, and pairing is the device's
+  // whole reason for being. They still call the backend which rejects if
+  // setup hasn't run, and the KioskPairPage surfaces that error.
   if (setupStatus.isPending) {
     return (
       <AppShell>
@@ -47,6 +55,7 @@ export function App() {
     return (
       <AppShell>
         <Routes>
+          <Route path="/kiosk/pair" element={<KioskPairPage />} />
           <Route path="*" element={<LoginPage />} />
         </Routes>
       </AppShell>
@@ -72,6 +81,18 @@ export function App() {
           element={session ? <Navigate to="/" replace /> : <LoginPage />}
         />
         <Route path="/setup" element={<Navigate to="/" replace />} />
+
+        <Route path="/kiosk" element={<KioskRoot />} />
+        <Route path="/kiosk/pair" element={<KioskPairPage />} />
+
+        <Route
+          path="/my-punch"
+          element={
+            <RequireSession>
+              <MyPunchPage />
+            </RequireSession>
+          }
+        />
 
         <Route
           path="/"
@@ -103,6 +124,7 @@ export function App() {
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="team" element={<TeamPage />} />
+          <Route path="kiosks" element={<KiosksPage />} />
           <Route path="settings" element={<CompanySettingsPage />} />
         </Route>
 

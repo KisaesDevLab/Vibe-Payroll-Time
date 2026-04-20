@@ -3,7 +3,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
+import { registerServiceWorker } from './lib/sw';
 import './index.css';
+
+registerServiceWorker();
 
 const queryClient = new QueryClient({
   defaultOptions: {
