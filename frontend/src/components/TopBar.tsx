@@ -33,9 +33,14 @@ export function TopBar() {
             Dashboard
           </Link>
           {session && session.user.memberships.length > 0 && (
-            <Link to="/my-punch" className="hover:text-slate-900">
-              My time
-            </Link>
+            <>
+              <Link to="/my-punch" className="hover:text-slate-900">
+                My time
+              </Link>
+              <Link to="/my-timesheet" className="hover:text-slate-900">
+                Timesheet
+              </Link>
+            </>
           )}
           {session?.user.roleGlobal === 'super_admin' && (
             <Link to="/companies" className="hover:text-slate-900">

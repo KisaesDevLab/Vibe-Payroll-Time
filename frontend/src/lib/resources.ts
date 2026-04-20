@@ -1,18 +1,27 @@
 import type {
+  ApprovePeriodRequest,
+  ApprovePeriodResponse,
   Company,
   CompanySettings,
+  CorrectionRequest,
+  CreateCorrectionRequest,
   CreateEmployeeRequest,
   CreateJobRequest,
   CreateKioskPairingCodeRequest,
   CsvImportRequest,
   CsvImportResponse,
+  DecideCorrectionRequest,
+  EditEntryRequest,
   Employee,
   EmployeeWithPinResponse,
+  EntryAuditRow,
   InviteMembershipRequest,
   Job,
   KioskDevice,
   KioskPairingCodeResponse,
   Membership,
+  TimeEntry,
+  TimesheetResponse,
   UpdateCompanyRequest,
   UpdateCompanySettingsRequest,
   UpdateEmployeeRequest,
@@ -165,4 +174,74 @@ export const kiosks = {
     apiFetch<void>(`/companies/${companyId}/kiosks/${deviceId}`, {
       method: 'DELETE',
     }),
+};
+
+// ---------------------------------------------------------------------------
+// Timesheets
+// ---------------------------------------------------------------------------
+
+export const timesheets = {
+  get: (
+    companyId: number,
+    employeeId: number,
+    opts: { periodStart?: string; periodEnd?: string } = {},
+  ) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      employeeId: String(employeeId),
+    });
+    if (opts.periodStart) params.set('periodStart', opts.periodStart);
+    if (opts.periodEnd) params.set('periodEnd', opts.periodEnd);
+    return apiFetch<TimesheetResponse>(`/timesheets?${params.toString()}`);
+  },
+  current: (companyId: number) =>
+    apiFetch<TimesheetResponse>(`/timesheets/current?companyId=${companyId}`),
+  approve: (companyId: number, body: ApprovePeriodRequest) =>
+    apiFetch<ApprovePeriodResponse>(`/timesheets/approve?companyId=${companyId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  unapprove: (companyId: number, body: ApprovePeriodRequest) =>
+    apiFetch<{ unapprovedEntryCount: number }>(
+      `/timesheets/unapprove?companyId=${companyId}`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  editEntry: (companyId: number, entryId: number, body: EditEntryRequest) =>
+    apiFetch<TimeEntry>(
+      `/timesheets/entries/${entryId}?companyId=${companyId}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
+  deleteEntry: (companyId: number, entryId: number, reason: string) =>
+    apiFetch<void>(
+      `/timesheets/entries/${entryId}?companyId=${companyId}`,
+      { method: 'DELETE', body: JSON.stringify({ reason }) },
+    ),
+  audit: (companyId: number, entryId: number) =>
+    apiFetch<EntryAuditRow[]>(
+      `/timesheets/entries/${entryId}/audit?companyId=${companyId}`,
+    ),
+  createCorrection: (companyId: number, body: CreateCorrectionRequest) =>
+    apiFetch<CorrectionRequest>(
+      `/timesheets/correction-requests?companyId=${companyId}`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+};
+
+export const corrections = {
+  list: (companyId: number, status?: 'pending' | 'approved' | 'rejected') => {
+    const qs = status ? `?status=${status}` : '';
+    return apiFetch<CorrectionRequest[]>(
+      `/companies/${companyId}/correction-requests${qs}`,
+    );
+  },
+  approve: (companyId: number, id: number, body: DecideCorrectionRequest = {}) =>
+    apiFetch<CorrectionRequest>(
+      `/companies/${companyId}/correction-requests/${id}/approve`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  reject: (companyId: number, id: number, body: DecideCorrectionRequest = {}) =>
+    apiFetch<CorrectionRequest>(
+      `/companies/${companyId}/correction-requests/${id}/reject`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
 };

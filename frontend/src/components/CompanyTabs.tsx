@@ -7,8 +7,19 @@ export function CompanyTabs({ companyId }: { companyId: number }) {
   const isSuper = session?.user.roleGlobal === 'super_admin';
   const isAdmin = membership?.role === 'company_admin' || isSuper;
 
+  const isSupervisor =
+    membership?.role === 'company_admin' ||
+    membership?.role === 'supervisor' ||
+    isSuper;
+
   const tabs = [
     { to: `/companies/${companyId}/employees`, label: 'Employees' },
+    ...(isSupervisor
+      ? [
+          { to: `/companies/${companyId}/timesheets`, label: 'Timesheets' },
+          { to: `/companies/${companyId}/corrections`, label: 'Corrections' },
+        ]
+      : []),
     { to: `/companies/${companyId}/jobs`, label: 'Jobs' },
     ...(isAdmin
       ? [

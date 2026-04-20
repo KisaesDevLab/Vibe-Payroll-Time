@@ -6,6 +6,7 @@ import { useSetupStatus } from './hooks/useSetupStatus';
 import { CompaniesListPage } from './pages/CompaniesListPage';
 import { CompanyLayout } from './pages/CompanyLayout';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
+import { CorrectionsPage } from './pages/CorrectionsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { EmployeesPage } from './pages/EmployeesPage';
 import { JobsPage } from './pages/JobsPage';
@@ -14,8 +15,10 @@ import { KioskPairPage } from './pages/kiosk/KioskPairPage';
 import { KioskRoot } from './pages/kiosk/KioskRoot';
 import { LoginPage } from './pages/LoginPage';
 import { MyPunchPage } from './pages/MyPunchPage';
+import { MyTimesheetPage } from './pages/MyTimesheetPage';
 import { SetupPage } from './pages/SetupPage';
 import { TeamPage } from './pages/TeamPage';
+import { TimesheetsReviewPage } from './pages/TimesheetsReviewPage';
 
 function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -99,6 +102,14 @@ export function App() {
             </RequireSession>
           }
         />
+        <Route
+          path="/my-timesheet"
+          element={
+            <RequireSession>
+              <MyTimesheetPage />
+            </RequireSession>
+          }
+        />
 
         <Route
           path="/"
@@ -128,6 +139,8 @@ export function App() {
         >
           <Route index element={<Navigate to="employees" replace />} />
           <Route path="employees" element={<EmployeesPage />} />
+          <Route path="timesheets" element={<TimesheetsReviewPage />} />
+          <Route path="corrections" element={<CorrectionsPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="kiosks" element={<KiosksPage />} />
