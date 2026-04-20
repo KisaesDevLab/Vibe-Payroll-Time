@@ -1,0 +1,50 @@
+## Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.pnp
+.pnp.js
+
+## Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+.vite/
+
+## Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+## Test + coverage
+coverage/
+.nyc_output/
+junit.xml
+
+## Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.recommended
+*.swp
+*.swo
+Thumbs.db
+
+## Logs
+logs/
+*.log
+
+## Docker / runtime
+.data/
+pgdata/
+uploads/
+backups/
+
+## Misc
+.cache/
+.turbo/

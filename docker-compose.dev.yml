@@ -1,0 +1,44 @@
+## Vibe Payroll Time — local development stack.
+##
+## Starts Postgres only. Backend and frontend run on the host via `npm run dev`
+## so file watches and hot reload work natively without file-sync plumbing.
+
+name: vibept-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vibept-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vibept}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibept_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-vibept}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-vibept} -d ${POSTGRES_DB:-vibept}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Optional — bring up with `docker compose --profile tools up -d`
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: vibept-pgadmin
+    profiles: ['tools']
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@vibept.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - '5050:80'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
