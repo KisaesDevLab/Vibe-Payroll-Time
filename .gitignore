@@ -48,3 +48,6 @@ backups/
 ## Misc
 .cache/
 .turbo/
+
+## Dev-only license signing keypair — never commit.
+dev-keys/

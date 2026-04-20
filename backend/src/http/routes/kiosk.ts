@@ -21,6 +21,7 @@ import {
 import { getCurrentPunch } from '../../services/time-entries.js';
 import { Unauthorized } from '../errors.js';
 import { requireKioskDevice, requireKioskEmployee } from '../middleware/kiosk-auth.js';
+import { enforceLicense } from '../middleware/license.js';
 
 export const kioskRouter: Router = Router();
 
@@ -119,7 +120,13 @@ function kioskCtx(
   };
 }
 
-const bothAuthed = [requireKioskDevice, requireKioskEmployee] as const;
+// License enforcement for kiosk punch: company is derived from the
+// paired device context. requireKioskDevice runs first, so req.kioskDevice
+// is populated by the time enforcement reads companyId.
+const kioskLicense = enforceLicense((req) => req.kioskDevice?.companyId);
+
+const bothAuthed = [requireKioskDevice, requireKioskEmployee, kioskLicense] as const;
+const bothAuthedReadOnly = [requireKioskDevice, requireKioskEmployee] as const;
 
 kioskRouter.post('/punch/clock-in', ...bothAuthed, async (req, res, next) => {
   try {
@@ -176,7 +183,7 @@ kioskRouter.post('/punch/switch-job', ...bothAuthed, async (req, res, next) => {
   }
 });
 
-kioskRouter.get('/punch/current', ...bothAuthed, async (req, res, next) => {
+kioskRouter.get('/punch/current', ...bothAuthedReadOnly, async (req, res, next) => {
   try {
     const ids = await resolveEmployeeForKiosk(req);
     const snapshot = await getCurrentPunch(ids.companyId, ids.employeeId);

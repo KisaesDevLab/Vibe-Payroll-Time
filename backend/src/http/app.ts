@@ -11,6 +11,7 @@ import { authRouter } from './routes/auth.js';
 import { companiesRouter } from './routes/companies.js';
 import { healthRouter, versionRouter } from './routes/health.js';
 import { kioskRouter } from './routes/kiosk.js';
+import { licensingRouter } from './routes/licensing.js';
 import { notificationsAdminRouter, notificationsRouter } from './routes/notifications.js';
 import { payrollExportsRouter } from './routes/payroll-exports.js';
 import { punchRouter } from './routes/punch.js';
@@ -58,6 +59,7 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/companies`, payrollExportsRouter);
   app.use(`${API_PREFIX}/companies`, notificationsAdminRouter);
   app.use(`${API_PREFIX}/companies`, aiRouter);
+  app.use(`${API_PREFIX}/companies`, licensingRouter);
   app.use(`${API_PREFIX}/punch`, punchRouter);
   app.use(`${API_PREFIX}/kiosk`, kioskRouter);
   app.use(`${API_PREFIX}/timesheets`, timesheetsRouter);
