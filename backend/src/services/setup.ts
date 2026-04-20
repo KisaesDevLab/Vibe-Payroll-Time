@@ -70,7 +70,7 @@ export async function runInitialSetup(
 
     if (!userRow) throw new Error('failed to create super admin');
 
-    // Create the firm-internal company.
+    // Create the firm-internal company and its default settings row.
     const [companyRow] = await trx('companies')
       .insert({
         name: body.company.name,
@@ -84,6 +84,12 @@ export async function runInitialSetup(
       .returning<Array<{ id: number }>>('id');
 
     if (!companyRow) throw new Error('failed to create company');
+
+    // Internal firms default to self-approve.
+    await trx('company_settings').insert({
+      company_id: companyRow.id,
+      allow_self_approve: true,
+    });
 
     // Link SuperAdmin to the firm company as a company_admin.
     await trx('company_memberships').insert({

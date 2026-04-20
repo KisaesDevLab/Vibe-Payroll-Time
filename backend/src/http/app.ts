@@ -7,6 +7,7 @@ import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { errorHandler, notFoundHandler } from './errors.js';
 import { authRouter } from './routes/auth.js';
+import { companiesRouter } from './routes/companies.js';
 import { healthRouter, versionRouter } from './routes/health.js';
 import { setupRouter } from './routes/setup.js';
 
@@ -44,6 +45,7 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/version`, versionRouter);
   app.use(`${API_PREFIX}/setup`, setupRouter);
   app.use(`${API_PREFIX}/auth`, authRouter);
+  app.use(`${API_PREFIX}/companies`, companiesRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
