@@ -50,6 +50,14 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true'),
+
+  // ---------- AI (appliance-wide fallback) ----------
+  AI_PROVIDER_DEFAULT: z
+    .enum(['anthropic', 'openai_compatible', 'ollama'])
+    .default('anthropic'),
+  AI_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().optional(),
+  AI_BASE_URL: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
