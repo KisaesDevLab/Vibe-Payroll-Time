@@ -2,9 +2,15 @@ import { type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
-import { HomePage } from './pages/HomePage';
+import { CompaniesListPage } from './pages/CompaniesListPage';
+import { CompanyLayout } from './pages/CompanyLayout';
+import { CompanySettingsPage } from './pages/CompanySettingsPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { EmployeesPage } from './pages/EmployeesPage';
+import { JobsPage } from './pages/JobsPage';
 import { LoginPage } from './pages/LoginPage';
 import { SetupPage } from './pages/SetupPage';
+import { TeamPage } from './pages/TeamPage';
 
 function AppShell({ children }: { children: ReactNode }) {
   return <div className="min-h-screen bg-slate-50">{children}</div>;
@@ -13,6 +19,13 @@ function AppShell({ children }: { children: ReactNode }) {
 function RequireSession({ children }: { children: ReactNode }) {
   const session = useSession();
   if (!session) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function RequireSuperAdmin({ children }: { children: ReactNode }) {
+  const session = useSession();
+  if (!session) return <Navigate to="/login" replace />;
+  if (session.user.roleGlobal !== 'super_admin') return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -30,8 +43,6 @@ export function App() {
     );
   }
 
-  // If backend is unreachable, still render the login page so users can see
-  // an actionable error instead of a blank screen.
   if (setupStatus.isError) {
     return (
       <AppShell>
@@ -61,14 +72,40 @@ export function App() {
           element={session ? <Navigate to="/" replace /> : <LoginPage />}
         />
         <Route path="/setup" element={<Navigate to="/" replace />} />
+
         <Route
           path="/"
           element={
             <RequireSession>
-              <HomePage />
+              <DashboardPage />
             </RequireSession>
           }
         />
+
+        <Route
+          path="/companies"
+          element={
+            <RequireSuperAdmin>
+              <CompaniesListPage />
+            </RequireSuperAdmin>
+          }
+        />
+
+        <Route
+          path="/companies/:companyId"
+          element={
+            <RequireSession>
+              <CompanyLayout />
+            </RequireSession>
+          }
+        >
+          <Route index element={<Navigate to="employees" replace />} />
+          <Route path="employees" element={<EmployeesPage />} />
+          <Route path="jobs" element={<JobsPage />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="settings" element={<CompanySettingsPage />} />
+        </Route>
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>
