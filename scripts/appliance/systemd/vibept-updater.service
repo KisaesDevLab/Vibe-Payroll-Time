@@ -1,0 +1,24 @@
+[Unit]
+Description=Vibe Payroll Time — self-service appliance updater
+Documentation=https://github.com/KisaesDevLab/Vibe-Payroll-Time
+# Don't race with the regular appliance service during its own startup.
+After=vibept.service network-online.target
+
+[Service]
+Type=oneshot
+# update.sh mutates the whole stack (rebuild, migrate, restart) so it
+# must run as root. The request file was written by the backend container
+# (non-root); we read + delete it here.
+User=root
+WorkingDirectory=/opt/vibept
+ExecStart=/bin/bash /opt/vibept/scripts/appliance/update-from-request.sh
+# Capture stdout/stderr to the journal in addition to log.txt. The wrapper
+# tees to log.txt itself so the backend can tail it; the journal is a
+# belt-and-suspenders copy for ops debugging.
+StandardOutput=journal
+StandardError=journal
+# No timeout — update.sh does its own internal timeouts.
+TimeoutStartSec=0
+
+[Install]
+# Triggered exclusively via vibept-updater.path; no WantedBy needed.

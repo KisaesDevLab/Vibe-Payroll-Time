@@ -3,6 +3,13 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // Multiple test files (punch.integration, badges.integration,
+    // badges.api.integration) truncate and re-seed the same Postgres
+    // instance. Running files in parallel causes FK violations when one
+    // file's TRUNCATE runs against another file's fresh rows. Pinning
+    // file execution to a single fork keeps DB state deterministic.
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
     // Env set here is applied before test modules load, which is required
     // because src/config/env.ts validates at import time.
     env: {

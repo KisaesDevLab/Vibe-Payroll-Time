@@ -5,6 +5,46 @@ All notable changes to **Vibe Payroll Time** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — Phase 4.5 QR badge authentication
+
+- Employees gain four nullable badge columns (`badge_token_hash`,
+  `badge_issued_at`, `badge_revoked_at`, `badge_version`) and a partial
+  unique index on `(company_id, badge_token_hash) WHERE badge_revoked_at IS NULL`
+- `company_settings.kiosk_auth_mode` ENUM (`pin` | `qr` | `both`, default `pin`)
+- New `badge_events` table (issue / revoke / scan_success / scan_failure)
+- Badge token format `vpt1.{companyId}.{employeeId}.{version}.{nonce}.{hmac}`;
+  HMAC-SHA256 truncated to 128 bits, keyed via new optional `BADGE_SIGNING_SECRET`
+  env var (HKDF-derived from `SECRETS_ENCRYPTION_KEY` if unset)
+- `issueBadge` / `revokeBadge` / `bulkIssueBadges` / `verifyBadge` service
+  with per-kiosk scan rate limit (20 scans/min → 60 sec cooldown)
+- Admin API: `POST /employees/:id/badge/issue`, `/revoke`;
+  `GET /employees/:id/badge`, `/badge/events`;
+  `POST /employees/bulk-badges` returns the rendered print sheet
+- Kiosk API: `POST /kiosk/scan` returns the same `KioskEmployeeContext` shape
+  as PIN verify; `GET /kiosk/me` now includes the current `kiosk_auth_mode`
+- Frontend kiosk UI renders `BadgeScanner` (zxing + getUserMedia) when auth
+  mode is `qr` or `both`, with PIN fallback link in `both`
+- Admin UI: Employees roster gets a Badge column + row-select + bulk Issue
+  action; the employee drawer gains Issue / Reissue / Revoke + last-10-event
+  panel; Company settings → Punch rules radio for the mode
+- Docs: `docs/kiosk-setup.md`, `docs/security.md`, `docs/admin-guide.md` all
+  gained dedicated badge sections
+- Tests: 13 new unit tests (badge HMAC + lockout) and 8 integration tests
+  covering issue / reissue / revoke / cross-company / tamper / version /
+  rate-limit paths
+
+### Changed
+
+- `PairKioskResponse` and `GET /kiosk/me` include `kioskAuthMode` so a
+  tablet re-renders to the right screen without re-pairing when an admin
+  flips the setting
+- `backend/migrations/package.json` declares the migrations folder as
+  CommonJS so knex can load the ESM-parent-package migrations natively
+- `backend/src/db/knex.ts` resolves the migrations directory via
+  `fileURLToPath` to avoid Windows double-prefix path bugs
+
 ## [1.0.0] — 2026-04-20
 
 Initial public release. Self-hosted, multi-tenant employee time-tracking

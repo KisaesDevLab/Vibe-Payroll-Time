@@ -17,6 +17,7 @@ const handlers: Record<string, ReportHandler<any>> = {
   [auditTrailReport.name]: auditTrailReport,
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getReport(name: string): ReportHandler<any> | undefined {
   return handlers[name];
 }

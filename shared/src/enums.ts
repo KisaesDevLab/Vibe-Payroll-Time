@@ -74,6 +74,21 @@ export const CorrectionRequestType = {
 export type CorrectionRequestType =
   (typeof CorrectionRequestType)[keyof typeof CorrectionRequestType];
 
+export const KioskAuthMode = {
+  Pin: 'pin',
+  Qr: 'qr',
+  Both: 'both',
+} as const;
+export type KioskAuthMode = (typeof KioskAuthMode)[keyof typeof KioskAuthMode];
+
+export const BadgeEventType = {
+  Issue: 'issue',
+  Revoke: 'revoke',
+  ScanSuccess: 'scan_success',
+  ScanFailure: 'scan_failure',
+} as const;
+export type BadgeEventType = (typeof BadgeEventType)[keyof typeof BadgeEventType];
+
 export const CorrectionRequestStatus = {
   Pending: 'pending',
   Approved: 'approved',

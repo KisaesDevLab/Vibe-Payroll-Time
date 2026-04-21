@@ -1,14 +1,16 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { KioskEmployeeContext } from '@vibept/shared';
 import { KIOSK_IDLE_LOCK_SECONDS } from '@vibept/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BadgeScanner } from '../../components/BadgeScanner';
 import { Button } from '../../components/Button';
 import { useKiosk } from '../../hooks/useKiosk';
 import { ApiError } from '../../lib/api';
 import { kioskApi } from '../../lib/kiosk-api';
 import { kioskStore } from '../../lib/kiosk-store';
 
-type Screen = 'pin' | 'menu' | 'confirmation';
+type AuthMode = 'pin' | 'qr' | 'both';
+type Screen = 'pin' | 'scan' | 'menu' | 'confirmation';
 
 const PIN_LEN_MIN = 4;
 const PIN_LEN_MAX = 6;
@@ -17,22 +19,55 @@ const CONFIRM_SECONDS = 10;
 export function KioskPinPage() {
   const kiosk = useKiosk();
 
-  const [screen, setScreen] = useState<Screen>('pin');
+  // Fetch auth mode from the server so an admin flipping it propagates
+  // without a re-pair. Falls back to the store's cached value.
+  const meQuery = useQuery({
+    queryKey: ['kiosk', 'me'],
+    queryFn: () => kioskApi.me(),
+    enabled: !!kiosk,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const authMode: AuthMode = meQuery.data?.kioskAuthMode ?? kiosk?.kioskAuthMode ?? 'pin';
+
+  // Persist the live auth mode back to the store so a refresh picks it up
+  // immediately next session.
+  useEffect(() => {
+    if (!kiosk || !meQuery.data) return;
+    if (kiosk.kioskAuthMode === meQuery.data.kioskAuthMode) return;
+    kioskStore.set({ ...kiosk, kioskAuthMode: meQuery.data.kioskAuthMode });
+  }, [kiosk, meQuery.data]);
+
+  const defaultScreen: Screen = authMode === 'pin' ? 'pin' : 'scan';
+
+  const [screen, setScreen] = useState<Screen>(defaultScreen);
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<KioskEmployeeContext | null>(null);
   const [confirmMessage, setConfirmMessage] = useState<string | null>(null);
   const [confirmCountdown, setConfirmCountdown] = useState(CONFIRM_SECONDS);
+  const [scanFlash, setScanFlash] = useState(false);
+  const scanInFlight = useRef(false);
 
   const idleRef = useRef<number | null>(null);
 
   const resetToPin = useCallback(() => {
-    setScreen('pin');
+    setScreen(authMode === 'pin' ? 'pin' : 'scan');
     setPin('');
     setError(null);
     setSession(null);
     setConfirmMessage(null);
-  }, []);
+    setScanFlash(false);
+    scanInFlight.current = false;
+  }, [authMode]);
+
+  // If the admin flips mode while the tablet is live on the home screen,
+  // bounce back to the right entry screen.
+  useEffect(() => {
+    if (screen === 'pin' || screen === 'scan') {
+      setScreen(authMode === 'pin' ? 'pin' : 'scan');
+    }
+  }, [authMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Inactivity auto-lock: any user input resets the timer. Falling back to
   // the PIN screen after KIOSK_IDLE_LOCK_SECONDS prevents a walk-away from
@@ -53,6 +88,13 @@ export function KioskPinPage() {
       if (idleRef.current) window.clearTimeout(idleRef.current);
     };
   }, [bump]);
+
+  // Clear the scan-success flash after it's done its job visually.
+  useEffect(() => {
+    if (!scanFlash) return;
+    const id = window.setTimeout(() => setScanFlash(false), 600);
+    return () => window.clearTimeout(id);
+  }, [scanFlash]);
 
   // Confirmation screen 10-sec countdown then back to PIN.
   useEffect(() => {
@@ -83,6 +125,36 @@ export function KioskPinPage() {
       setError(err instanceof ApiError ? err.message : 'Verification failed');
     },
   });
+
+  const scan = useMutation({
+    mutationFn: (payload: string) => kioskApi.scanBadge(payload),
+    onSuccess: (ctx) => {
+      setSession(ctx);
+      setError(null);
+      setScanFlash(true);
+      // The scanner is paused via scanInFlight until we navigate away.
+      setScreen('menu');
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Scan failed');
+      scanInFlight.current = false;
+    },
+  });
+
+  const handleDecode = useCallback(
+    (payload: string) => {
+      if (scanInFlight.current) return;
+      if (!payload.startsWith('vpt1.')) {
+        // Ignore random QR codes (URLs, vCards, etc.). Don't call the
+        // server — that would just burn the per-kiosk scan budget.
+        setError('This QR is not a Vibe PT badge.');
+        return;
+      }
+      scanInFlight.current = true;
+      scan.mutate(payload);
+    },
+    [scan],
+  );
 
   const punch = useMutation({
     mutationFn: async (action: 'clockIn' | 'clockOut' | 'breakIn' | 'breakOut') => {
@@ -151,16 +223,42 @@ export function KioskPinPage() {
       </header>
 
       <main className="flex flex-1 items-center justify-center p-6">
+        {screen === 'scan' && (
+          <div className="flex w-full max-w-md flex-col items-center gap-6">
+            <BadgeScanner
+              onDecode={handleDecode}
+              paused={scan.isPending || scanInFlight.current}
+              flashSuccess={scanFlash}
+              message={error}
+              onUsePin={authMode === 'both' ? () => setScreen('pin') : undefined}
+            />
+          </div>
+        )}
         {screen === 'pin' && (
-          <PinKeypad
-            pin={pin}
-            onDigit={appendDigit}
-            onBack={() => setPin((p) => p.slice(0, -1))}
-            onClear={() => setPin('')}
-            onSubmit={submitPin}
-            submitting={verify.isPending}
-            error={error}
-          />
+          <div className="flex w-full max-w-sm flex-col items-center gap-4">
+            <PinKeypad
+              pin={pin}
+              onDigit={appendDigit}
+              onBack={() => setPin((p) => p.slice(0, -1))}
+              onClear={() => setPin('')}
+              onSubmit={submitPin}
+              submitting={verify.isPending}
+              error={error}
+            />
+            {authMode === 'both' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPin('');
+                  setError(null);
+                  setScreen('scan');
+                }}
+                className="text-sm text-slate-400 hover:text-slate-200"
+              >
+                ← Scan badge instead
+              </button>
+            )}
+          </div>
         )}
         {screen === 'menu' && session && (
           <EmployeeMenu

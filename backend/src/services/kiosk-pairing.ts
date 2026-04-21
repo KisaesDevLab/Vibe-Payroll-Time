@@ -132,6 +132,10 @@ export async function pairKiosk(
     const company = await trx('companies').where({ id: code.company_id }).first<{ name: string }>();
     if (!company) throw NotFound('Company not found');
 
+    const settings = await trx('company_settings')
+      .where({ company_id: code.company_id })
+      .first<{ kiosk_auth_mode: 'pin' | 'qr' | 'both' }>();
+
     const deviceToken = crypto.randomBytes(48).toString('base64url');
     const [device] = await trx<KioskDeviceRow>('kiosk_devices')
       .insert({
@@ -160,6 +164,7 @@ export async function pairKiosk(
       deviceToken,
       device: rowToDevice(device),
       companyName: company.name,
+      kioskAuthMode: settings?.kiosk_auth_mode ?? 'pin',
     };
   });
 }

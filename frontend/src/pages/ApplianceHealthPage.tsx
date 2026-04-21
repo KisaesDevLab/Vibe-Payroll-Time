@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { TopBar } from '../components/TopBar';
+import { UpdateCard } from '../components/UpdateCard';
 import { admin } from '../lib/resources';
 
 /**
@@ -62,6 +63,8 @@ export function ApplianceHealthPage() {
                 <p className="text-xs text-slate-500">employees currently on the clock</p>
               </Card>
             </section>
+
+            <UpdateCard />
 
             <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="mb-3 text-base font-semibold text-slate-900">Companies</h2>

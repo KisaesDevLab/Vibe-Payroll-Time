@@ -11,7 +11,7 @@
  * whole app, including kiosk and personal-device routes.
  */
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   // Activate immediately on first install so the app picks up a worker
   // without requiring a second visit.
   self.skipWaiting();

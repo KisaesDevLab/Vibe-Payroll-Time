@@ -39,3 +39,14 @@ export const PIN_MAX_LENGTH = 6;
 /** Rate limit budgets. */
 export const AUTH_RATE_LIMIT_PER_MINUTE = 10;
 export const NL_CORRECTION_LIMIT_PER_EMPLOYEE_PER_DAY = 20;
+
+/** Kiosk badge scan rate limit: trips at 21st scan in a rolling 60s window,
+ *  followed by a 60s cooldown. Keeps a bored employee (or an attacker with
+ *  a stolen badge photo) from hammering the endpoint. */
+export const KIOSK_BADGE_SCAN_LIMIT = 20;
+export const KIOSK_BADGE_SCAN_WINDOW_SECONDS = 60;
+export const KIOSK_BADGE_SCAN_LOCKOUT_SECONDS = 60;
+
+/** Badge token format version marker. Bumping this invalidates every
+ *  badge in the appliance — recovery is bulk-reissue. */
+export const BADGE_TOKEN_VERSION = 'vpt1';

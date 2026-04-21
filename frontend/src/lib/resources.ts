@@ -1,6 +1,8 @@
 import type {
   ApprovePeriodRequest,
   ApprovePeriodResponse,
+  BadgeEvent,
+  BulkIssueBadgesRequest,
   Company,
   CompanySettings,
   CorrectionRequest,
@@ -13,7 +15,9 @@ import type {
   DecideCorrectionRequest,
   EditEntryRequest,
   Employee,
+  EmployeeBadgeState,
   EmployeeWithPinResponse,
+  IssueBadgeResponse,
   EntryAuditRow,
   EmployeePreferences,
   InviteMembershipRequest,
@@ -43,9 +47,14 @@ import type {
   UpdateCompanySettingsRequest,
   UpdateEmployeePreferencesRequest,
   UpdateEmployeeRequest,
+  UpdateCheckResponse,
   UpdateJobRequest,
+  UpdateLogResponse,
+  UpdateRunResponse,
+  UpdateStatusResponse,
 } from '@vibept/shared';
 import { apiFetch } from './api';
+import { authStore } from './auth-store';
 
 // ---------------------------------------------------------------------------
 // Companies
@@ -128,6 +137,66 @@ export const employees = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+};
+
+// ---------------------------------------------------------------------------
+// Badges — Phase 4.5 QR auth
+// ---------------------------------------------------------------------------
+
+export const badges = {
+  getState: (companyId: number, employeeId: number) =>
+    apiFetch<EmployeeBadgeState>(`/companies/${companyId}/employees/${employeeId}/badge`),
+  issue: (companyId: number, employeeId: number) =>
+    apiFetch<IssueBadgeResponse>(`/companies/${companyId}/employees/${employeeId}/badge/issue`, {
+      method: 'POST',
+    }),
+  revoke: (companyId: number, employeeId: number, reason?: string) =>
+    apiFetch<EmployeeBadgeState>(`/companies/${companyId}/employees/${employeeId}/badge/revoke`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  events: (companyId: number, employeeId: number) =>
+    apiFetch<BadgeEvent[]>(`/companies/${companyId}/employees/${employeeId}/badge/events`),
+  /** POSTs the employee ID list, receives the rendered HTML sheet, and
+   *  opens it in a new tab via a Blob URL. The server issues the badges
+   *  in one transaction so the sheet is always self-consistent. */
+  bulkIssuePrint: async (
+    companyId: number,
+    body: BulkIssueBadgesRequest,
+  ): Promise<{ issued: number; skipped: number }> => {
+    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    const session = authStore.get();
+    const res = await fetch(`${apiBase}/companies/${companyId}/employees/bulk-badges`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+        ...(session ? { authorization: `Bearer ${session.accessToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = `Bulk badge issue failed (${res.status})`;
+      try {
+        const parsed = JSON.parse(text) as { error?: { message?: string } };
+        if (parsed.error?.message) message = parsed.error.message;
+      } catch {
+        /* not JSON — keep the default message */
+      }
+      throw new Error(message);
+    }
+    const issued = Number(res.headers.get('x-badges-issued') ?? '0');
+    const skipped = Number(res.headers.get('x-badges-skipped') ?? '0');
+    const html = await res.text();
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    // Revoke after the new tab is done loading; generous window.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    if (!win) throw new Error('Pop-up blocked — allow pop-ups to open the print sheet.');
+    return { issued, skipped };
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -419,4 +488,17 @@ export const admin = {
     const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
     return `${apiBase}/admin/companies/${companyId}/export-all`;
   },
+  updateStatus: () => apiFetch<UpdateStatusResponse>('/admin/update/status'),
+  updateCheck: () =>
+    apiFetch<UpdateCheckResponse>('/admin/update/check', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  updateRun: () =>
+    apiFetch<UpdateRunResponse>('/admin/update/run', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  updateLog: (since: number) =>
+    apiFetch<UpdateLogResponse>(`/admin/update/log?since=${Math.max(0, since)}`),
 };

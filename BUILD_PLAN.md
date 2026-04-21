@@ -132,6 +132,34 @@ Goal: three working login paths — admin/supervisor web, employee personal devi
 - [ ] Password reset flow (email-based, time-limited token)
 - [ ] Tests: kiosk token can't access admin endpoints; admin token can't clock in an employee without proper role
 
+## Phase 4.5 — QR badge authentication
+
+Goal: employees can punch at a kiosk by presenting a printed QR badge instead of typing a PIN. Anti-buddy-punching, not surveillance — no GPS, no photo, no biometric. Shipped as an additive column-level change to `employees` + one column on `company_settings` + one new table.
+
+- [x] Migration: `employees.badge_token_hash` / `badge_issued_at` / `badge_revoked_at` / `badge_version` (nullable, safe defaults)
+- [x] Migration: `company_settings.kiosk_auth_mode` ENUM `pin`|`qr`|`both` default `pin`
+- [x] Migration: partial unique index on `(company_id, badge_token_hash)` WHERE not revoked
+- [x] Migration: `badge_events` table (issue/revoke/scan_success/scan_failure) with retention-friendly indexes
+- [x] Token format `vpt1.{companyId}.{employeeId}.{version}.{nonce}.{hmac}`, HMAC-SHA256 truncated to 128 bits
+- [x] HMAC key from `BADGE_SIGNING_SECRET` env or HKDF from `SECRETS_ENCRYPTION_KEY` (dev works with no extra secret)
+- [x] `issueBadge` / `revokeBadge` / `bulkIssueBadges` service methods — all transactional, all audit-logged
+- [x] `verifyBadge` enforces HMAC → cross-company → active employee → not revoked → version match → hash match, logs every outcome
+- [x] Per-kiosk scan rate limit (20 scans/min → 60-sec cooldown) with `scan_failure(reason=rate_limited)` audit row
+- [x] Endpoints: `POST /employees/:id/badge/issue`, `POST /employees/:id/badge/revoke`, `GET /employees/:id/badge`, `GET /employees/:id/badge/events`, `POST /employees/bulk-badges`
+- [x] Kiosk-facing `POST /kiosk/scan` shares the same `KioskEmployeeContext` response shape as `verify-pin`
+- [x] `GET /kiosk/me` reports current `kiosk_auth_mode` so an admin flipping the setting propagates to paired tablets without re-pair
+- [x] Bulk-badge print sheet: server renders standalone HTML with embedded QR PNGs + `@media print`, admin uses Save-as-PDF (no puppeteer)
+- [x] Frontend kiosk UI driven by `kiosk_auth_mode`: `pin` unchanged, `qr` full-width scanner with PIN fallback, `both` scanner + fallback link
+- [x] `BadgeScanner` component: `navigator.mediaDevices.getUserMedia` + `@zxing/browser`, corner-bracket viewfinder with amber scan-line, green flash on success
+- [x] Error surfaces: camera denied / not found / decoded-but-invalid / decoded-but-revoked / rate-limit cooldown
+- [x] Pairing flow pre-requests camera permission when `kiosk_auth_mode` implies a scanner so admins catch "camera blocked" during setup, not at first punch
+- [x] Admin roster gets a Badge column with None / Active vN / Revoked state
+- [x] Employee drawer badge panel: Issue / Reissue / Revoke + last 10 events; one-time modal showing the QR + Download PNG
+- [x] Roster bulk action "Issue badges for selected" → opens the print sheet in a new tab
+- [x] Company settings → Punch rules: radio control for PIN / QR / Both with explanatory copy
+- [x] Tests: HMAC tamper / cross-company / wrong-version / revoked / rate-limiter (13 unit + 8 integration)
+- [x] Docs: `docs/kiosk-setup.md`, `docs/security.md`, `docs/admin-guide.md` badge addenda
+
 ## Phase 5 — Punch engine
 
 Goal: the core of the system — accurate, atomic, auditable punches from any source, with offline resilience.

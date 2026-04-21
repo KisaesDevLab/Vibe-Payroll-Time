@@ -27,10 +27,11 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 
 ## Run as non-root. tini reaps zombies and forwards signals so SIGTERM reaches
-## the Node process for graceful shutdown.
+## the Node process for graceful shutdown. UID pinned at 2000 so the host
+## installer can chown the update-control bind-mount to a predictable uid.
 RUN apk add --no-cache tini curl \
-    && addgroup -S vibept \
-    && adduser -S -G vibept -H -s /sbin/nologin vibept
+    && addgroup -S -g 2000 vibept \
+    && adduser -S -u 2000 -G vibept -H -s /sbin/nologin vibept
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json

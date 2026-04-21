@@ -1,6 +1,7 @@
 import {
   kioskClockInRequestSchema,
   kioskPunchRequestSchema,
+  kioskScanRequestSchema,
   kioskSwitchJobRequestSchema,
   kioskVerifyPinRequestSchema,
   pairKioskRequestSchema,
@@ -8,6 +9,7 @@ import {
 import { type Request, Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../../db/knex.js';
+import { verifyBadge } from '../../services/badges.js';
 import { pairKiosk } from '../../services/kiosk-pairing.js';
 import { kioskVerifyPin } from '../../services/kiosk-verify.js';
 import {
@@ -54,11 +56,23 @@ kioskRouter.post('/pair', pairLimiter, async (req, res, next) => {
 kioskRouter.get('/me', requireKioskDevice, async (req, res, next) => {
   try {
     if (!req.kioskDevice) return next(Unauthorized());
+    // Fetch the auth mode + company name with a single join so the tablet
+    // re-renders to the right scanner/keypad state on every reload and
+    // after any admin flip of the setting.
+    const row = await db('company_settings')
+      .join('companies', 'companies.id', 'company_settings.company_id')
+      .where({ 'company_settings.company_id': req.kioskDevice.companyId })
+      .first<{
+        kiosk_auth_mode: 'pin' | 'qr' | 'both';
+        name: string;
+      }>('company_settings.kiosk_auth_mode', 'companies.name');
     res.json({
       data: {
         id: req.kioskDevice.id,
         companyId: req.kioskDevice.companyId,
         name: req.kioskDevice.name,
+        companyName: row?.name ?? '',
+        kioskAuthMode: row?.kiosk_auth_mode ?? 'pin',
       },
     });
   } catch (err) {
@@ -72,6 +86,20 @@ kioskRouter.post('/verify-pin', requireKioskDevice, async (req, res, next) => {
     const body = kioskVerifyPinRequestSchema.parse(req.body);
     const ctx = { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null };
     const result = await kioskVerifyPin(req.kioskDevice, body.pin, ctx);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Scan a QR badge. Returns the same KioskEmployeeContext as /verify-pin so
+// the kiosk UI can hand it straight to the punch-action screen.
+kioskRouter.post('/scan', requireKioskDevice, async (req, res, next) => {
+  try {
+    if (!req.kioskDevice) return next(Unauthorized());
+    const body = kioskScanRequestSchema.parse(req.body);
+    const ctx = { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null };
+    const result = await verifyBadge(req.kioskDevice, body.payload, ctx);
     res.json({ data: result });
   } catch (err) {
     next(err);

@@ -22,7 +22,7 @@
     "@anthropic-ai/sdk": "^0.40.0",
     "@vibept/shared": "*",
     "archiver": "^7.0.1",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv-flow": "^4.1.0",
     "express": "^4.21.1",
@@ -36,6 +36,7 @@
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",
     "pino-pretty": "^11.3.0",
+    "qrcode": "^1.5.4",
     "tsx": "^4.19.2",
     "twilio": "^5.3.7",
     "zod": "^3.23.8"
@@ -49,6 +50,7 @@
     "@types/node": "^22.9.0",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.11.10",
+    "@types/qrcode": "^1.5.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.5"
   }

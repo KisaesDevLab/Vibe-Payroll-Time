@@ -324,6 +324,41 @@ function PunchSection({
           Personal devices (PWA) enabled
         </label>
       </fieldset>
+      <fieldset className="rounded-md border border-slate-200 p-4">
+        <legend className="px-2 text-xs font-medium uppercase text-slate-500">
+          Kiosk authentication
+        </legend>
+        <p className="mb-3 text-xs text-slate-500">
+          How employees identify themselves at the tablet. QR badges are more forgery-resistant than
+          a short PIN and faster at a shift change.
+        </p>
+        {(['pin', 'qr', 'both'] as const).map((mode) => (
+          <label key={mode} className="mt-2 flex items-start gap-3 text-sm text-slate-700">
+            <input
+              type="radio"
+              className="mt-1 h-4 w-4"
+              name="kioskAuthMode"
+              value={mode}
+              defaultChecked={settings.kioskAuthMode === mode}
+              onChange={() => setForm((f) => ({ ...f, kioskAuthMode: mode }))}
+            />
+            <span>
+              <strong>
+                {mode === 'pin' && 'PIN only'}
+                {mode === 'qr' && 'QR badge only'}
+                {mode === 'both' && 'Both'}
+              </strong>
+              <span className="ml-2 text-xs text-slate-500">
+                {mode === 'pin' && '4–6 digit keypad at the tablet.'}
+                {mode === 'qr' &&
+                  'Camera scanner, printed badge. Falls back to PIN only if the camera is unavailable.'}
+                {mode === 'both' &&
+                  'Scanner and keypad both visible; employees pick whichever is faster.'}
+              </span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
     </SectionShell>
   );
 }

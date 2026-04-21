@@ -2,8 +2,16 @@ import { Router } from 'express';
 import { db } from '../../db/knex.js';
 import { env } from '../../config/env.js';
 import { exportCompanyAll } from '../../services/backup-export.js';
+import {
+  checkLatestRelease,
+  getRunningVersion,
+  isUpdateInProgress,
+  readLastRun,
+  readLogChunk,
+  requestUpdate,
+} from '../../services/update-manager.js';
 import { VERSION, GIT_SHA, BUILD_DATE } from '../../version.js';
-import { NotFound, Unauthorized } from '../errors.js';
+import { Conflict, NotFound, Unauthorized } from '../errors.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 
 export const adminRouter: Router = Router();
@@ -137,3 +145,65 @@ adminRouter.get(
     }
   },
 );
+
+// ---- Self-service updates (SuperAdmin only) ----
+// Cheap-always-fast: running version + whether an update is mid-flight.
+// Safe to poll every ~1s while an update is running.
+adminRouter.get('/update/status', requireAuth, requireSuperAdmin, (_req, res, next) => {
+  try {
+    res.json({
+      data: {
+        running: getRunningVersion(),
+        inProgress: isUpdateInProgress(),
+        lastRun: readLastRun(),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Hits GitHub's public Releases API. Returns null+reachable:false on
+// network failure so the UI can say "couldn't reach GitHub" instead of
+// crashing on an air-gapped appliance.
+adminRouter.post('/update/check', requireAuth, requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const result = await checkLatestRelease();
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Writes update-control/request.json; the host-side systemd path unit
+// picks it up and runs update.sh. Returns 202 — this is a queued action,
+// not a synchronous one. 409 if an update is already running.
+adminRouter.post('/update/run', requireAuth, requireSuperAdmin, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const result = await requestUpdate({
+      userId: req.user.id,
+      userEmail: req.user.email,
+    });
+    res.status(202).json({ data: result });
+  } catch (err) {
+    if (err instanceof Error && (err as { code?: string }).code === 'conflict') {
+      return next(Conflict(err.message));
+    }
+    next(err);
+  }
+});
+
+// Byte-offset log tail. Query `since=<last-offset>` to fetch the next
+// chunk. `complete` flips true when no update is in progress AND the
+// client has consumed the whole file.
+adminRouter.get('/update/log', requireAuth, requireSuperAdmin, (req, res, next) => {
+  try {
+    const rawSince = req.query.since;
+    const since = typeof rawSince === 'string' ? Number.parseInt(rawSince, 10) : 0;
+    const chunk = readLogChunk(Number.isFinite(since) && since >= 0 ? since : 0);
+    res.json({ data: chunk });
+  } catch (err) {
+    next(err);
+  }
+});

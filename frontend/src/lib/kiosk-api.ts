@@ -2,6 +2,7 @@ import type {
   CurrentPunchResponse,
   KioskClockInRequest,
   KioskEmployeeContext,
+  KioskMeResponse,
   KioskPunchRequest,
   KioskSwitchJobRequest,
   PairKioskRequest,
@@ -62,11 +63,24 @@ export const kioskApi = {
       body: JSON.stringify(body),
     }),
 
+  me: () =>
+    fetchJson<KioskMeResponse>('/kiosk/me', {
+      method: 'GET',
+      headers: deviceHeader(),
+    }),
+
   verifyPin: (pin: string) =>
     fetchJson<KioskEmployeeContext>('/kiosk/verify-pin', {
       method: 'POST',
       headers: deviceHeader(),
       body: JSON.stringify({ pin }),
+    }),
+
+  scanBadge: (payload: string) =>
+    fetchJson<KioskEmployeeContext>('/kiosk/scan', {
+      method: 'POST',
+      headers: deviceHeader(),
+      body: JSON.stringify({ payload }),
     }),
 
   // Punch actions — each requires the employee session token minted by

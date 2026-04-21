@@ -45,6 +45,8 @@ Identical to Vibe Trial Balance / Vibe MyBooks conventions unless noted.
 | Ingress       | Cloudflare Tunnel (`cloudflared`) and/or Tailscale Funnel, bundled as sidecar containers                                                |
 | Reverse proxy | Caddy (auto-TLS for non-tunnel deployments)                                                                                             |
 | Deployment    | Docker Compose, distributed as appliance for GMKtec NucBox M6 (Ubuntu Server 24.04 LTS)                                                 |
+| QR decoding   | `@zxing/library` + `@zxing/browser` on the tablet; `qrcode` npm package server-side for generation                                      |
+| PDF / print   | Print-based HTML with `@media print` — no puppeteer / headless chromium (same discipline as Phase 13 PDF exports)                       |
 
 ---
 
@@ -99,7 +101,7 @@ Three distinct login paths:
 
 1. **SuperAdmin / CompanyAdmin / Supervisor** → web login (email + password, JWT)
 2. **Employee personal-device** → web login (magic link or password), PWA install on employee phone
-3. **Kiosk mode** → device-paired kiosk token, employee enters PIN (4–6 digits) at shared tablet
+3. **Kiosk mode** → device-paired kiosk token. Employee identifies with PIN (4–6 digits), QR badge scan, or both — admin picks `kiosk_auth_mode` per company. Badge payloads are HMAC-signed with an appliance-wide secret (derived from `SECRETS_ENCRYPTION_KEY` via HKDF, overridable with `BADGE_SIGNING_SECRET`) and verified server-side; raw payloads exist only on the printed badge.
 
 Admin toggles per-company: "personal device only", "kiosk only", "both allowed". Default for internal path = personal device; default for client-portal = both.
 
@@ -236,6 +238,10 @@ docker compose -f docker-compose.prod.yml build
 - **Don't leak `company_id` scoping.** Every service method must take `companyId` as an explicit argument, never infer from request context deep in the call stack.
 - **Don't write AI features that take write actions without confirmation.** NL corrections always show diff preview. Support chat has zero write capability.
 - **Don't forget the audit trail on every edit path.** Every function that modifies `time_entry` goes through one choke point that writes the audit row.
+- **Don't store raw badge payloads server-side.** Only `sha256(payload)` lives in the DB (on `employees.badge_token_hash`); the plaintext payload exists exactly once in the API response to `issueBadge` and then only on the printed badge. If the admin dismisses the post-issue modal, reissue — don't try to recover the old one.
+- **Don't skip the `badge_version` check.** Reissuing a badge must invalidate every prior physical badge immediately, not on next verification. `verifyBadge` compares the parsed version to `employees.badge_version` after the HMAC check.
+- **Don't request camera permission outside of kiosk pairing.** A personal-device PWA should never ask for camera — badges are kiosk-only for v1.
+- **Don't forget the audit event on scan failures.** Silent failures are how shared-badge abuse goes undetected; every bad scan — bad HMAC, cross-company, revoked, version mismatch, rate-limited — logs to `badge_events` with its reason.
 
 ---
 

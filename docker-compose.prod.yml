@@ -72,6 +72,12 @@ services:
     container_name: vibept-backend
     restart: unless-stopped
     environment: *backend-env
+    # Shared with the host so the self-service updater (SuperAdmin UI)
+    # can drop a request file that a systemd path unit picks up. The
+    # host-side update-from-request.sh runs update.sh and streams
+    # stdout/stderr back to log.txt, which the backend tails for the UI.
+    volumes:
+      - ${UPDATE_CONTROL_DIR:-./update-control}:/app/update-control
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,7 +128,10 @@ services:
     container_name: vibept-cloudflared
     restart: unless-stopped
     profiles: ['cloudflare']
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}
+    # :- (not :?) so operators choosing a different profile don't need to
+    # set tunnel creds just to satisfy compose interpolation. cloudflared
+    # fails fast with a clear error if the placeholder reaches it.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-MISSING_CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - caddy
     networks: [internal]
@@ -140,7 +149,10 @@ services:
     profiles: ['tailscale']
     hostname: ${TAILSCALE_HOSTNAME:-vibept}
     environment:
-      TS_AUTHKEY: ${TAILSCALE_AUTHKEY:?set TAILSCALE_AUTHKEY}
+      # :- (not :?) so operators choosing a different profile don't need to
+      # set an auth key. Tailscale fails fast with a clear error if the
+      # placeholder reaches it.
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY:-MISSING_TAILSCALE_AUTHKEY}
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: 'true'
       TS_EXTRA_ARGS: --advertise-tags=tag:vibept-appliance

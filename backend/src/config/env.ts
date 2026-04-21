@@ -1,6 +1,22 @@
 import 'dotenv-flow/config';
 import { z } from 'zod';
 
+/**
+ * Optional string that treats empty / whitespace-only input as unset.
+ * Without this, `.env.example` ships many keys as `FOO=` and the literal
+ * empty string survives to runtime, defeating `??` fallbacks and (for
+ * `.email()` fields) failing zod validation at boot.
+ */
+const optionalEnvString = () =>
+  z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      const trimmed = v.trim();
+      return trimmed === '' ? undefined : trimmed;
+    });
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
@@ -11,7 +27,7 @@ const envSchema = z.object({
   BACKEND_HOST: z.string().default('0.0.0.0'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
 
-  DATABASE_URL: z.string().optional(),
+  DATABASE_URL: optionalEnvString(),
   POSTGRES_HOST: z.string().default('localhost'),
   POSTGRES_PORT: z.coerce.number().int().positive().default(5432),
   POSTGRES_USER: z.string().default('vibept'),
@@ -22,6 +38,12 @@ const envSchema = z.object({
   SECRETS_ENCRYPTION_KEY: z
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, 'SECRETS_ENCRYPTION_KEY must be 32 bytes hex (64 chars)'),
+
+  /** Appliance-wide HMAC key for signing QR badge payloads. Rotating this
+   *  invalidates every existing badge; recovery path is bulk-reissue via
+   *  the admin UI. Optional in dev — derived from SECRETS_ENCRYPTION_KEY
+   *  via HKDF when unset, same pattern as the PIN fingerprint key. */
+  BADGE_SIGNING_SECRET: optionalEnvString(),
 
   MIGRATE_ON_BOOT: z
     .string()
@@ -35,8 +57,8 @@ const envSchema = z.object({
   // ---------- EmailIt (appliance-wide fallback) ----------
   /** If set, used when a company has not configured its own EmailIt
    *  API key. Leave blank to make email a per-company opt-in. */
-  EMAILIT_API_KEY: z.string().optional(),
-  EMAILIT_FROM_EMAIL: z.string().email().optional(),
+  EMAILIT_API_KEY: optionalEnvString(),
+  EMAILIT_FROM_EMAIL: optionalEnvString().pipe(z.string().email().optional()),
   EMAILIT_FROM_NAME: z.string().default('Vibe Payroll Time'),
   /** Override if EmailIt ever publishes a different base URL. */
   EMAILIT_API_BASE_URL: z.string().default('https://api.emailit.com/v1'),
@@ -51,9 +73,9 @@ const envSchema = z.object({
 
   // ---------- AI (appliance-wide fallback) ----------
   AI_PROVIDER_DEFAULT: z.enum(['anthropic', 'openai_compatible', 'ollama']).default('anthropic'),
-  AI_API_KEY: z.string().optional(),
-  AI_MODEL: z.string().optional(),
-  AI_BASE_URL: z.string().optional(),
+  AI_API_KEY: optionalEnvString(),
+  AI_MODEL: optionalEnvString(),
+  AI_BASE_URL: optionalEnvString(),
 
   // ---------- Licensing ----------
   /** Master switch. When false (the default), the license middleware
@@ -67,11 +89,11 @@ const envSchema = z.object({
 
   /** Override the bundled kisaes-license-portal RSA public key (PEM).
    *  Leave blank in dev; set in prod via the appliance installer. */
-  LICENSE_PUBKEY_PEM: z.string().optional(),
+  LICENSE_PUBKEY_PEM: optionalEnvString(),
 
   /** URL of the license portal's heartbeat endpoint. When unset the
    *  daily heartbeat cron is a no-op, useful for air-gapped previews. */
-  LICENSE_PORTAL_HEARTBEAT_URL: z.string().optional(),
+  LICENSE_PORTAL_HEARTBEAT_URL: optionalEnvString(),
 });
 
 const parsed = envSchema.safeParse(process.env);

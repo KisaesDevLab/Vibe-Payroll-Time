@@ -1,0 +1,14 @@
+[Unit]
+Description=Vibe Payroll Time — watch for self-service update requests
+Documentation=https://github.com/KisaesDevLab/Vibe-Payroll-Time
+After=vibept.service
+
+[Path]
+# Fire vibept-updater.service when the SuperAdmin UI drops a request file.
+# PathChanged (not PathExists) catches repeat triggers after the service
+# removes the file at the end of each run.
+PathChanged=/opt/vibept/update-control/request.json
+Unit=vibept-updater.service
+
+[Install]
+WantedBy=multi-user.target

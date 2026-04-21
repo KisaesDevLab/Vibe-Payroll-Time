@@ -76,3 +76,44 @@ billable or unbillable — it's just a label, since this app tracks hours only
 
 If the appliance itself is down, contact your SuperAdmin. Employees don't need
 to do anything — their queued punches wait for the appliance to come back.
+
+## QR badges
+
+### Turning it on
+
+**Settings → Punch rules → Kiosk authentication.** Choose:
+
+- **PIN only** (default) — 4-6 digit keypad.
+- **QR badge only** — camera-based scan; PIN fallback appears only if the
+  camera is unavailable.
+- **Both** — scanner + "Use PIN" link; whichever the employee does first wins.
+
+Flipping this setting takes effect on paired tablets within a minute without
+re-pairing.
+
+### Issuing a badge
+
+**Employees → row → Badge panel → Issue badge.** A modal shows the QR code
+on-screen with **Download PNG** and **Print** buttons. Dismissing the modal
+is non-recoverable — if you lose the code you must reissue, which invalidates
+the old physical badge.
+
+### Bulk issue
+
+Tick the rows you want on the Employees page, then **Issue badges for N…**.
+A new tab opens with a print-ready sheet (2-up Avery 5392-style layout). Use
+your browser's Save-as-PDF or Print dialog. Every badge on the sheet is a
+newly minted `vN+1` — any pre-existing badge for those employees stops
+scanning.
+
+### Revoking
+
+**Employees → row → Badge panel → Revoke.** Instant. The kiosk shows "Badge
+is no longer active — use your PIN or see your manager" on the next scan and
+writes an audit row.
+
+### Activity
+
+The Badge panel shows the last 10 events per employee (issue / revoke /
+successful scans / failed scans with reason). Useful for tracking a lost
+badge or catching shared-badge abuse.

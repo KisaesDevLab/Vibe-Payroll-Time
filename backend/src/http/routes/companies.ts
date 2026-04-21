@@ -1,4 +1,5 @@
 import {
+  bulkIssueBadgesRequestSchema,
   createCompanyRequestSchema,
   createEmployeeRequestSchema,
   createJobRequestSchema,
@@ -6,6 +7,7 @@ import {
   csvImportRequestSchema,
   inviteMembershipRequestSchema,
   renameKioskDeviceRequestSchema,
+  revokeBadgeRequestSchema,
   updateCompanyRequestSchema,
   updateCompanySettingsRequestSchema,
   updateEmployeeRequestSchema,
@@ -13,6 +15,14 @@ import {
 } from '@vibept/shared';
 import { type Request, type Response, type NextFunction, Router } from 'express';
 import { z } from 'zod';
+import {
+  bulkIssueBadges,
+  getBadgeState,
+  issueBadge,
+  listBadgeEventsForEmployee,
+  revokeBadge,
+} from '../../services/badges.js';
+import { renderBadgeSheet } from '../../services/badge-sheet.js';
 import {
   createCompany,
   listCompanies,
@@ -335,6 +345,123 @@ companiesRouter.post(
         length,
       );
       res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Badges
+// ---------------------------------------------------------------------------
+
+companiesRouter.get(
+  '/:companyId/employees/:employeeId/badge',
+  requireAuth,
+  requireCompanyRole(['company_admin', 'supervisor'], {
+    companyIdFrom: companyIdFromParams,
+  }),
+  async (req, res, next) => {
+    try {
+      const state = await getBadgeState(companyIdFromParams(req), Number(req.params.employeeId));
+      res.json({ data: state });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.post(
+  '/:companyId/employees/:employeeId/badge/issue',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const result = await issueBadge(
+        companyIdFromParams(req),
+        Number(req.params.employeeId),
+        req.user.id,
+      );
+      res.status(201).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.post(
+  '/:companyId/employees/:employeeId/badge/revoke',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const body = revokeBadgeRequestSchema.parse(req.body ?? {});
+      const state = await revokeBadge(
+        companyIdFromParams(req),
+        Number(req.params.employeeId),
+        req.user.id,
+        body.reason,
+      );
+      res.json({ data: state });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.get(
+  '/:companyId/employees/:employeeId/badge/events',
+  requireAuth,
+  requireCompanyRole(['company_admin', 'supervisor'], {
+    companyIdFrom: companyIdFromParams,
+  }),
+  async (req, res, next) => {
+    try {
+      const events = await listBadgeEventsForEmployee(
+        companyIdFromParams(req),
+        Number(req.params.employeeId),
+      );
+      res.json({ data: events });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Bulk issue. Returns the rendered HTML sheet directly so the admin can
+// hit File → Print to produce the badges in one round trip. The sheet
+// embeds every just-minted payload, so there is no second call that could
+// leak or re-read them.
+companiesRouter.post(
+  '/:companyId/employees/bulk-badges',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const body = bulkIssueBadgesRequestSchema.parse(req.body);
+      const companyId = companyIdFromParams(req);
+      const result = await bulkIssueBadges(companyId, body.employeeIds, req.user.id);
+      const company = await requireCompany(companyId);
+      const html = await renderBadgeSheet({
+        companyName: company.name,
+        entries: result.issued.map((e) => ({
+          employeeId: e.employeeId,
+          firstName: e.firstName,
+          lastName: e.lastName,
+          employeeNumber: e.employeeNumber,
+          payload: e.payload,
+          version: e.version,
+        })),
+      });
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      // Don't leak payloads through the proxy or browser caches.
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Badges-Issued', String(result.issued.length));
+      res.setHeader('X-Badges-Skipped', String(result.skipped.length));
+      res.send(html);
     } catch (err) {
       next(err);
     }

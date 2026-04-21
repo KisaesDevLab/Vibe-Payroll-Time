@@ -86,6 +86,68 @@ Four levels, detailed in `docs/restore.md`:
 3. **Weekly S3 copy** (off-site, customer-configured)
 4. **On-demand export-everything ZIP** (logical, per-company, SuperAdmin)
 
+## QR badge authentication
+
+Badges are an auth feature, not a surveillance feature — no GPS, no photo, no
+biometric, no location tracking.
+
+### Token format
+
+`vpt1.{companyId}.{employeeId}.{badgeVersion}.{nonce}.{hmac}` where:
+
+- The HMAC is SHA-256 over the preceding dotted fields, truncated to 128 bits
+  (base64url). Signed with a 32-byte appliance-wide key derived from
+  `SECRETS_ENCRYPTION_KEY` via HKDF, overridable with `BADGE_SIGNING_SECRET`.
+- `nonce` is 8 random bytes (64 bits) so two payloads for the same
+  `(company, employee, version)` triple hash differently.
+- `badge_version` starts at 1 on first issue and increments monotonically. The
+  server stores only `sha256(payload)` in `employees.badge_token_hash`; the
+  plaintext payload exists exactly once (in the `issueBadge` response) and
+  then only on the printed badge.
+
+### Verification order
+
+`verifyBadge` on the kiosk checks, in order:
+
+1. Per-kiosk rate limit (20 scans/min; 21st trips a 60-sec cooldown).
+2. HMAC validity.
+3. Payload's `companyId` matches the scanning kiosk's company.
+4. Employee row exists and is active.
+5. Employee's badge isn't revoked.
+6. Payload's `badge_version` matches the employee's current version.
+7. Stored `badge_token_hash` matches `sha256(payload)`.
+
+Every outcome — success OR failure — writes a `badge_events` row with the
+reason. A spike of `scan_failure(reason='version_mismatch')` means someone is
+presenting an old laminated badge after a reissue; a spike of `bad_hmac`
+means someone is scanning random QR codes.
+
+### Key rotation
+
+Rotating `BADGE_SIGNING_SECRET` (or its HKDF source) invalidates every badge
+in the appliance. Recovery is bulk-reissue: **Employees → select all →
+Issue badges for N**. There is no less-disruptive rotation; the security
+argument is that this is a five-minute problem to fix, not a production
+emergency.
+
+### What an attacker with a photo of a badge can do
+
+**Punch in as that employee at a kiosk in the same company** — until the
+badge is revoked or reissued. Nothing more. Badges cannot:
+
+- Be scanned from a personal device (only paired kiosks).
+- Reach admin endpoints (kiosk JWT scope is punch-only).
+- Be brute-forced (21 bad scans = 60-sec lockout; the HMAC key space is
+  128 bits).
+- Be reused across companies (companyId is HMAC-bound; cross-company scans
+  are rejected server-side before the employee lookup).
+- Survive a revoke or reissue — the next scan fails loudly and logs a
+  `scan_failure` audit row.
+
+The risk model for a stolen badge is the same as a stolen 4-6 digit PIN,
+except the PIN has ~1M possibilities and the badge is a 128-bit HMAC key
+scoped to one employee.
+
 ## Reporting a vulnerability
 
 Email **security@kisaes.com** with "Vibe Payroll Time" in the subject. We

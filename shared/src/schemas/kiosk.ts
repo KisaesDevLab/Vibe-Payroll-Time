@@ -44,8 +44,19 @@ export const pairKioskResponseSchema = z.object({
   deviceToken: z.string(),
   device: kioskDeviceSchema,
   companyName: z.string(),
+  /** Auth mode the tablet should render from the moment pairing succeeds. */
+  kioskAuthMode: z.enum(['pin', 'qr', 'both']),
 });
 export type PairKioskResponse = z.infer<typeof pairKioskResponseSchema>;
+
+export const kioskMeResponseSchema = z.object({
+  id: z.number().int().positive(),
+  companyId: z.number().int().positive(),
+  name: z.string(),
+  companyName: z.string(),
+  kioskAuthMode: z.enum(['pin', 'qr', 'both']),
+});
+export type KioskMeResponse = z.infer<typeof kioskMeResponseSchema>;
 
 export const kioskVerifyPinRequestSchema = z.object({
   pin: z.string().min(4).max(6).regex(/^\d+$/, 'PIN must be numeric'),

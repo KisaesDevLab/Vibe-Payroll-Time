@@ -13,6 +13,7 @@ interface SettingsRow {
   allow_self_approve: boolean;
   kiosk_enabled: boolean;
   personal_device_enabled: boolean;
+  kiosk_auth_mode: CompanySettings['kioskAuthMode'];
   twilio_account_sid: string | null;
   twilio_auth_token_encrypted: string | null;
   twilio_from_number: string | null;
@@ -33,6 +34,7 @@ function rowToSettings(row: SettingsRow): CompanySettings {
     allowSelfApprove: row.allow_self_approve,
     kioskEnabled: row.kiosk_enabled,
     personalDeviceEnabled: row.personal_device_enabled,
+    kioskAuthMode: row.kiosk_auth_mode,
     twilioAccountSid: row.twilio_account_sid,
     twilioFromNumber: row.twilio_from_number,
     twilioAuthTokenConfigured: !!row.twilio_auth_token_encrypted,
@@ -84,6 +86,7 @@ export async function updateCompanySettings(
     if (patch.kioskEnabled !== undefined) updates.kiosk_enabled = patch.kioskEnabled;
     if (patch.personalDeviceEnabled !== undefined)
       updates.personal_device_enabled = patch.personalDeviceEnabled;
+    if (patch.kioskAuthMode !== undefined) updates.kiosk_auth_mode = patch.kioskAuthMode;
 
     if (patch.twilioAccountSid !== undefined) updates.twilio_account_sid = patch.twilioAccountSid;
     if (patch.twilioFromNumber !== undefined) updates.twilio_from_number = patch.twilioFromNumber;

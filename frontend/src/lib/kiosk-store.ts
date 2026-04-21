@@ -13,6 +13,10 @@ export interface StoredKiosk {
   deviceName: string;
   companyId: number;
   companyName: string;
+  /** Cached at pair time; refreshed via GET /kiosk/me on load so an admin
+   *  flipping `kiosk_auth_mode` propagates without re-pairing. Defaults to
+   *  `pin` to preserve the Phase 4 behavior when the field is absent. */
+  kioskAuthMode?: 'pin' | 'qr' | 'both';
 }
 
 type Listener = (kiosk: StoredKiosk | null) => void;

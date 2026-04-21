@@ -49,3 +49,48 @@ this tablet** — the kiosk token is all it needs.
    server.
 2. On the tablet, clear site data for the appliance URL to wipe the device
    token. (Optional — the server-side revocation is the one that matters.)
+
+## QR badge mode (Phase 4.5)
+
+Any company can flip **Company settings → Punch rules → Kiosk authentication**
+to `QR badge only` or `Both`. The tablet re-renders to a camera viewfinder —
+no re-pairing required.
+
+### Camera permission
+
+Pairing a tablet for a company in `QR` or `Both` mode triggers a
+`getUserMedia` permission prompt as part of the pair flow. Grant it there so
+you discover blocked cameras during setup, not at first punch. If it was
+denied you'll see "Camera access is blocked" on the scan screen; re-pair or
+open site settings to grant access.
+
+### Recommended tablets
+
+- Any iPad from 2019 onward — front camera, browser `getUserMedia` support.
+- Amazon Fire HD 10 (9th gen+) with Silk or Firefox — cheap, good-enough
+  camera for high-contrast QR.
+- Samsung Galaxy Tab A / A8 — well-supported, inexpensive, fine camera.
+- Desktops and Chromebooks with USB webcams also work; any webcam that
+  produces ≥ VGA-quality video is fine.
+
+### Printing badges
+
+From **Employees** page: tick the rows you want, click **Issue badges for N…**.
+A new browser tab opens with the print sheet (Avery 5392-sized 2-up layout).
+Use the browser's Save-as-PDF or Print dialog.
+
+For a single employee: open the employee drawer → **Issue badge**. The modal
+shows the QR on-screen with a Download PNG button; dismissing it is
+non-recoverable, so save or print first.
+
+**Laminate vs. bare paper:** printed cardstock + clear 3mil lamination tolerates
+a shift's worth of pocket wear. Bare paper works for 1-2 weeks; credential
+holders help. Badges use level-H QR error correction, so a small smudge or
+crease won't break scanning.
+
+### Revoking a lost badge
+
+**Employees → row → Badge panel → Revoke.** The printed card stops scanning
+the next attempt. Reissuing on the same employee generates a new `vN+1` badge —
+any older card (including the revoked one) is rejected at the kiosk with an
+amber "Badge is no longer active" toast.

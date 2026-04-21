@@ -47,6 +47,7 @@ export const companySettingsSchema = z.object({
   allowSelfApprove: z.boolean(),
   kioskEnabled: z.boolean(),
   personalDeviceEnabled: z.boolean(),
+  kioskAuthMode: z.enum(['pin', 'qr', 'both']),
   twilioAccountSid: z.string().nullable(),
   twilioFromNumber: z.string().nullable(),
   /** True iff the encrypted blob is populated. Plaintext is never returned. */
@@ -68,6 +69,7 @@ export const updateCompanySettingsRequestSchema = z
     allowSelfApprove: z.boolean(),
     kioskEnabled: z.boolean(),
     personalDeviceEnabled: z.boolean(),
+    kioskAuthMode: z.enum(['pin', 'qr', 'both']),
     twilioAccountSid: z.string().max(64).nullable(),
     /** Provide a new plaintext token; null clears the stored secret. Omit to
      *  leave the existing encrypted value untouched. */

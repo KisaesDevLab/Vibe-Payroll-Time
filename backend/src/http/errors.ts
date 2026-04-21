@@ -23,6 +23,8 @@ export const Forbidden = (message = 'Forbidden') => new HttpError(403, 'forbidde
 export const NotFound = (message = 'Not found') => new HttpError(404, 'not_found', message);
 export const Conflict = (message: string, details?: unknown) =>
   new HttpError(409, 'conflict', message, details);
+export const TooManyRequests = (message = 'Too many requests') =>
+  new HttpError(429, 'rate_limited', message);
 
 export function notFoundHandler(_req: Request, res: Response): void {
   res.status(404).json({

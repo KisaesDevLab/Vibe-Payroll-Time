@@ -22,14 +22,28 @@ export function KioskPairPage() {
 
   const pair = useMutation({
     mutationFn: () => kioskApi.pair({ code, deviceName }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       kioskStore.set({
         deviceToken: data.deviceToken,
         deviceId: data.device.id,
         deviceName: data.device.name,
         companyId: data.device.companyId,
         companyName: data.companyName,
+        kioskAuthMode: data.kioskAuthMode,
       });
+      // If the company expects a camera, ask for permission right away so
+      // any failure surfaces during pairing (not at first punch).
+      if (data.kioskAuthMode === 'qr' || data.kioskAuthMode === 'both') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+          });
+          // We only needed permission; release the tracks immediately.
+          for (const track of stream.getTracks()) track.stop();
+        } catch {
+          // The scanner UI surfaces the camera-denied state on first render.
+        }
+      }
       navigate('/kiosk', { replace: true });
     },
   });
