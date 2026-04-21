@@ -69,6 +69,38 @@ export async function markLoginSuccess(userId: number): Promise<void> {
   });
 }
 
+/**
+ * Heal any `employees` rows whose email matches this user but which
+ * were created without a `user_id` pointer. Runs on every auth mint +
+ * every write-path that creates or changes a user↔company relationship,
+ * so no matter what order the admin adds things (employee first vs
+ * team member first, single create vs bulk CSV vs appliance-users
+ * bulk reconcile), the link always establishes and never goes stale.
+ *
+ * The underlying fix for create/update/invite is done at the service
+ * layer (employees.ts and memberships.ts); this is the safety net that
+ * catches anything those paths don't anticipate, including future new
+ * paths that forget to handle the link.
+ *
+ * Idempotent: the UPDATE is a no-op when there are no unlinked
+ * employees for this email.
+ *
+ * Accepts an optional Knex.Transaction so callers already inside a
+ * transaction don't need a second connection.
+ */
+export async function healEmployeeLinksForUser(
+  userId: number,
+  email: string,
+  trx?: Knex.Transaction,
+): Promise<void> {
+  const q = trx ?? db;
+  await q('employees')
+    .whereRaw('LOWER(email) = LOWER(?)', [email])
+    .whereNull('user_id')
+    .where('status', 'active')
+    .update({ user_id: userId, updated_at: q.fn.now() });
+}
+
 export interface MembershipSummary {
   companyId: number;
   companyName: string;

@@ -217,6 +217,14 @@ export async function updateEmployee(
       // stay linked to the old user (or stay unlinked despite a
       // matching user existing).
       updates.user_id = patch.email === null ? null : await findUserIdByEmail(trx, patch.email);
+    } else if (existing.user_id === null && existing.email) {
+      // Opportunistic heal: the email didn't change this edit, but the
+      // row is currently unlinked. If a user has been created in the
+      // meantime with a matching email (e.g. invited via a path that
+      // skipped the membership-level backfill), any admin save on this
+      // row is a cheap place to catch up. No-op when no user matches.
+      const linked = await findUserIdByEmail(trx, existing.email);
+      if (linked !== null) updates.user_id = linked;
     }
     if (patch.phone !== undefined) {
       // Canonicalize on write so all downstream SMS paths can assume

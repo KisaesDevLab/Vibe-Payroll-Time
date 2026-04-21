@@ -10,6 +10,7 @@ import { issueAccessToken, issueRefreshToken, revokeAllForUser } from './tokens.
 import {
   findActiveUserByEmail,
   findUserById,
+  healEmployeeLinksForUser,
   listMemberships,
   markLoginSuccess,
   type UserRow,
@@ -89,6 +90,13 @@ export async function loginWithPassword(
     });
     throw Unauthorized('Invalid email or password');
   }
+
+  // Self-heal any employees rows that match this user by email but
+  // were inserted with user_id=NULL (older data, or a future path that
+  // forgets the link). Runs before mintSession so the AuthUser payload
+  // this login returns already reflects `isEmployee` correctly for any
+  // newly-linked rows.
+  await healEmployeeLinksForUser(user.id, user.email);
 
   const session = await mintSession(user, body.rememberDevice ?? false, ctx);
   await markLoginSuccess(user.id);

@@ -11,6 +11,7 @@ import type {
 } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { NotFound } from '../http/errors.js';
+import { healEmployeeLinksForUser } from './users.js';
 
 /**
  * SuperAdmin cross-company view of every user on the appliance and
@@ -106,7 +107,7 @@ export async function reconcileMemberships(
   body: BulkMembershipsRequest,
 ): Promise<BulkMembershipsResponse> {
   return db.transaction(async (trx) => {
-    const user = await trx('users').where({ id: userId }).first<{ id: number }>();
+    const user = await trx('users').where({ id: userId }).first<{ id: number; email: string }>();
     if (!user) throw NotFound('User not found');
 
     const current = await trx('company_memberships')
@@ -147,6 +148,16 @@ export async function reconcileMemberships(
         await trx('company_memberships').where({ id: existing.id }).update({ role: want.role });
         roleChanged += 1;
       }
+    }
+
+    // SuperAdmin adding this user to a new company via bulk reconcile
+    // can surface an employees row that was created before the user
+    // was a member here (team member was added via a DIFFERENT path,
+    // or the employee was created expecting the user but the link
+    // never established). Heal any such rows after the membership
+    // writes so punch / timesheet access works immediately.
+    if (added > 0) {
+      await healEmployeeLinksForUser(userId, user.email, trx);
     }
 
     return { added, removed, roleChanged };

@@ -15,7 +15,7 @@ import { recordAuthEvent } from './auth-events.js';
 import { buildAuthUser } from './auth.js';
 import { notify } from './notifications/service.js';
 import { issueAccessToken, issueRefreshToken } from './tokens.js';
-import { findUserById, type UserRow } from './users.js';
+import { findUserById, healEmployeeLinksForUser, type UserRow } from './users.js';
 
 /**
  * Passwordless login. One endpoint mints a token + emails/texts a link;
@@ -264,6 +264,11 @@ export async function consumeMagicLink(input: ConsumeMagicLinkInput): Promise<Au
 
     const user = await findUserById(row.user_id);
     if (!user) throw Unauthorized('Invalid or expired login link');
+
+    // Same self-heal as password login — any employees row that
+    // matches this user by email but was inserted without a user_id
+    // gets linked here so the mint below reflects isEmployee=true.
+    await healEmployeeLinksForUser(user.id, user.email, trx);
 
     const access = issueAccessToken(
       {

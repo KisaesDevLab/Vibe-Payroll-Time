@@ -5,6 +5,7 @@ import type { CompanyRole, InviteMembershipRequest, Membership } from '@vibept/s
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, NotFound } from '../http/errors.js';
 import { hashPassword } from './passwords.js';
+import { healEmployeeLinksForUser } from './users.js';
 
 interface MembershipRow {
   id: number;
@@ -87,11 +88,9 @@ export async function inviteMembership(
     // and the employee can't punch in" because the employee row was
     // created with `user_id = NULL`. Link them here so the inverse
     // create-order (employee first, then team member) also works.
-    await trx('employees')
-      .whereRaw('LOWER(email) = LOWER(?)', [user.email])
-      .whereNull('user_id')
-      .where('status', 'active')
-      .update({ user_id: user.id, updated_at: trx.fn.now() });
+    // Shared with loginWithPassword / consumeMagicLink /
+    // reconcileMemberships via the same helper.
+    await healEmployeeLinksForUser(user.id, user.email, trx);
 
     return rowToMembership({ ...inserted, email: user.email });
   });
