@@ -1,0 +1,6 @@
+Vibe Payroll Time License Audit
+Timestamp: 2026-04-21 16:55:23
+Failures: 0  |  Warnings: 0
+
+Run ./scripts/license-audit.sh for full details.
+See scripts/license-policy.json for policy and known issues.

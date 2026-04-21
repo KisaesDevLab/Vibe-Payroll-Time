@@ -1,0 +1,55 @@
+Vibe Payroll Time
+Copyright 2026 Kisaes LLC
+
+Vibe Payroll Time is a self-hosted, multi-tenant employee time-tracking
+appliance for hourly and shift workers, targeted at CPA firms tracking
+their own staff hours (internal use, free) and CPA firms reselling the
+appliance to their small-business clients (commercial tier).
+
+This product is licensed under the PolyForm Internal Use License 1.0.0.
+See the LICENSE file in the project root for the full license text.
+Distribution of the software is not permitted under this license.
+
+For commercial licensing (client-portal / reseller access), see
+LICENSE-COMMERCIAL.md or contact: licensing@kisaes.com
+
+---
+
+Third-Party Software Notices
+
+This product includes software developed by third parties under their
+respective licenses. See package.json and package-lock.json for the
+complete list of dependencies and their licenses, and
+scripts/license-audit-result.txt for the most recent audit summary.
+
+Key dependencies:
+- React (MIT) - Meta Platforms, Inc.
+- Express (MIT) - TJ Holowaychuk
+- Knex (MIT) - Tim Griesser
+- PostgreSQL (PostgreSQL License) - The PostgreSQL Global Development Group
+- TanStack Query (MIT) - Tanner Linsley
+- TanStack Table (MIT) - Tanner Linsley
+- Tailwind CSS (MIT) - Tailwind Labs
+- Vite (MIT) - Evan You
+- Zod (MIT) - Colin McDonnell
+- Workbox (MIT) - Google LLC
+- bcrypt (MIT) - Nicholas Campbell
+- jsonwebtoken (MIT) - Auth0
+- otplib (MIT) - Gerald Yeo
+- node-cron (ISC) - Lucas Merencia
+- helmet (MIT) - Adam Baldwin et al.
+- pino (MIT) - Matteo Collina
+- pino-http (MIT) - Pino contributors
+- archiver (MIT) - Chris Talkington
+- @zxing/library (Apache-2.0) - ZXing authors
+- @zxing/browser (Apache-2.0) - ZXing authors
+- qrcode (MIT) - Ryan Day
+- @anthropic-ai/sdk (MIT) - Anthropic PBC
+- dotenv-flow (MIT) - Dmytro Kleshchonok
+
+All runtime dependencies resolve to permissive OSS licenses (MIT, ISC,
+Apache-2.0, BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, 0BSD, MIT-0,
+Python-2.0). No GPL, AGPL, SSPL, Commons Clause, Proprietary, or
+UNLICENSED entries. The only non-permissive entry is caniuse-lite
+(CC-BY-4.0), a build-time data dependency that is not shipped to
+end users.

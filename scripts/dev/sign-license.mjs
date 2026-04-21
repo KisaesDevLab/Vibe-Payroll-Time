@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Dev-only license signer. Generates a keypair if one doesn't exist
  * yet, signs a license JWT with the configured claims, and prints:

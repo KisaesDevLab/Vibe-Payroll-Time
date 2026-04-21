@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 Kisaes LLC
+# Licensed under the PolyForm Internal Use License 1.0.0.
+# You may not distribute this software. See LICENSE for terms.
 # Vibe Payroll Time — Level 2 backup (see BUILD_PLAN.md Phase 13).
 #
 # Runs a logical pg_dump of the appliance database and rotates on-disk

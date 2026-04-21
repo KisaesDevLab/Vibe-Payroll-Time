@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-04-21 16:55:23",
+  "status": "pass",
+  "failures": 0,
+  "warnings": 0,
+  "headerCoverage": {
+    "filesWithHeaders": 286,
+    "totalSourceFiles": 286
+  },
+  "policyFile": "scripts/license-policy.json",
+  "reportFile": "scripts/license-audit-result.txt"
+}

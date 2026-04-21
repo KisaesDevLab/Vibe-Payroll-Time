@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 Kisaes LLC
+# Licensed under the PolyForm Internal Use License 1.0.0.
+# You may not distribute this software. See LICENSE for terms.
 # Vibe Payroll Time — one-shot appliance installer.
 #
 # Installs Docker + the app stack on a fresh Ubuntu Server 24.04 LTS box
