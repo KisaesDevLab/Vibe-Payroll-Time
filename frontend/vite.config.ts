@@ -10,7 +10,12 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       host: '0.0.0.0',
-      port: 5173,
+      // Vibe MyBooks owns 5173 on this workstation. 5180 is what the
+      // `dev` npm script enforces with --strictPort; keep the config
+      // default in sync so `vite preview` and other vite entry points
+      // don't silently drift back to 5173 and collide.
+      port: 5180,
+      strictPort: true,
       proxy: {
         '/api': {
           target: apiOrigin,

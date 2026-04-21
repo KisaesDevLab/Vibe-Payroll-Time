@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, NotFound, Unauthorized } from '../http/errors.js';
-import { getResolvedSmsProvider } from './appliance-settings.js';
+import { getResolvedDisplayName, getResolvedSmsProvider } from './appliance-settings.js';
 import { sendViaTextLinkSms } from './notifications/textlinksms-client.js';
 import { sendViaTwilio } from './notifications/twilio-client.js';
 import { normalizeToE164 } from './notifications/phone-verification.js';
@@ -94,7 +94,8 @@ export async function requestUserPhoneVerification(userId: number): Promise<{ ex
     updated_at: db.fn.now(),
   });
 
-  const body = `Your Vibe PT verification code is ${code}. Expires in 10 minutes.`;
+  const appName = await getResolvedDisplayName();
+  const body = `Your ${appName} verification code is ${code}. Expires in 10 minutes.`;
 
   // Dispatch via the appliance-level provider. Parallels
   // notifications/service.ts#sendSms but bypasses per-company resolver

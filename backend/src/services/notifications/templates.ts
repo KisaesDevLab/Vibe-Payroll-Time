@@ -29,10 +29,25 @@ export interface TemplateOutput {
 
 type TemplateVars = Record<string, string | number | null | undefined>;
 
-function render(template: string, vars: TemplateVars): string {
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function render(template: string, vars: TemplateVars, opts: { html?: boolean } = {}): string {
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => {
     const v = vars[key];
-    return v == null ? '' : String(v);
+    if (v == null) return '';
+    const str = String(v);
+    // HTML renders of user-supplied content (reason / reviewNote /
+    // firstName / employeeName / custom appName) need escaping so
+    // a "<script>…" in a correction note can't redirect a manager's
+    // inbox preview. Plaintext + SMS are plain strings, no escape.
+    return opts.html ? escapeHtml(str) : str;
   });
 }
 
@@ -149,7 +164,7 @@ export function renderTemplate(type: NotificationType, vars: TemplateVars): Temp
   const t = TEMPLATES[type];
   return {
     subject: render(t.subject, vars),
-    html: render(t.html, vars),
+    html: render(t.html, vars, { html: true }),
     text: render(t.text, vars),
     sms: render(t.sms, vars),
   };

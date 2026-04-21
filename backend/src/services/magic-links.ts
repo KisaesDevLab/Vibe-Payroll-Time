@@ -1,10 +1,13 @@
 import crypto from 'node:crypto';
 import type { AuthResponse, MagicLinkOptionsResponse } from '@vibept/shared';
-import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { db } from '../db/knex.js';
 import { Unauthorized } from '../http/errors.js';
-import { getResolvedEmailit, getResolvedSmsProvider } from './appliance-settings.js';
+import {
+  getResolvedDisplayName,
+  getResolvedEmailit,
+  getResolvedSmsProvider,
+} from './appliance-settings.js';
 import { recordAuthEvent } from './auth-events.js';
 import { buildAuthUser } from './auth.js';
 import { notify } from './notifications/service.js';
@@ -202,6 +205,7 @@ export async function requestMagicLink(input: RequestMagicLinkInput): Promise<vo
       return;
     }
 
+    const appName = await getResolvedDisplayName();
     await notify({
       companyId,
       type: 'magic_link',
@@ -218,7 +222,7 @@ export async function requestMagicLink(input: RequestMagicLinkInput): Promise<vo
       channels: [input.channel],
       vars: {
         firstName: user.email.split('@')[0] ?? '',
-        appName: env.APPLIANCE_ID,
+        appName,
         magicUrl,
       },
     });

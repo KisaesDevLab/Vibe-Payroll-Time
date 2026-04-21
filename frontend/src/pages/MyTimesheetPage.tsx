@@ -19,7 +19,12 @@ import { timesheets } from '../lib/resources';
  */
 export function MyTimesheetPage() {
   const session = useSession();
-  const memberships = useMemo(() => session?.user.memberships ?? [], [session]);
+  // Same reasoning as MyPunchPage — admin-only memberships can't view
+  // a timesheet (no employees row), so hide them from the picker.
+  const memberships = useMemo(
+    () => session?.user.memberships.filter((m) => m.isEmployee) ?? [],
+    [session],
+  );
   const [companyId, setCompanyId] = useState<number | null>(memberships[0]?.companyId ?? null);
   useEffect(() => {
     if (!companyId && memberships[0]) setCompanyId(memberships[0].companyId);
@@ -73,7 +78,16 @@ export function MyTimesheetPage() {
           )}
         </header>
 
-        {sheet.isPending && <p className="text-sm text-slate-500">Loading timesheet…</p>}
+        {memberships.length === 0 && (
+          <section className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            You don't have an active employee record at any company, so there's no timesheet to
+            show. Admin-only memberships don't track hours.
+          </section>
+        )}
+
+        {memberships.length > 0 && sheet.isPending && (
+          <p className="text-sm text-slate-500">Loading timesheet…</p>
+        )}
         {sheet.isError && (
           <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {sheet.error instanceof ApiError ? sheet.error.message : 'Could not load timesheet.'}

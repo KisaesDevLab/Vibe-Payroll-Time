@@ -7,6 +7,83 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Cross-company admin + account recovery + release hardening
+
+- **Cross-company users view** (`/appliance/users`): SuperAdmin-only matrix-style
+  editor lists every user account on the appliance with their memberships and
+  roles. Bulk-reconcile endpoint diffs desired-vs-current memberships in one
+  atomic transaction (`POST /admin/users/:userId/memberships`)
+- **Account recovery without current password**: magic-link sign-in mints a
+  session tagged `authMethod: 'magic_link'`; `POST /auth/set-password`
+  accepts a new password without the current one for those sessions. Regular
+  `POST /auth/change-password` still requires the current password
+- **User-level phone + verification** (`/me/phone`): separate from per-company
+  `employees.phone`. Uses the appliance-level SMS provider so SuperAdmins can
+  verify without a company context. Magic-link-by-SMS accepts either the
+  user-level phone OR any verified employee phone
+- **Cloudflare tunnel management** (`/admin/tunnel`): enable/disable + token
+  rotation via a control-file pattern. Host-side systemd path unit watches
+  `update-control/tunnel-request.json` and reconciles the compose profile
+- **Custom appliance branding**: operator-set display name flows through
+  TopBar, login page, emails, SMS, and diagnostic test sends via
+  `getResolvedDisplayName()` — no more UUIDs in customer-facing messages
+- **Appliance health dashboard "Seed demo" button**: idempotent demo-company
+  install with six employees and two weeks of entries
+- Timezone dropdown in the setup wizard + per-company settings (IANA list
+  with US-pinned defaults)
+- SuperAdmin phone entry during first-run setup
+- Kiosk pairing card moved from Employees → Kiosks tab
+
+### Changed
+
+- **`memberships` now carry `isEmployee`**: the TopBar's "My time" / "Timesheet"
+  links only render for users with an active `employees` row; the punch
+  endpoints still reject 403 server-side, but the UI no longer surfaces a
+  dead-end link for admin-only SuperAdmins
+- **Notification providers**: EmailIt upgraded to v2 API (`from` as
+  `"Name <email>"` string, `to` as string). TextLinkSMS corrected to
+  `phone_number` / `text` body fields with outcome signalled via JSON
+  `body.ok` (HTTP always 200)
+- **E.164 normalization at every phone write boundary**: `normalizeToE164()`
+  canonicalizes before store so `"(417) 737-7937"` and `"+14177377937"` route
+  identically through TextLinkSMS's paired Android SIM (which silently drops
+  non-E.164)
+- **Interactive notifications bypass `NOTIFICATIONS_DISABLED`**: magic-link,
+  password reset, and phone verification always send regardless of the
+  background-send stub flag
+- **Setup gate hardened**: `installation_id` WHERE-guard on first write PLUS
+  an `anySuperAdminHasExisted()` check closes the "disable the sole admin to
+  reopen the wizard" backdoor
+- **Magic-link origin** is now derived from the client's `window.location`
+  validated against the `CORS_ORIGIN` whitelist, so links no longer point at
+  the backend port (`:4000`) in dev or the internal Caddy host in prod
+- **Frontend on port 5180** (was 5173) to avoid collision with Vibe MyBooks
+  on CPA-firm workstations that run both
+- **`apiFetch` handles 204 No Content**: empty-body 2xx responses now
+  resolve cleanly instead of failing JSON parse
+
+### Security
+
+- **Notification log redaction**: `notifications_log.payload` now stores
+  `{ redacted: true }` for `magic_link` / `password_reset` /
+  `phone_verification` rows instead of the rendered SMS body. A
+  CompanyAdmin with log access can no longer copy another user's magic link
+  out of the log and sign in as them
+- **Template HTML escaping**: interpolated template vars (`firstName`,
+  `reason`, `reviewNote`, custom `appName`) are HTML-escaped when rendered
+  into email HTML. Template tags themselves remain trusted
+- **Offline queue clears on user switch**: if the logged-in user id changes,
+  the pending-punch IndexedDB store is cleared so a shared-device logout →
+  new-user login can't flush the prior user's queued punches under the new
+  session
+- **Offline queue drain guarded against concurrent runs**: a boot tick, an
+  `online` event, and an authStore subscriber tick firing within a few ms
+  would each have read the pending set before the others deleted their
+  items, double-posting the same punch
+- Runtime guard `assertPointedAtTestDb()` in every integration-test
+  `beforeAll` — prevents integration tests from accidentally truncating the
+  dev DB when the vitest env override misses
+
 ### Added — Phase 4.5 QR badge authentication
 
 - Employees gain four nullable badge columns (`badge_token_hash`,

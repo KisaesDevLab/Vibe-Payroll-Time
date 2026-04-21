@@ -128,49 +128,68 @@ export async function clearQueue(): Promise<void> {
  * Permanent failures (4xx from the server) drop the item and continue —
  * the audit log on the server captures the reason.
  *
+ * Guarded against concurrent callers — the `online` event, a manual
+ * "Sync now" tap, and an authStore subscriber tick can all fire within
+ * a few ms. Two simultaneous drains would each read the pending set
+ * before the other deleted its items, and re-POST the same punch.
+ *
  * Returns { flushed, failed, remaining }.
  */
+let drainInFlight: Promise<{
+  flushed: number;
+  failed: number;
+  remaining: number;
+}> | null = null;
+
 export async function drainQueue(): Promise<{
   flushed: number;
   failed: number;
   remaining: number;
 }> {
-  const items = await listQueue();
-  items.sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
-
-  let flushed = 0;
-  let failed = 0;
-
-  for (const item of items) {
-    const skew = getClockSkewMs();
-    const body = {
-      ...item.payload,
-      clientStartedAt: item.queuedAt,
-      clientClockSkewMs: skew,
-    };
-
+  if (drainInFlight) return drainInFlight;
+  drainInFlight = (async () => {
     try {
-      await apiFetch(item.endpoint, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-      if (item.id) await removeFromQueue(item.id);
-      flushed += 1;
-    } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-        // Permanent error (stale, conflict, validation). Drop it.
-        if (item.id) await removeFromQueue(item.id);
-        failed += 1;
-        continue;
-      }
-      // Transient — stop; we'll retry on next `online` or manual tap.
-      break;
-    }
-  }
+      const items = await listQueue();
+      items.sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
 
-  const remaining = await queueSize();
-  emit(remaining);
-  return { flushed, failed, remaining };
+      let flushed = 0;
+      let failed = 0;
+
+      for (const item of items) {
+        const skew = getClockSkewMs();
+        const body = {
+          ...item.payload,
+          clientStartedAt: item.queuedAt,
+          clientClockSkewMs: skew,
+        };
+
+        try {
+          await apiFetch(item.endpoint, {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
+          if (item.id) await removeFromQueue(item.id);
+          flushed += 1;
+        } catch (err) {
+          if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+            // Permanent error (stale, conflict, validation). Drop it.
+            if (item.id) await removeFromQueue(item.id);
+            failed += 1;
+            continue;
+          }
+          // Transient — stop; we'll retry on next `online` or manual tap.
+          break;
+        }
+      }
+
+      const remaining = await queueSize();
+      emit(remaining);
+      return { flushed, failed, remaining };
+    } finally {
+      drainInFlight = null;
+    }
+  })();
+  return drainInFlight;
 }
 
 /**
@@ -180,8 +199,21 @@ export async function drainQueue(): Promise<{
  */
 export function startQueueFlusher(): () => void {
   if (typeof window === 'undefined') return () => undefined;
+  // Track the last user id we drained for. A session transition to a
+  // *different* user means the pending punches belong to the previous
+  // session — POSTing them under the new user's token would attribute
+  // another person's shift to them. Drop the queue instead.
+  let lastUserId: number | null = authStore.get()?.user.id ?? null;
   const tick = () => {
-    if (navigator.onLine && authStore.get()) void drainQueue();
+    const session = authStore.get();
+    const currentUserId = session?.user.id ?? null;
+    if (currentUserId !== lastUserId) {
+      if (lastUserId !== null) {
+        void clearQueue();
+      }
+      lastUserId = currentUserId;
+    }
+    if (navigator.onLine && session) void drainQueue();
   };
   tick();
   const unsub = authStore.subscribe(tick);

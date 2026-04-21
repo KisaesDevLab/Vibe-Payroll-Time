@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/knex.js';
 import { BadRequest, Conflict, NotFound, Unauthorized } from '../../http/errors.js';
+import { getResolvedDisplayName } from '../appliance-settings.js';
 import { notify } from './service.js';
 
 const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -72,7 +73,7 @@ export async function startPhoneVerification(
         smsOptIn: true,
         phoneVerified: true, // override the usual gate just for this flow
       },
-      vars: { appName: 'Vibe PT', code },
+      vars: { appName: await getResolvedDisplayName(), code },
       channels: ['sms'],
     });
 

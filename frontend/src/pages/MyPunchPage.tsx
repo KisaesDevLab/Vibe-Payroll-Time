@@ -15,7 +15,13 @@ import { enqueuePunch } from '../lib/offline-queue';
 export function MyPunchPage() {
   const session = useSession();
   const qc = useQueryClient();
-  const memberships = useMemo(() => session?.user.memberships ?? [], [session]);
+  // Only memberships where the user actually has an employees row — a
+  // supervisor-only or admin-only membership can't clock a shift here,
+  // so showing it in the picker produces a guaranteed 403.
+  const memberships = useMemo(
+    () => session?.user.memberships.filter((m) => m.isEmployee) ?? [],
+    [session],
+  );
 
   const [companyId, setCompanyId] = useState<number | null>(memberships[0]?.companyId ?? null);
   useEffect(() => {
@@ -90,7 +96,9 @@ export function MyPunchPage() {
 
         {memberships.length === 0 && (
           <section className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            You're not an employee at any company on this appliance. Ask an admin to invite you.
+            You don't have an active employee record at any company on this appliance. Admins and
+            supervisors don't clock a shift unless they also have an employee record — ask another
+            admin to create one for you if you need to track your own hours.
           </section>
         )}
 

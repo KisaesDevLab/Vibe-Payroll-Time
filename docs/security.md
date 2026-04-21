@@ -38,6 +38,49 @@ Access tokens never carry the company membership list directly — every
 sensitive endpoint re-reads the membership from `company_memberships` on
 every request so revoking a role takes effect immediately.
 
+## Password recovery and magic-link login
+
+- **Magic links**: a single-use 256-bit token with a SHA-256 hash stored in
+  `magic_links`. TTL 15 minutes. Rate-limited to 3 requests per identifier
+  per hour. `POST /auth/magic/request` is a silent no-op for unknown
+  identifiers — the response never reveals whether an account exists.
+- **Magic-link origin** is the client-supplied `window.location.origin`
+  validated against the `CORS_ORIGIN` env whitelist. An attacker can't
+  supply `origin=https://evil.example` and redirect a real user's link —
+  the server falls back to its own host if the supplied origin isn't on
+  the whitelist.
+- **Magic-link access tokens** carry `authMethod: 'magic_link'`.
+  `POST /auth/set-password` accepts a new password without requiring the
+  current one ONLY for those sessions — a stolen password-session access
+  token cannot use this endpoint. After the 15-min access-token TTL, a
+  refresh rotates the session back to `authMethod: 'password'` and the
+  set-password window closes.
+- **Change password with current**: `POST /auth/change-password` always
+  requires the current password. Revokes all refresh tokens for the user
+  on success so other sessions re-authenticate.
+- **User-level phone** (`users.phone`): separate from `employees.phone`.
+  SMS-verified via a 6-digit bcrypt-hashed code through the
+  appliance-level SMS provider (NOT a per-company provider). Powers
+  SuperAdmin magic-link-by-SMS. Changing the number clears prior
+  verification state atomically.
+- **Setup gate hardening**: `POST /setup/initial` refuses if EITHER
+  `installation_id` is already stamped OR any `super_admin` row has ever
+  existed (including disabled ones). Disabling the only SuperAdmin does
+  NOT reopen the wizard.
+
+## Notification log
+
+- `notifications_log` captures every outbound email/SMS with recipient,
+  channel, type, status, and a trimmed payload for diagnostics.
+- **Sensitive types are redacted at write time**: `magic_link`,
+  `password_reset`, and `phone_verification` rows store
+  `payload: { redacted: true }` instead of the rendered body. A
+  CompanyAdmin with log access cannot copy another user's magic link
+  out of the log and sign in as them.
+- Template HTML escapes interpolated values (`firstName`, `reason`,
+  `reviewNote`, custom `appName`) so a correction-note that contains
+  HTML tags doesn't execute in an admin's inbox preview.
+
 ## Licensing
 
 - RS256 JWTs issued by the **kisaes-license-portal**.

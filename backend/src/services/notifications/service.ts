@@ -202,6 +202,24 @@ interface WriteLogRow {
   payload?: Record<string, unknown>;
 }
 
+/**
+ * Sensitive notification types carry working single-use credentials
+ * (magic-link tokens, reset tokens, verification codes) in their body.
+ * A CompanyAdmin reading notifications_log must NOT be able to copy
+ * another user's magic link out of the log and sign in. For those
+ * types we log the type + recipient but not the body/subject.
+ */
+const SENSITIVE_TYPES = new Set<NotificationType>([
+  'magic_link',
+  'password_reset',
+  'phone_verification',
+]);
+
+function payloadFor(type: NotificationType, raw: Record<string, unknown>): Record<string, unknown> {
+  if (SENSITIVE_TYPES.has(type)) return { redacted: true };
+  return raw;
+}
+
 async function writeLog(row: WriteLogRow): Promise<void> {
   await db('notifications_log').insert({
     company_id: row.companyId,
@@ -265,7 +283,7 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
         ? { providerMessageId: result.email.providerMessageId }
         : {}),
       ...(result.email.error !== null ? { error: result.email.error } : {}),
-      payload: { subject: rendered.subject },
+      payload: payloadFor(input.type, { subject: rendered.subject }),
     });
   }
 
@@ -314,7 +332,7 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
         ? { providerMessageId: result.sms.providerMessageId }
         : {}),
       ...(result.sms.error !== null ? { error: result.sms.error } : {}),
-      payload: { body: rendered.sms },
+      payload: payloadFor(input.type, { body: rendered.sms }),
     });
   }
 

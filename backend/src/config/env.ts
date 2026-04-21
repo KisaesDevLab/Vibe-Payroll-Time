@@ -25,7 +25,7 @@ const envSchema = z.object({
 
   BACKEND_PORT: z.coerce.number().int().positive().default(4000),
   BACKEND_HOST: z.string().default('0.0.0.0'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ORIGIN: z.string().default('http://localhost:5180'),
 
   DATABASE_URL: optionalEnvString(),
   POSTGRES_HOST: z.string().default('localhost'),

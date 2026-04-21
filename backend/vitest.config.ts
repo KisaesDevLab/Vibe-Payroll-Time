@@ -1,4 +1,11 @@
 import { defineConfig } from 'vitest/config';
+// Pull .env from the monorepo root BEFORE vitest evaluates test.env so
+// POSTGRES_HOST/PORT/etc reflect local-dev overrides. Without this,
+// running `npm test` from the repo root (which does not load .env)
+// defaulted POSTGRES_PORT to 5432 while the dev Postgres container
+// binds 5439 — integration tests silently skipped with `dbReachable =
+// false` instead of running against the test DB.
+import 'dotenv-flow/config';
 
 export default defineConfig({
   test: {

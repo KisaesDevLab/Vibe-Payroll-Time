@@ -1,5 +1,9 @@
 import { logger } from '../../config/logger.js';
-import { getResolvedEmailit, getResolvedSmsProvider } from '../appliance-settings.js';
+import {
+  getResolvedDisplayName,
+  getResolvedEmailit,
+  getResolvedSmsProvider,
+} from '../appliance-settings.js';
 import { EmailDeliveryError, sendViaEmailIt } from './emailit-client.js';
 import { normalizeToE164 } from './phone-verification.js';
 import { sendViaTextLinkSms } from './textlinksms-client.js';
@@ -35,6 +39,7 @@ export async function sendTestEmail(to: string): Promise<TestSendResult> {
     );
   }
 
+  const appName = await getResolvedDisplayName();
   try {
     const res = await sendViaEmailIt(
       {
@@ -45,12 +50,12 @@ export async function sendTestEmail(to: string): Promise<TestSendResult> {
       },
       {
         to,
-        subject: 'Vibe Payroll Time — test email',
+        subject: `${appName} — test email`,
         text:
-          'This is a diagnostic email from your Vibe Payroll Time appliance.\n' +
+          `This is a diagnostic email from your ${appName} appliance.\n` +
           'Receiving it confirms the configured EmailIt credentials work.',
         html:
-          '<p>This is a diagnostic email from your <b>Vibe Payroll Time</b> appliance.</p>' +
+          `<p>This is a diagnostic email from your <b>${escapeHtml(appName)}</b> appliance.</p>` +
           '<p>Receiving it confirms the configured EmailIt credentials work.</p>',
       },
     );
@@ -86,8 +91,8 @@ export async function sendTestSms(to: string): Promise<TestSendResult> {
     return fail('No appliance-level SMS provider selected', null);
   }
 
-  const body =
-    'Vibe Payroll Time — test SMS. Receiving this confirms your appliance SMS credentials work.';
+  const appName = await getResolvedDisplayName();
+  const body = `${appName} — test SMS. Receiving this confirms your appliance SMS credentials work.`;
 
   try {
     if (resolved.provider === 'twilio') {
@@ -122,4 +127,13 @@ export async function sendTestSms(to: string): Promise<TestSendResult> {
 
 function fail(error: string, provider: TestSendResult['provider']): TestSendResult {
   return { ok: false, providerMessageId: null, error, provider };
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
