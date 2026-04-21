@@ -204,8 +204,27 @@ export const updateTunnelRequestSchema = z
     /** Flip the compose profile on or off. Omit to leave unchanged. */
     enabled: z.boolean().optional(),
     /** Set or rotate the tunnel token. Send a string to set, null to
-     *  clear, or omit to leave the current token in place. */
-    token: z.string().min(20).max(4096).nullable().optional(),
+     *  clear, or omit to leave the current token in place.
+     *
+     *  Charset is restricted to base64url + the separator characters
+     *  cloudflared itself emits: [A-Za-z0-9+/=_-.:]. This is NOT
+     *  cosmetic — the host-side `tunnel-from-request.sh` writes the
+     *  token into `.env` via `sed -i`. A malicious token containing
+     *  `|`, newlines, or `e` flag sequences could otherwise escape the
+     *  `s|...|...|` substitution and land as arbitrary shell-visible
+     *  content. Cloudflared tokens are base64-ish JWTs in practice
+     *  (~180 chars, sometimes JWT-prefixed with a `.` separator), so
+     *  the restriction doesn't reject a valid token in the field. */
+    token: z
+      .string()
+      .min(20)
+      .max(4096)
+      .regex(
+        /^[A-Za-z0-9+/=_\-.:]+$/,
+        'token contains characters that are not valid for a cloudflared connector token',
+      )
+      .nullable()
+      .optional(),
   })
   .refine(
     (v) => v.enabled !== undefined || v.token !== undefined,

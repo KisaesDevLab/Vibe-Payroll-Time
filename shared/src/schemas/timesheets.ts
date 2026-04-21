@@ -71,7 +71,10 @@ export const timesheetQuerySchema = z.object({
 export type TimesheetQuery = z.infer<typeof timesheetQuerySchema>;
 
 export const approvePeriodRequestSchema = z.object({
-  employeeIds: z.array(z.number().int().positive()).min(1),
+  // Cap batch size so a single POST can't kick off tens of thousands of
+  // serialized per-employee transactions. 2000 is well above any real
+  // CPA-firm payroll run but blocks runaway clients.
+  employeeIds: z.array(z.number().int().positive()).min(1).max(2000),
   periodStart: z.string().datetime(),
   periodEnd: z.string().datetime(),
 });

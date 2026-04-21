@@ -20,6 +20,30 @@ export const aiSettingsSchema = z.object({
 });
 export type AISettings = z.infer<typeof aiSettingsSchema>;
 
+/**
+ * Validate a user-supplied AI base URL before the backend sends HTTP
+ * traffic to it. Without this, an operator who gains company_admin
+ * access could point the base URL at an internal service (cloud
+ * metadata IMDS, RFC-1918 intranet host, localhost-bound admin pane)
+ * and use the NL-correction / support-chat feature as an SSRF
+ * primitive. We require http(s) scheme and reject the AWS/GCP/Azure
+ * metadata IP explicitly; for stricter SSRF containment on a hardened
+ * deployment, operators should place the backend behind an egress
+ * allowlist (this regex is fast fail-closed for the common cases).
+ */
+const aiBaseUrlSchema = z
+  .string()
+  .max(512)
+  .refine((v) => /^https?:\/\//i.test(v), 'aiBaseUrl must be an http(s) URL')
+  .refine(
+    (v) => !/^https?:\/\/169\.254\./i.test(v),
+    'aiBaseUrl cannot target the cloud metadata address 169.254.x.x',
+  )
+  .refine(
+    (v) => !/^https?:\/\/\[?fd00:ec2::254/i.test(v),
+    'aiBaseUrl cannot target the cloud metadata address fd00:ec2::254',
+  );
+
 export const updateAISettingsRequestSchema = z
   .object({
     aiEnabled: z.boolean(),
@@ -27,7 +51,7 @@ export const updateAISettingsRequestSchema = z
     aiModel: z.string().max(128).nullable(),
     /** null = clear; string = replace; omit = leave untouched. */
     aiApiKey: z.string().max(512).nullable().optional(),
-    aiBaseUrl: z.string().max(512).nullable(),
+    aiBaseUrl: aiBaseUrlSchema.nullable(),
     aiDailyCorrectionLimit: z.number().int().min(0).max(500),
   })
   .partial();
@@ -73,7 +97,10 @@ export type NLCorrectionPreview = z.infer<typeof nlCorrectionPreviewSchema>;
 export const nlCorrectionApplyRequestSchema = z.object({
   employeeId: z.number().int().positive(),
   originalPrompt: z.string().min(1).max(1000),
-  toolCalls: z.array(nlCorrectionToolCallSchema).min(1),
+  // Cap the tool-call batch so a crafted request can't cause hundreds
+  // of serialized edit/delete transactions per HTTP call. Realistic
+  // LLM previews emit 1–10 calls; 50 is generous.
+  toolCalls: z.array(nlCorrectionToolCallSchema).min(1).max(50),
 });
 export type NLCorrectionApplyRequest = z.infer<typeof nlCorrectionApplyRequestSchema>;
 
@@ -90,12 +117,16 @@ export type NLCorrectionApplyResult = z.infer<typeof nlCorrectionApplyResultSche
 
 export const chatMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
-  content: z.string(),
+  // Per-message cap prevents someone from stuffing 1MB into one message
+  // to defeat the array cap below.
+  content: z.string().max(8000),
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
 export const chatRequestSchema = z.object({
-  messages: z.array(chatMessageSchema).min(1),
+  // Cap the turn history. 40 turns is well past the useful context
+  // window for the support-chat use case (QA over bundled docs).
+  messages: z.array(chatMessageSchema).min(1).max(40),
 });
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 

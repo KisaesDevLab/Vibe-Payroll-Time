@@ -18,6 +18,7 @@ import {
 } from '../../services/notifications/phone-verification.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth, requireCompanyRole } from '../middleware/auth.js';
+import { authRateLimiter } from '../middleware/rate-limit.js';
 
 export const notificationsRouter: Router = Router();
 
@@ -124,35 +125,54 @@ notificationsRouter.patch('/preferences', requireAuth, async (req, res, next) =>
 // Phone verification flow
 // ---------------------------------------------------------------------------
 
-notificationsRouter.post('/phone-verification/request', requireAuth, async (req, res, next) => {
-  try {
-    if (!req.user) return next(Unauthorized());
-    const companyId = Number(req.query.companyId);
-    if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
-    const body = requestPhoneVerificationSchema.parse(req.body);
-    assertValidPhone(body.phone);
-    const self = await resolveSelf(req.user.id, companyId);
-    const result = await startPhoneVerification(companyId, self.id, body.phone);
-    res.status(201).json({ data: result });
-  } catch (err) {
-    next(err);
-  }
-});
+// Rate-limited so a hijacked employee token can't be used to spam SMS
+// codes to the attached phone (carrier-cost attack against the
+// appliance operator) or to churn the attempt counter: the per-code
+// MAX_ATTEMPTS=5 gate resets on every fresh request, so without an HTTP
+// gate, an attacker could request a new code between every 5 guesses.
+notificationsRouter.post(
+  '/phone-verification/request',
+  authRateLimiter,
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const companyId = Number(req.query.companyId);
+      if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
+      const body = requestPhoneVerificationSchema.parse(req.body);
+      assertValidPhone(body.phone);
+      const self = await resolveSelf(req.user.id, companyId);
+      const result = await startPhoneVerification(companyId, self.id, body.phone);
+      res.status(201).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
-notificationsRouter.post('/phone-verification/confirm', requireAuth, async (req, res, next) => {
-  try {
-    if (!req.user) return next(Unauthorized());
-    const companyId = Number(req.query.companyId);
-    if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
-    const body = confirmPhoneVerificationSchema.parse(req.body);
-    const self = await resolveSelf(req.user.id, companyId);
-    await confirmPhoneVerification(companyId, self.id, body.code);
-    const fresh = await resolveSelf(req.user.id, companyId);
-    res.json({ data: toPreferences(fresh) });
-  } catch (err) {
-    next(err);
-  }
-});
+// Same rate-limiter on /confirm — without it, an attacker who knows
+// the target identifier could brute the 6-digit code at wire speed.
+// The per-code attempts counter caps at 5 but resets whenever a new
+// code is requested.
+notificationsRouter.post(
+  '/phone-verification/confirm',
+  authRateLimiter,
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const companyId = Number(req.query.companyId);
+      if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
+      const body = confirmPhoneVerificationSchema.parse(req.body);
+      const self = await resolveSelf(req.user.id, companyId);
+      await confirmPhoneVerification(companyId, self.id, body.code);
+      const fresh = await resolveSelf(req.user.id, companyId);
+      res.json({ data: toPreferences(fresh) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Admin notifications log (nested under /companies/:id)

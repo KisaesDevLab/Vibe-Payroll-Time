@@ -159,12 +159,18 @@ export type AdminUsersResponse = z.infer<typeof adminUsersResponseSchema>;
  *  diffs against current state: missing rows get inserted, extras get
  *  deleted, mismatched roles get updated. Atomic per user. */
 export const bulkMembershipsRequestSchema = z.object({
-  memberships: z.array(
-    z.object({
-      companyId: z.number().int().positive(),
-      role: z.enum(['company_admin', 'supervisor', 'employee']),
-    }),
-  ),
+  // Cap at 500 — materially more than any real-world CPA-firm-serving
+  // appliance will carry (total client-company count). Prevents a
+  // crafted request from forcing a 100k-row diff inside one
+  // transaction.
+  memberships: z
+    .array(
+      z.object({
+        companyId: z.number().int().positive(),
+        role: z.enum(['company_admin', 'supervisor', 'employee']),
+      }),
+    )
+    .max(500),
 });
 export type BulkMembershipsRequest = z.infer<typeof bulkMembershipsRequestSchema>;
 
