@@ -2,11 +2,11 @@ import type { NextFunction, Request, Response } from 'express';
 import { env } from '../../config/env.js';
 import { db } from '../../db/knex.js';
 import { HttpError } from '../errors.js';
-import { computeState } from '../../services/licensing/state.js';
+import { getApplianceLicenseStatus } from '../../services/licensing/state.js';
 
 /**
  * License-enforcement gate. Applied to mutating endpoints that should be
- * blocked for an expired company; the CLAUDE.md philosophy guarantees:
+ * blocked for an expired license; the CLAUDE.md philosophy guarantees:
  *
  *   - internal_free / licensed: pass
  *   - trial / grace: pass (UI banners nag the admin)
@@ -15,10 +15,12 @@ import { computeState } from '../../services/licensing/state.js';
  *     behind this middleware)
  *   - internal companies bypass the gate unconditionally
  *
+ * Licensing is appliance-wide — the state is read once from
+ * `appliance_settings`. If a companyId is passed in and it's internal,
+ * we still bypass enforcement for that request.
+ *
  * When LICENSING_ENFORCED is false (the default for pre-launch
  * appliances), the middleware short-circuits every request to pass.
- * The /license/status endpoint still surfaces the computed state so
- * the UI banner works without enforcement being active.
  */
 export function enforceLicense(
   companyIdFrom: (req: Request) => number | undefined = (req) =>
@@ -28,33 +30,24 @@ export function enforceLicense(
     try {
       if (!env.LICENSING_ENFORCED) return next();
 
+      // Internal companies always bypass. We still check the appliance
+      // state for everyone else.
       const companyId = companyIdFrom(req);
-      if (!Number.isFinite(companyId) || !companyId) return next();
+      if (Number.isFinite(companyId) && companyId) {
+        const company = await db('companies')
+          .where({ id: companyId })
+          .first<{ is_internal: boolean }>();
+        if (company?.is_internal) return next();
+      }
 
-      const row = await db('companies').where({ id: companyId }).first<{
-        is_internal: boolean;
-        license_state: 'internal_free' | 'trial' | 'licensed' | 'grace' | 'expired';
-        license_expires_at: Date | null;
-        license_claims: Record<string, unknown> | null;
-        created_at: Date;
-      }>();
-      if (!row) return next();
-
-      const { state } = computeState({
-        is_internal: row.is_internal,
-        license_state: row.license_state,
-        license_expires_at: row.license_expires_at,
-        license_claims: row.license_claims as never,
-        created_at: row.created_at,
-      });
-
-      if (state === 'expired') {
+      const status = await getApplianceLicenseStatus();
+      if (status.state === 'expired') {
         return next(
           new HttpError(
             402,
             'license_expired',
-            "This company's license has expired and is outside the grace window. Data export and read access remain available; mutations are blocked until a renewed license is uploaded.",
-            { state, licensePortal: 'https://licensing.kisaes.com' },
+            'The appliance license has expired and is outside the grace window. Data export and read access remain available; mutations are blocked until a renewed license is uploaded from Appliance → Settings.',
+            { state: status.state, licensePortal: 'https://licensing.kisaes.com' },
           ),
         );
       }

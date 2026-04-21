@@ -1,5 +1,9 @@
-import { useMutation } from '@tanstack/react-query';
-import type { SetupInitialRequest, SetupInitialResponse } from '@vibept/shared';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type {
+  SetupInitialRequest,
+  SetupInitialResponse,
+  SetupStatusResponse,
+} from '@vibept/shared';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
@@ -11,6 +15,7 @@ const TZ_GUESS = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Ch
 
 export function SetupPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<SetupInitialRequest>({
     appliance: { timezone: TZ_GUESS },
@@ -34,6 +39,14 @@ export function SetupPage() {
       }),
     onSuccess: (data) => {
       authStore.set(data);
+      // Flip the cached setup-status to "done" so App.tsx renders the
+      // authenticated route tree instead of bouncing us back to /setup.
+      // Without this, navigate('/') lands on the setup-required catch-all
+      // redirect and SetupPage remounts fresh at step 0.
+      qc.setQueryData<SetupStatusResponse>(['setup-status'], (prev) => ({
+        setupRequired: false,
+        installationId: prev?.installationId ?? null,
+      }));
       navigate('/', { replace: true });
     },
   });

@@ -1,40 +1,24 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { Button } from '../components/Button';
-import { ApiError } from '../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useOutletContext } from 'react-router-dom';
+import { useSession } from '../hooks/useSession';
 import { licensing } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
 /**
- * License management for CompanyAdmins — paste a JWT, see parsed
- * claims, clear if needed. The appliance-wide enforcement flag is
- * surfaced so an admin can tell whether the server is currently
- * gating based on what they upload.
+ * Per-company license view — read-only. Licensing is managed at the
+ * appliance level (a single JWT covers every non-internal company on
+ * the box). This page exists only to show the derived state for a
+ * company admin + point them at the SuperAdmin settings page for
+ * changes.
  */
 export function LicensePage() {
   const { companyId } = useOutletContext<CompanyContext>();
-  const qc = useQueryClient();
-  const [jwtText, setJwtText] = useState('');
+  const session = useSession();
+  const isSuperAdmin = session?.user.roleGlobal === 'super_admin';
 
   const status = useQuery({
     queryKey: ['license-status', companyId],
     queryFn: () => licensing.getStatus(companyId),
-  });
-
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['license-status', companyId] });
-
-  const upload = useMutation({
-    mutationFn: () => licensing.upload(companyId, jwtText.trim()),
-    onSuccess: () => {
-      setJwtText('');
-      invalidate();
-    },
-  });
-
-  const clear = useMutation({
-    mutationFn: () => licensing.clear(companyId),
-    onSuccess: invalidate,
   });
 
   if (!status.data) return <p className="text-sm text-slate-500">Loading…</p>;
@@ -53,16 +37,15 @@ export function LicensePage() {
       <header>
         <h1 className="text-xl font-semibold text-slate-900">License</h1>
         <p className="mt-1 text-sm text-slate-600">
-          License keys are vended by the{' '}
-          <a
-            href="https://licensing.kisaes.com"
-            target="_blank"
-            rel="noreferrer"
-            className="underline"
-          >
-            kisaes-license-portal
-          </a>
-          . Paste the JWT below to activate. Internal firm-use companies don't need a license.
+          Licensing is appliance-wide. One license covers every non-internal company on this box;
+          internal firm-use companies never need a license.{' '}
+          {isSuperAdmin ? (
+            <Link to="/appliance/settings" className="text-slate-900 underline">
+              Manage at Appliance → Settings
+            </Link>
+          ) : (
+            <span>Ask your appliance SuperAdmin to manage it.</span>
+          )}
         </p>
       </header>
 
@@ -99,14 +82,12 @@ export function LicensePage() {
 
         {s.claims && (
           <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
-            <p className="mb-2 font-semibold uppercase text-slate-600">Claims</p>
+            <p className="mb-2 font-semibold uppercase text-slate-600">Appliance license claims</p>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
               <dt className="text-slate-500">Issuer</dt>
               <dd className="text-slate-800">{s.claims.iss}</dd>
               <dt className="text-slate-500">Appliance</dt>
               <dd className="font-mono text-slate-800">{s.claims.appliance_id}</dd>
-              <dt className="text-slate-500">Company slug</dt>
-              <dd className="font-mono text-slate-800">{s.claims.company_slug}</dd>
               <dt className="text-slate-500">Tier</dt>
               <dd className="text-slate-800">{s.claims.tier.replace(/_/g, ' ')}</dd>
               {s.claims.employee_count_cap != null && (
@@ -118,49 +99,6 @@ export function LicensePage() {
             </dl>
           </div>
         )}
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-semibold text-slate-900">Upload a license JWT</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Paste the full token from the portal, including the two dots. The server verifies the
-          RS256 signature before saving.
-        </p>
-        <textarea
-          className="mt-3 h-40 w-full rounded-md border border-slate-300 bg-white p-3 font-mono text-xs shadow-sm"
-          placeholder="eyJ..."
-          value={jwtText}
-          onChange={(e) => setJwtText(e.target.value)}
-        />
-        {upload.isError && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {upload.error instanceof ApiError
-              ? `${upload.error.code}: ${upload.error.message}`
-              : 'Upload failed.'}
-          </div>
-        )}
-        <div className="mt-3 flex justify-between gap-2">
-          {(s.state === 'licensed' || s.state === 'expired' || s.state === 'grace') && (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                if (confirm('Clear the stored license and revert to trial?')) clear.mutate();
-              }}
-              loading={clear.isPending}
-            >
-              Clear license
-            </Button>
-          )}
-          <div className="ml-auto">
-            <Button
-              disabled={!jwtText.trim()}
-              loading={upload.isPending}
-              onClick={() => upload.mutate()}
-            >
-              Upload license
-            </Button>
-          </div>
-        </div>
       </section>
     </div>
   );

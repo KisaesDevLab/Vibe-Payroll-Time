@@ -1,6 +1,7 @@
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { db } from '../../db/knex.js';
+import { getResolvedEmailit } from '../appliance-settings.js';
 import { decryptSecret } from '../crypto.js';
 import {
   sendViaEmailIt,
@@ -71,22 +72,27 @@ async function resolveEmailConfig(companyId: number): Promise<EmailItConfig | nu
     emailit_reply_to: string | null;
   }>();
 
-  // Per-company first; fall back to the appliance-wide default if the
-  // company hasn't configured its own.
+  // Per-company first; fall back to the appliance-wide default
+  // (which itself is DB-backed with env fallback — see
+  // services/appliance-settings.ts).
+  const fallback = await getResolvedEmailit();
+
   if (row?.emailit_api_key_encrypted && row.emailit_from_email) {
     return {
       apiKey: decryptSecret(row.emailit_api_key_encrypted),
       fromEmail: row.emailit_from_email,
-      fromName: row.emailit_from_name ?? env.EMAILIT_FROM_NAME,
+      fromName: row.emailit_from_name ?? fallback.fromName,
       replyTo: row.emailit_reply_to ?? null,
+      baseUrl: fallback.apiBaseUrl,
     };
   }
 
-  if (env.EMAILIT_API_KEY && env.EMAILIT_FROM_EMAIL) {
+  if (fallback.apiKey && fallback.fromEmail) {
     return {
-      apiKey: env.EMAILIT_API_KEY,
-      fromEmail: env.EMAILIT_FROM_EMAIL,
-      fromName: env.EMAILIT_FROM_NAME,
+      apiKey: fallback.apiKey,
+      fromEmail: fallback.fromEmail,
+      fromName: fallback.fromName,
+      baseUrl: fallback.apiBaseUrl,
     };
   }
 

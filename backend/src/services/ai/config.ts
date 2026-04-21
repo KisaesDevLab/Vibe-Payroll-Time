@@ -1,7 +1,7 @@
 import type { AISettings, UpdateAISettingsRequest } from '@vibept/shared';
-import { env } from '../../config/env.js';
 import { db } from '../../db/knex.js';
 import { Forbidden, NotFound } from '../../http/errors.js';
+import { getResolvedAI } from '../appliance-settings.js';
 import { decryptSecret, encryptSecret } from '../crypto.js';
 import type { ProviderConfig } from './provider.js';
 
@@ -80,15 +80,19 @@ export async function resolveProviderConfig(companyId: number): Promise<Provider
   const row = await loadRow(companyId);
   if (!row.ai_enabled) throw Forbidden('AI features are disabled for this company');
 
+  // Per-company first, then the DB-backed appliance-wide fallback
+  // (which itself falls through to env — see services/appliance-settings.ts).
+  const fallback = await getResolvedAI();
+
   const apiKey = row.ai_api_key_encrypted
     ? decryptSecret(row.ai_api_key_encrypted)
-    : (env.AI_API_KEY ?? null);
+    : fallback.apiKey;
 
   return {
     provider: row.ai_provider,
     apiKey,
-    model: row.ai_model ?? env.AI_MODEL ?? DEFAULT_MODELS[row.ai_provider] ?? 'claude-sonnet-4-6',
-    baseUrl: row.ai_base_url ?? env.AI_BASE_URL ?? null,
+    model: row.ai_model ?? fallback.model ?? DEFAULT_MODELS[row.ai_provider] ?? 'claude-sonnet-4-6',
+    baseUrl: row.ai_base_url ?? fallback.baseUrl ?? null,
   };
 }
 

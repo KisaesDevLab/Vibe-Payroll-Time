@@ -1,6 +1,7 @@
 import {
   approvePeriodRequestSchema,
   createCorrectionRequestSchema,
+  createEntryRequestSchema,
   decideCorrectionRequestSchema,
   deleteEntryRequestSchema,
   editEntryRequestSchema,
@@ -15,13 +16,20 @@ import {
   listCorrectionRequests,
   rejectCorrectionRequest,
 } from '../../services/correction-requests.js';
-import { deleteEntry, editEntry, type EditEntryPatch } from '../../services/punch.js';
+import {
+  createEntryForEmployee,
+  deleteEntry,
+  editEntry,
+  type EditEntryPatch,
+} from '../../services/punch.js';
 import {
   approvePeriod,
+  assertCanAddEntry,
   assertCanDelete,
   assertCanEdit,
   getEntryAudit,
   getTimesheet,
+  loadCompanyEditContext,
   loadEditContext,
   unapprovePeriod,
 } from '../../services/timesheets.js';
@@ -143,6 +151,30 @@ timesheetsRouter.post('/unapprove', requireAuth, async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // Entry edit + delete — authorized via edit matrix
 // ---------------------------------------------------------------------------
+
+timesheetsRouter.post('/entries', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const { companyId } = approveQuery.parse(req.query);
+    const body = createEntryRequestSchema.parse(req.body);
+
+    const ctx = await loadCompanyEditContext(
+      { userId: req.user.id, roleGlobal: req.user.roleGlobal },
+      companyId,
+    );
+    assertCanAddEntry(ctx);
+
+    const entry = await createEntryForEmployee(body, {
+      userId: req.user.id,
+      companyId,
+      sourceIp: req.ip ?? null,
+      sourceUserAgent: req.headers['user-agent']?.slice(0, 512) ?? null,
+    });
+    res.status(201).json({ data: entry });
+  } catch (err) {
+    next(err);
+  }
+});
 
 timesheetsRouter.patch('/entries/:entryId', requireAuth, async (req, res, next) => {
   try {

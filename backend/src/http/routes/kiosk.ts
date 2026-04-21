@@ -143,6 +143,8 @@ function kioskCtx(
     source: 'kiosk',
     sourceDeviceId: req.kioskDevice ? `kiosk:${req.kioskDevice.id}` : null,
     actorUserId: ids.userId,
+    sourceIp: req.ip ?? null,
+    sourceUserAgent: req.headers['user-agent']?.slice(0, 512) ?? null,
     clientStartedAt: body.clientStartedAt,
     clientClockSkewMs: body.clientClockSkewMs,
   };

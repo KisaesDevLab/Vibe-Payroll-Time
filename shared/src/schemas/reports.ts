@@ -27,13 +27,20 @@ export const reportDefinitionSchema = z.object({
   label: z.string(),
   description: z.string(),
   columns: z.array(reportColumnSchema),
-  /** Params schema serialized as a simple field list the UI can render. */
+  /** Params schema serialized as a simple field list the UI can render.
+   *
+   * Type semantics:
+   *   - `date`            HTML date input
+   *   - `companyScoped`   Employee picker (renders the active roster)
+   *   - `enum`            Dropdown; `choices` lists {value,label} pairs
+   */
   params: z.array(
     z.object({
       key: z.string(),
       label: z.string(),
-      type: z.enum(['date', 'companyScoped']),
+      type: z.enum(['date', 'companyScoped', 'enum']),
       required: z.boolean(),
+      choices: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
     }),
   ),
 });
@@ -93,3 +100,23 @@ export const auditTrailParamsSchema = z.object({
   actorUserId: z.coerce.number().int().positive().optional(),
 });
 export type AuditTrailParams = z.infer<typeof auditTrailParamsSchema>;
+
+/**
+ * Punch activity — the investigation view. Every closed entry for a
+ * period, with network attribution, source device, and exception flags
+ * so a supervisor can hunt for anomalies. All filters except the period
+ * are optional; empty means "don't filter".
+ */
+export const punchActivityParamsSchema = z.object({
+  periodStart: z.string().datetime(),
+  periodEnd: z.string().datetime(),
+  /** Single employee id, or empty for all. */
+  employeeId: z.coerce.number().int().positive().optional(),
+  /** all | kiosk | web | mobile_pwa */
+  source: z.enum(['all', 'kiosk', 'web', 'mobile_pwa']).optional(),
+  /** all | approved | pending */
+  approvedState: z.enum(['all', 'approved', 'pending']).optional(),
+  /** all | exceptions_only — auto-closed, offline, or edited */
+  flag: z.enum(['all', 'exceptions_only']).optional(),
+});
+export type PunchActivityParams = z.infer<typeof punchActivityParamsSchema>;

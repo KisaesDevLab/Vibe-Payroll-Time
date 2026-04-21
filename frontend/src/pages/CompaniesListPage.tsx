@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateCompanyRequest } from '@vibept/shared';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
@@ -14,6 +14,7 @@ const TZ_GUESS = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Ch
 export function CompaniesListPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState<CreateCompanyRequest>({
     name: '',
     slug: '',
@@ -27,6 +28,15 @@ export function CompaniesListPage() {
     queryKey: ['companies'],
     queryFn: companiesApi.list,
   });
+
+  // Client-side filter — list is expected to stay in the low hundreds
+  // even for multi-tenant CPA firms, so server-side search is overkill.
+  const filtered = useMemo(() => {
+    const rows = companies.data ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((c) => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q));
+  }, [companies.data, search]);
 
   const create = useMutation({
     mutationFn: (body: CreateCompanyRequest) =>
@@ -65,6 +75,21 @@ export function CompaniesListPage() {
           <Button onClick={() => setShowCreate(true)}>New company</Button>
         </header>
 
+        <div className="mb-4 flex items-center gap-3">
+          <input
+            type="search"
+            placeholder="Search by name or slug…"
+            className="w-full max-w-sm rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-slate-500 focus:outline-none"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <span className="text-xs text-slate-500">
+              {filtered.length} of {companies.data?.length ?? 0}
+            </span>
+          )}
+        </div>
+
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -78,7 +103,7 @@ export function CompaniesListPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {companies.data?.map((c) => (
+              {filtered.map((c) => (
                 <tr key={c.id}>
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{c.name}</div>
@@ -124,10 +149,10 @@ export function CompaniesListPage() {
                   </td>
                 </tr>
               ))}
-              {companies.data?.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
-                    No companies yet.
+                    {search ? `No companies match "${search}".` : 'No companies yet.'}
                   </td>
                 </tr>
               )}

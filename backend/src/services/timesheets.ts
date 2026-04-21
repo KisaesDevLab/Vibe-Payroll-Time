@@ -343,3 +343,30 @@ export function assertCanEdit(ctx: EditAuthContext): void {
 export function assertCanDelete(ctx: EditAuthContext): void {
   if (!canDeleteEntry(ctx)) throw Forbidden('Not allowed to delete this entry');
 }
+
+/**
+ * Company-scoped permission check for creating an entry on behalf of an
+ * employee (the "missed punch" supervisor flow). Mirrors
+ * canEditEntry/canDeleteEntry but without needing an existing entry.
+ */
+export async function loadCompanyEditContext(
+  actor: { userId: number; roleGlobal: 'super_admin' | 'none' },
+  companyId: number,
+): Promise<{
+  roleGlobal: 'super_admin' | 'none';
+  companyRole: 'company_admin' | 'supervisor' | 'employee' | null;
+}> {
+  const membership = await db('company_memberships')
+    .where({ user_id: actor.userId, company_id: companyId })
+    .first<{ role: 'company_admin' | 'supervisor' | 'employee' }>();
+  return { roleGlobal: actor.roleGlobal, companyRole: membership?.role ?? null };
+}
+
+export function assertCanAddEntry(ctx: {
+  roleGlobal: 'super_admin' | 'none';
+  companyRole: 'company_admin' | 'supervisor' | 'employee' | null;
+}): void {
+  if (ctx.roleGlobal === 'super_admin') return;
+  if (ctx.companyRole === 'company_admin' || ctx.companyRole === 'supervisor') return;
+  throw Forbidden('Not allowed to create entries for this company');
+}

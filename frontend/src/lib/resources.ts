@@ -8,6 +8,7 @@ import type {
   CorrectionRequest,
   CreateCorrectionRequest,
   CreateEmployeeRequest,
+  CreateEntryRequest,
   CreateJobRequest,
   CreateKioskPairingCodeRequest,
   CsvImportRequest,
@@ -47,6 +48,8 @@ import type {
   UpdateCompanySettingsRequest,
   UpdateEmployeePreferencesRequest,
   UpdateEmployeeRequest,
+  ApplianceSettings,
+  UpdateApplianceSettingsRequest,
   UpdateCheckResponse,
   UpdateJobRequest,
   UpdateLogResponse,
@@ -290,6 +293,11 @@ export const timesheets = {
       method: 'DELETE',
       body: JSON.stringify({ reason }),
     }),
+  createEntry: (companyId: number, body: CreateEntryRequest) =>
+    apiFetch<TimeEntry>(`/timesheets/entries?companyId=${companyId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   audit: (companyId: number, entryId: number) =>
     apiFetch<EntryAuditRow[]>(`/timesheets/entries/${entryId}/audit?companyId=${companyId}`),
   createCorrection: (companyId: number, body: CreateCorrectionRequest) =>
@@ -434,14 +442,14 @@ export const ai = {
 // ---------------------------------------------------------------------------
 
 export const licensing = {
+  /**
+   * Read the derived license status for a single company. Internal
+   * companies always show `internal_free`; everyone else mirrors the
+   * appliance-wide license state. Upload and clear have moved to
+   * admin.uploadLicense / admin.clearLicense — this surface is
+   * read-only now.
+   */
   getStatus: (companyId: number) => apiFetch<LicenseStatus>(`/companies/${companyId}/license`),
-  upload: (companyId: number, jwt: string) =>
-    apiFetch<LicenseStatus>(`/companies/${companyId}/license`, {
-      method: 'POST',
-      body: JSON.stringify({ jwt }),
-    }),
-  clear: (companyId: number) =>
-    apiFetch<void>(`/companies/${companyId}/license`, { method: 'DELETE' }),
   setInternalFlag: (companyId: number, isInternal: boolean) =>
     apiFetch<LicenseStatus>(`/companies/${companyId}/license/internal-flag`, {
       method: 'PATCH',
@@ -488,6 +496,13 @@ export const admin = {
     const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
     return `${apiBase}/admin/companies/${companyId}/export-all`;
   },
+  licenseStatus: () => apiFetch<LicenseStatus>('/admin/license'),
+  uploadLicense: (jwt: string) =>
+    apiFetch<LicenseStatus>('/admin/license', {
+      method: 'POST',
+      body: JSON.stringify({ jwt }),
+    }),
+  clearLicense: () => apiFetch<void>('/admin/license', { method: 'DELETE' }),
   updateStatus: () => apiFetch<UpdateStatusResponse>('/admin/update/status'),
   updateCheck: () =>
     apiFetch<UpdateCheckResponse>('/admin/update/check', {
@@ -501,4 +516,10 @@ export const admin = {
     }),
   updateLog: (since: number) =>
     apiFetch<UpdateLogResponse>(`/admin/update/log?since=${Math.max(0, since)}`),
+  settings: () => apiFetch<ApplianceSettings>('/admin/settings'),
+  updateSettings: (body: UpdateApplianceSettingsRequest) =>
+    apiFetch<ApplianceSettings>('/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 };

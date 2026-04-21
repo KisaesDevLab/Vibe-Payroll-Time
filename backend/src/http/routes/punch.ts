@@ -59,6 +59,8 @@ function baseCtx(
     source: 'mobile_pwa',
     sourceDeviceId: sourceDeviceIdFromReq(req),
     actorUserId: req.user?.id ?? null,
+    sourceIp: req.ip ?? null,
+    sourceUserAgent: req.headers['user-agent']?.slice(0, 512) ?? null,
     clientStartedAt: body.clientStartedAt,
     clientClockSkewMs: body.clientClockSkewMs,
   };

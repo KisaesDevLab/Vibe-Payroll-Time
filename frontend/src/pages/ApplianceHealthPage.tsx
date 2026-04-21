@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { TopBar } from '../components/TopBar';
 import { UpdateCard } from '../components/UpdateCard';
 import { admin } from '../lib/resources';
@@ -26,12 +27,20 @@ export function ApplianceHealthPage() {
               Snapshot of the running appliance. Auto-refreshes every 30 seconds.
             </p>
           </div>
-          <button
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-slate-50"
-            onClick={() => refetch()}
-          >
-            {isFetching ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <div className="flex gap-2">
+            <Link
+              to="/appliance/settings"
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-slate-50"
+            >
+              Settings
+            </Link>
+            <button
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-slate-50"
+              onClick={() => refetch()}
+            >
+              {isFetching ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </header>
 
         {isLoading && <p className="text-sm text-slate-500">Loading…</p>}

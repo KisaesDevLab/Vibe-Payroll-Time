@@ -5,6 +5,7 @@ import { SupportChatWidget } from './components/SupportChatWidget';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
 import { ApplianceHealthPage } from './pages/ApplianceHealthPage';
+import { ApplianceSettingsPage } from './pages/ApplianceSettingsPage';
 import { CompaniesListPage } from './pages/CompaniesListPage';
 import { CompanyLayout } from './pages/CompanyLayout';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
@@ -147,6 +148,14 @@ export function App() {
           element={
             <RequireSuperAdmin>
               <ApplianceHealthPage />
+            </RequireSuperAdmin>
+          }
+        />
+        <Route
+          path="/appliance/settings"
+          element={
+            <RequireSuperAdmin>
+              <ApplianceSettingsPage />
             </RequireSuperAdmin>
           }
         />

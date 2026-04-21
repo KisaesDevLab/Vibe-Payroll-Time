@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TopBar } from '../components/TopBar';
 import { useSession } from '../hooks/useSession';
@@ -10,6 +11,14 @@ export function DashboardPage() {
     queryKey: ['companies'],
     queryFn: companiesApi.list,
   });
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => {
+    const rows = companies.data ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((c) => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q));
+  }, [companies.data, search]);
+  const hasAny = (companies.data?.length ?? 0) > 0;
 
   return (
     <>
@@ -33,8 +42,25 @@ export function DashboardPage() {
           </p>
         )}
 
+        {hasAny && (
+          <div className="mb-4 flex items-center gap-3">
+            <input
+              type="search"
+              placeholder="Search companies…"
+              className="w-full max-w-sm rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-slate-500 focus:outline-none"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <span className="text-xs text-slate-500">
+                {filtered.length} of {companies.data?.length ?? 0}
+              </span>
+            )}
+          </div>
+        )}
+
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {companies.data?.map((c) => (
+          {filtered.map((c) => (
             <li
               key={c.id}
               className="group flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow"
@@ -75,6 +101,9 @@ export function DashboardPage() {
             </li>
           ))}
         </ul>
+        {hasAny && filtered.length === 0 && search && (
+          <p className="mt-6 text-sm text-slate-500">No companies match "{search}".</p>
+        )}
       </main>
     </>
   );

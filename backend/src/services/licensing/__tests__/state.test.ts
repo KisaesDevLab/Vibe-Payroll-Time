@@ -19,10 +19,12 @@ function makeClaims(expEpochSeconds: number) {
 describe('computeState', () => {
   const created = new Date(Date.now() - 2 * MS_PER_DAY);
 
+  // `isInternal` is only passed when computing the per-company resolver
+  // view; the appliance row itself is never internal. Kept here to prove
+  // the early-return still works for the company-scoped caller.
   it('short-circuits internal firms to internal_free', () => {
     const res = computeState({
-      is_internal: true,
-      license_state: 'trial',
+      isInternal: true,
       license_expires_at: null,
       license_claims: null,
       created_at: created,
@@ -33,8 +35,6 @@ describe('computeState', () => {
 
   it('trial state while within the trial window, no license uploaded', () => {
     const res = computeState({
-      is_internal: false,
-      license_state: 'trial',
       license_expires_at: null,
       license_claims: null,
       created_at: new Date(Date.now() - 2 * MS_PER_DAY),
@@ -45,8 +45,6 @@ describe('computeState', () => {
 
   it('grace state when trial just expired', () => {
     const res = computeState({
-      is_internal: false,
-      license_state: 'trial',
       license_expires_at: null,
       license_claims: null,
       created_at: new Date(Date.now() - (LICENSE_TRIAL_DAYS + 3) * MS_PER_DAY),
@@ -56,8 +54,6 @@ describe('computeState', () => {
 
   it('expired state when past the grace window', () => {
     const res = computeState({
-      is_internal: false,
-      license_state: 'trial',
       license_expires_at: null,
       license_claims: null,
       created_at: new Date(Date.now() - (LICENSE_TRIAL_DAYS + LICENSE_GRACE_DAYS + 5) * MS_PER_DAY),
@@ -68,8 +64,6 @@ describe('computeState', () => {
   it('licensed state while the stored claim exp is in the future', () => {
     const futureExp = Math.floor((Date.now() + 10 * MS_PER_DAY) / 1000);
     const res = computeState({
-      is_internal: false,
-      license_state: 'licensed',
       license_expires_at: new Date(futureExp * 1000),
       license_claims: makeClaims(futureExp),
       created_at: created,
@@ -81,8 +75,6 @@ describe('computeState', () => {
   it('grace state for an expired licensed key within the grace window', () => {
     const pastExp = Math.floor((Date.now() - 5 * MS_PER_DAY) / 1000);
     const res = computeState({
-      is_internal: false,
-      license_state: 'licensed',
       license_expires_at: new Date(pastExp * 1000),
       license_claims: makeClaims(pastExp),
       created_at: created,
@@ -93,8 +85,6 @@ describe('computeState', () => {
   it('expired state for a licensed key past the grace window', () => {
     const longPastExp = Math.floor((Date.now() - (LICENSE_GRACE_DAYS + 10) * MS_PER_DAY) / 1000);
     const res = computeState({
-      is_internal: false,
-      license_state: 'licensed',
       license_expires_at: new Date(longPastExp * 1000),
       license_claims: makeClaims(longPastExp),
       created_at: created,

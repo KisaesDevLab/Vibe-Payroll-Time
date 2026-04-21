@@ -16,6 +16,11 @@ export const timeEntrySchema = z.object({
   durationSeconds: z.number().int().nonnegative().nullable(),
   source: z.enum(['kiosk', 'web', 'mobile_pwa']),
   sourceOffline: z.boolean(),
+  /** Per-punch network attribution. Null for cron-closed entries and
+   *  legacy rows pre-dating the column. Sensitive — only include in
+   *  admin/supervisor-facing responses. */
+  sourceIp: z.string().nullable(),
+  sourceUserAgent: z.string().nullable(),
   approvedAt: z.string().datetime().nullable(),
   approvedBy: z.number().int().positive().nullable(),
   isAutoClosed: z.boolean(),

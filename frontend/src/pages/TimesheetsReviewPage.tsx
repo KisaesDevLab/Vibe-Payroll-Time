@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { TimeEntry } from '@vibept/shared';
 import { useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { DeleteEntryConfirm } from '../components/DeleteEntryConfirm';
+import { EntryFormModal, type EntryFormValues } from '../components/EntryFormModal';
 import { NLCorrectionWidget } from '../components/NLCorrectionWidget';
 import { TimesheetView } from '../components/TimesheetView';
 import { ApiError } from '../lib/api';
-import { employees, timesheets } from '../lib/resources';
+import { employees, jobs as jobsApi, timesheets } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
 /**
@@ -55,6 +58,75 @@ export function TimesheetsReviewPage() {
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['timesheet', companyId, effectiveId] }),
   });
+
+  // Jobs for the job dropdown in the entry form.
+  const jobsQuery = useQuery({
+    queryKey: ['jobs', companyId],
+    queryFn: () => jobsApi.list(companyId),
+  });
+  const activeJobs = useMemo(
+    () => (jobsQuery.data ?? []).filter((j) => !j.archivedAt),
+    [jobsQuery.data],
+  );
+
+  const invalidateSheet = () =>
+    qc.invalidateQueries({ queryKey: ['timesheet', companyId, effectiveId] });
+
+  // Dialog state — exactly one modal can be open at a time.
+  const [editTarget, setEditTarget] = useState<TimeEntry | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TimeEntry | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+
+  const createEntry = useMutation({
+    mutationFn: (values: EntryFormValues) => {
+      if (!effectiveId) throw new Error('no employee selected');
+      if (!values.endedAt) throw new Error('endedAt required for new entries');
+      return timesheets.createEntry(companyId, {
+        employeeId: effectiveId,
+        startedAt: values.startedAt,
+        endedAt: values.endedAt,
+        entryType: values.entryType,
+        jobId: values.jobId,
+        reason: values.reason,
+      });
+    },
+    onSuccess: () => {
+      setAddOpen(false);
+      invalidateSheet();
+    },
+  });
+
+  const editEntry = useMutation({
+    mutationFn: (values: EntryFormValues) => {
+      if (!editTarget) throw new Error('no entry selected');
+      return timesheets.editEntry(companyId, editTarget.id, {
+        startedAt: values.startedAt,
+        endedAt: values.endedAt,
+        entryType: values.entryType,
+        jobId: values.jobId,
+        reason: values.reason,
+      });
+    },
+    onSuccess: () => {
+      setEditTarget(null);
+      invalidateSheet();
+    },
+  });
+
+  const deleteEntry = useMutation({
+    mutationFn: (reason: string) => {
+      if (!deleteTarget) throw new Error('no entry selected');
+      return timesheets.deleteEntry(companyId, deleteTarget.id, reason);
+    },
+    onSuccess: () => {
+      setDeleteTarget(null);
+      invalidateSheet();
+    },
+  });
+
+  const employeeName = sheet.data
+    ? `${sheet.data.employee.firstName} ${sheet.data.employee.lastName}`
+    : '';
 
   // Exception flags surfaced on the employee list for quick triage.
   const exceptionIdsForEmployee = (employeeId: number): boolean => {
@@ -114,6 +186,11 @@ export function TimesheetsReviewPage() {
         {sheet.data && (
           <>
             <div className="flex items-center justify-end gap-2">
+              {!sheet.data.isApproved && (
+                <Button variant="secondary" onClick={() => setAddOpen(true)}>
+                  Add entry
+                </Button>
+              )}
               {sheet.data.isApproved ? (
                 <Button
                   variant="secondary"
@@ -137,7 +214,11 @@ export function TimesheetsReviewPage() {
                 </Button>
               )}
             </div>
-            <TimesheetView data={sheet.data} />
+            <TimesheetView
+              data={sheet.data}
+              onEditEntry={setEditTarget}
+              onDeleteEntry={setDeleteTarget}
+            />
             <NLCorrectionWidget
               companyId={companyId}
               employeeId={sheet.data.employee.id}
@@ -151,6 +232,55 @@ export function TimesheetsReviewPage() {
               <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 Approval action failed.
               </div>
+            )}
+
+            {addOpen && effectiveId != null && (
+              <EntryFormModal
+                target={{ mode: 'create', employeeName, employeeId: effectiveId }}
+                jobs={activeJobs}
+                onCancel={() => setAddOpen(false)}
+                onSubmit={(values) => createEntry.mutate(values)}
+                pending={createEntry.isPending}
+                error={
+                  createEntry.error instanceof ApiError
+                    ? createEntry.error.message
+                    : createEntry.error
+                      ? 'Failed to create entry'
+                      : null
+                }
+              />
+            )}
+            {editTarget && (
+              <EntryFormModal
+                target={{ mode: 'edit', entry: editTarget, employeeName }}
+                jobs={activeJobs}
+                onCancel={() => setEditTarget(null)}
+                onSubmit={(values) => editEntry.mutate(values)}
+                pending={editEntry.isPending}
+                error={
+                  editEntry.error instanceof ApiError
+                    ? editEntry.error.message
+                    : editEntry.error
+                      ? 'Failed to save changes'
+                      : null
+                }
+              />
+            )}
+            {deleteTarget && (
+              <DeleteEntryConfirm
+                entry={deleteTarget}
+                employeeName={employeeName}
+                onCancel={() => setDeleteTarget(null)}
+                onConfirm={(reason) => deleteEntry.mutate(reason)}
+                pending={deleteEntry.isPending}
+                error={
+                  deleteEntry.error instanceof ApiError
+                    ? deleteEntry.error.message
+                    : deleteEntry.error
+                      ? 'Failed to delete entry'
+                      : null
+                }
+              />
             )}
           </>
         )}

@@ -1,68 +1,51 @@
-import { markInternalRequestSchema, uploadLicenseRequestSchema } from '@vibept/shared';
+import { markInternalRequestSchema } from '@vibept/shared';
 import { Router } from 'express';
 import { db } from '../../db/knex.js';
-import { clearLicense, getLicenseStatus, uploadLicense } from '../../services/licensing/state.js';
-import { LicenseVerifyError } from '../../services/licensing/verifier.js';
+import { getLicenseStatusForCompany } from '../../services/licensing/state.js';
 import { HttpError, Unauthorized } from '../errors.js';
-import { requireAuth, requireCompanyRole, requireSuperAdmin } from '../middleware/auth.js';
+import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 
 export const licensingRouter: Router = Router({ mergeParams: true });
 
-/** Any company member can read the status — banners surface it on every
- *  page. Authenticated users only; the status is not public. */
+/**
+ * Licensing is appliance-wide (see services/licensing/state.ts). This
+ * per-company GET is kept for backward compat — the banner on each
+ * company page just needs the state, and for internal companies that
+ * state is always `internal_free` regardless of the appliance license.
+ */
 licensingRouter.get('/:companyId/license', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
-    const result = await getLicenseStatus(Number(req.params.companyId));
+    const result = await getLicenseStatusForCompany(Number(req.params.companyId));
     res.json({ data: result });
   } catch (err) {
     next(err);
   }
 });
 
-/** Company admins upload a JWT. Verifier failures surface 400s with a
- *  `code` the UI can switch on (bad_signature / no_pubkey / etc.). */
-licensingRouter.post(
-  '/:companyId/license',
-  requireAuth,
-  requireCompanyRole(['company_admin']),
-  async (req, res, next) => {
-    try {
-      const body = uploadLicenseRequestSchema.parse(req.body);
-      try {
-        const result = await uploadLicense(Number(req.params.companyId), body.jwt);
-        res.status(201).json({ data: result });
-      } catch (err) {
-        if (err instanceof LicenseVerifyError) {
-          throw new HttpError(400, `license_${err.code}`, err.message);
-        }
-        throw err;
-      }
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+/**
+ * Per-company license upload / clear is gone. The SuperAdmin uploads
+ * one license to /api/v1/admin/license — it applies to every non-
+ * internal company on the appliance. Return 410 Gone so any client
+ * still hitting these paths gets a clear signal.
+ */
+const gonePayload = {
+  upgrade: '/api/v1/admin/license',
+  message:
+    'Licensing is appliance-wide now. Upload a license at /api/v1/admin/license (or Appliance → Settings in the UI).',
+};
 
-licensingRouter.delete(
-  '/:companyId/license',
-  requireAuth,
-  requireCompanyRole(['company_admin']),
-  async (req, res, next) => {
-    try {
-      await clearLicense(Number(req.params.companyId));
-      res.status(204).end();
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+licensingRouter.post('/:companyId/license', requireAuth, async (_req, _res, next) => {
+  next(new HttpError(410, 'moved_to_appliance', gonePayload.message, gonePayload));
+});
+licensingRouter.delete('/:companyId/license', requireAuth, async (_req, _res, next) => {
+  next(new HttpError(410, 'moved_to_appliance', gonePayload.message, gonePayload));
+});
 
 /**
- * Flip a company's is_internal flag. SuperAdmin-only — this is a
- * material commercial decision (marking a company as "firm internal
- * staff" removes it from the licensing ledger entirely). See
- * CLAUDE.md → Licensing.
+ * Flip a company's is_internal flag. SuperAdmin-only — material commercial
+ * decision. Internal companies bypass licensing enforcement unconditionally,
+ * so toggling this is meaningful even under appliance-wide licensing.
  */
 licensingRouter.patch(
   '/:companyId/license/internal-flag',
@@ -76,11 +59,12 @@ licensingRouter.patch(
         .where({ id: companyId })
         .update({
           is_internal: body.isInternal,
+          // Legacy per-company column — kept in sync for any code that still
+          // reads it, but licensing decisions all come from appliance state.
           license_state: body.isInternal ? 'internal_free' : 'trial',
-          license_expires_at: body.isInternal ? null : db.fn.now(),
           updated_at: db.fn.now(),
         });
-      const status = await getLicenseStatus(companyId);
+      const status = await getLicenseStatusForCompany(companyId);
       res.json({ data: status });
     } catch (err) {
       next(err);

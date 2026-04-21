@@ -29,9 +29,16 @@ function formatDate(iso: string, tz?: string): string {
 export function TimesheetView({
   data,
   onRequestCorrection,
+  onEditEntry,
+  onDeleteEntry,
 }: {
   data: TimesheetResponse;
   onRequestCorrection?: (entry: TimeEntry) => void;
+  /** Supervisor/admin inline edit. When present, renders "Edit" in each
+   *  row's actions so long as the entry isn't approved. */
+  onEditEntry?: (entry: TimeEntry) => void;
+  /** Supervisor/admin soft-delete. Same visibility rules as edit. */
+  onDeleteEntry?: (entry: TimeEntry) => void;
 }) {
   const [auditEntryId, setAuditEntryId] = useState<number | null>(null);
 
@@ -180,6 +187,24 @@ export function TimesheetView({
                             onClick={() => onRequestCorrection(e)}
                           >
                             Request fix
+                          </button>
+                        )}
+                        {onEditEntry && !e.approvedAt && (
+                          <button
+                            type="button"
+                            className="text-slate-900 hover:underline"
+                            onClick={() => onEditEntry(e)}
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {onDeleteEntry && !e.approvedAt && (
+                          <button
+                            type="button"
+                            className="text-red-700 hover:underline"
+                            onClick={() => onDeleteEntry(e)}
+                          >
+                            Delete
                           </button>
                         )}
                       </div>

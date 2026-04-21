@@ -6,10 +6,23 @@ import { NotFound } from '../../http/errors.js';
 import { decryptSecret, encryptSecret } from '../crypto.js';
 import { decodeUnverified, LicenseVerifyError, verifyLicense } from './verifier.js';
 
-interface CompanyRow {
-  id: number;
-  is_internal: boolean;
-  license_state: LicenseState;
+/**
+ * Appliance-wide licensing.
+ *
+ * The commercial model actually in production is: one CPA firm buys one
+ * appliance, the license covers every company on it. A license JWT lives
+ * once on the `appliance_settings` singleton and drives the state for
+ * every non-internal company on the box.
+ *
+ * `computeState` stays the pure shape it's always been — it just reads
+ * the appliance's `created_at` as the trial-start anchor now, instead
+ * of a company's.
+ */
+
+const APPLIANCE_ROW_ID = 1;
+
+interface ApplianceLicenseRow {
+  license_state: LicenseState | null;
   license_expires_at: Date | null;
   license_key_encrypted: string | null;
   license_claims: LicenseClaims | null;
@@ -18,35 +31,38 @@ interface CompanyRow {
   created_at: Date;
 }
 
-async function loadRow(companyId: number): Promise<CompanyRow> {
-  const row = await db('companies').where({ id: companyId }).first<CompanyRow>();
-  if (!row) throw NotFound('Company not found');
+async function loadApplianceRow(): Promise<ApplianceLicenseRow> {
+  const row = await db('appliance_settings')
+    .where({ id: APPLIANCE_ROW_ID })
+    .first<ApplianceLicenseRow>();
+  if (!row) throw NotFound('appliance_settings singleton missing');
   return row;
 }
 
 /**
- * Compute the effective state + expiry from the stored row. Pure function
- * of the row data, idempotent — safe to call on every request or to
- * invoke from the daily cron. Callers that need to persist a transition
- * call persistComputedState() below.
+ * Pure state computation. Same semantics as before — kept a pure
+ * function of whatever row-shape you pass in so the appliance path and
+ * any legacy per-company read share the derivation.
+ *
+ * Inputs:
+ *   - `isInternal` pins the state to `internal_free` regardless of
+ *     everything else. Only the company-scoped resolver passes true;
+ *     the appliance row is never internal.
+ *   - `license_claims` wins over `license_expires_at` wins over
+ *     `created_at + trial window`.
  */
 export function computeState(row: {
-  is_internal: boolean;
-  license_state: LicenseState;
+  isInternal?: boolean;
   license_expires_at: Date | null;
   license_claims: LicenseClaims | null;
   created_at: Date;
 }): { state: LicenseState; expiresAt: Date | null; daysUntilExpiry: number | null } {
-  // Internal firm-use flag is non-negotiable and ignores everything else.
-  if (row.is_internal) {
+  if (row.isInternal) {
     return { state: 'internal_free', expiresAt: null, daysUntilExpiry: null };
   }
 
-  // 1. If we have valid claims + exp in the future → licensed.
   const claimsExp = row.license_claims?.exp ? new Date(row.license_claims.exp * 1000) : null;
 
-  // Pick the authoritative expiry: claims wins over license_expires_at,
-  // which wins over trial-derived expiry.
   const expiresAt =
     claimsExp ??
     row.license_expires_at ??
@@ -59,8 +75,6 @@ export function computeState(row: {
     if (expiresAt.getTime() > now) {
       return { state: 'licensed', expiresAt, daysUntilExpiry: days };
     }
-    // Expired: grace if within LICENSE_GRACE_DAYS of expiry, otherwise
-    // hard-expired.
     const expiredFor = Math.floor((now - expiresAt.getTime()) / 86_400_000);
     if (expiredFor <= LICENSE_GRACE_DAYS) {
       return { state: 'grace', expiresAt, daysUntilExpiry: days };
@@ -68,8 +82,7 @@ export function computeState(row: {
     return { state: 'expired', expiresAt, daysUntilExpiry: days };
   }
 
-  // No claims stored → this is a trial. Same "grace after trial expiry"
-  // treatment so an admin has time to paste a key.
+  // Trial path — no claims uploaded yet.
   if (expiresAt.getTime() > now) {
     return { state: 'trial', expiresAt, daysUntilExpiry: days };
   }
@@ -80,8 +93,12 @@ export function computeState(row: {
   return { state: 'expired', expiresAt, daysUntilExpiry: days };
 }
 
-export async function getLicenseStatus(companyId: number): Promise<LicenseStatus> {
-  const row = await loadRow(companyId);
+/**
+ * Canonical appliance-wide license status. This is what the SuperAdmin
+ * UI reads and what the middleware enforces against.
+ */
+export async function getApplianceLicenseStatus(): Promise<LicenseStatus> {
+  const row = await loadApplianceRow();
   const { state, expiresAt, daysUntilExpiry } = computeState(row);
   return {
     state,
@@ -94,12 +111,36 @@ export async function getLicenseStatus(companyId: number): Promise<LicenseStatus
 }
 
 /**
- * Upload + verify a new license JWT. Stores the encrypted raw token plus
- * parsed claims. If the JWT verifies but is already expired, we still
- * accept it so the state machine lands on `expired` (not "no license
- * uploaded"); the UI surfaces the error text.
+ * Company-scoped resolver — kept for backward compatibility with the
+ * existing `GET /companies/:id/license` endpoint. Internal companies
+ * are always `internal_free`; everyone else mirrors the appliance.
  */
-export async function uploadLicense(companyId: number, jwtToken: string): Promise<LicenseStatus> {
+export async function getLicenseStatusForCompany(companyId: number): Promise<LicenseStatus> {
+  const company = await db('companies').where({ id: companyId }).first<{
+    is_internal: boolean;
+  }>();
+  if (!company) throw NotFound('Company not found');
+
+  if (company.is_internal) {
+    const row = await loadApplianceRow();
+    return {
+      state: 'internal_free',
+      expiresAt: null,
+      daysUntilExpiry: null,
+      claims: row.license_claims,
+      enforced: env.LICENSING_ENFORCED,
+      lastCheckedAt: row.last_license_check_at?.toISOString() ?? null,
+    };
+  }
+
+  return getApplianceLicenseStatus();
+}
+
+/**
+ * Upload + verify a new license JWT. Replaces any existing one.
+ * Appliance-wide: no companyId. SuperAdmin only at the route layer.
+ */
+export async function uploadLicense(jwtToken: string): Promise<LicenseStatus> {
   let claims: LicenseClaims | null = null;
   let verifyError: LicenseVerifyError | null = null;
 
@@ -107,7 +148,6 @@ export async function uploadLicense(companyId: number, jwtToken: string): Promis
     claims = verifyLicense(jwtToken);
   } catch (err) {
     if (err instanceof LicenseVerifyError && err.code === 'expired') {
-      // Still accept the expired token so the UI can show "what you had".
       claims = decodeUnverified(jwtToken);
       verifyError = err;
     } else {
@@ -120,8 +160,8 @@ export async function uploadLicense(companyId: number, jwtToken: string): Promis
   }
 
   return db.transaction(async (trx) => {
-    await trx('companies')
-      .where({ id: companyId })
+    await trx('appliance_settings')
+      .where({ id: APPLIANCE_ROW_ID })
       .update({
         license_key_encrypted: encryptSecret(jwtToken),
         license_claims: JSON.stringify(claims),
@@ -132,15 +172,15 @@ export async function uploadLicense(companyId: number, jwtToken: string): Promis
         updated_at: trx.fn.now(),
       });
 
-    return getLicenseStatus(companyId);
+    return getApplianceLicenseStatus();
   });
 }
 
-export async function clearLicense(companyId: number): Promise<void> {
-  await db('companies').where({ id: companyId }).update({
+export async function clearLicense(): Promise<void> {
+  await db('appliance_settings').where({ id: APPLIANCE_ROW_ID }).update({
     license_key_encrypted: null,
     license_claims: null,
-    license_state: 'trial',
+    license_state: null,
     license_expires_at: null,
     license_issued_at: null,
     last_license_check_at: null,
@@ -150,11 +190,11 @@ export async function clearLicense(companyId: number): Promise<void> {
 
 /**
  * Load the raw JWT for heartbeat use. Decrypts on demand; returns null
- * if the company has no license uploaded.
+ * if no license is uploaded.
  */
-export async function loadRawToken(companyId: number): Promise<string | null> {
-  const row = await db('companies')
-    .where({ id: companyId })
+export async function loadRawToken(): Promise<string | null> {
+  const row = await db('appliance_settings')
+    .where({ id: APPLIANCE_ROW_ID })
     .first<{ license_key_encrypted: string | null }>();
   if (!row?.license_key_encrypted) return null;
   return decryptSecret(row.license_key_encrypted);

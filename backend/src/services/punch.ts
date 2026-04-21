@@ -21,6 +21,8 @@ export interface TimeEntryRow {
   source: PunchSource;
   source_device_id: string | null;
   source_offline: boolean;
+  source_ip: string | null;
+  source_user_agent: string | null;
   client_started_at: Date | null;
   client_clock_skew_ms: number | null;
   created_by: number | null;
@@ -47,6 +49,8 @@ export function rowToTimeEntry(row: TimeEntryRow): TimeEntry {
     durationSeconds: row.duration_seconds == null ? null : Number(row.duration_seconds),
     source: row.source,
     sourceOffline: row.source_offline,
+    sourceIp: row.source_ip,
+    sourceUserAgent: row.source_user_agent,
     approvedAt: row.approved_at?.toISOString() ?? null,
     approvedBy: row.approved_by,
     isAutoClosed: row.is_auto_closed,
@@ -70,6 +74,11 @@ export interface PunchContext {
    *  (no user account) this is null; source + source_device_id capture
    *  the origin. Cron-driven closes are also null. */
   actorUserId: number | null;
+  /** Network attribution captured at the HTTP layer. Nullable — cron
+   *  paths (auto-clock-out) and test fixtures have no request, and
+   *  legacy rows pre-date this migration. */
+  sourceIp?: string | null;
+  sourceUserAgent?: string | null;
   /** Optional offline metadata. When present, `started_at` is
    *  client_started_at adjusted for skew. */
   clientStartedAt?: string | undefined;
@@ -253,6 +262,8 @@ export async function clockIn(
         source: ctx.source,
         source_device_id: ctx.sourceDeviceId ?? null,
         source_offline: isOffline,
+        source_ip: ctx.sourceIp ?? null,
+        source_user_agent: ctx.sourceUserAgent ?? null,
         client_started_at: rawClientStartedAt,
         client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
@@ -349,6 +360,8 @@ export async function breakIn(ctx: PunchContext): Promise<TimeEntry> {
         source: ctx.source,
         source_device_id: ctx.sourceDeviceId ?? null,
         source_offline: isOffline,
+        source_ip: ctx.sourceIp ?? null,
+        source_user_agent: ctx.sourceUserAgent ?? null,
         client_started_at: rawClientStartedAt,
         client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
@@ -398,6 +411,8 @@ export async function breakOut(ctx: PunchContext): Promise<TimeEntry> {
         source: ctx.source,
         source_device_id: ctx.sourceDeviceId ?? null,
         source_offline: isOffline,
+        source_ip: ctx.sourceIp ?? null,
+        source_user_agent: ctx.sourceUserAgent ?? null,
         client_started_at: rawClientStartedAt,
         client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
@@ -445,6 +460,8 @@ export async function switchJob(ctx: PunchContext, newJobId: number): Promise<Ti
         source: ctx.source,
         source_device_id: ctx.sourceDeviceId ?? null,
         source_offline: isOffline,
+        source_ip: ctx.sourceIp ?? null,
+        source_user_agent: ctx.sourceUserAgent ?? null,
         client_started_at: rawClientStartedAt,
         client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
@@ -590,5 +607,102 @@ export async function deleteEntry(
       action: 'delete',
       reason,
     });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Admin / supervisor: create an entry from scratch (missed-punch recovery).
+// ---------------------------------------------------------------------------
+
+export interface CreateEntryInput {
+  employeeId: number;
+  startedAt: string; // ISO
+  endedAt: string; // ISO — closed entries only; open entries must come from actual punches
+  entryType: 'work' | 'break';
+  jobId?: number | null;
+  reason: string;
+}
+
+/**
+ * Insert a complete (closed) time entry on behalf of an employee. Used
+ * by the supervisor "Joe forgot to clock in yesterday" flow. Refuses to
+ * create overlapping entries against existing non-deleted rows, and
+ * records the audit as `action=create` with the supplied reason.
+ *
+ * Intentionally requires `endedAt` — open entries are the employee's
+ * own action via kiosk/PWA, and a supervisor creating one would
+ * conflict with the partial-unique "one open entry" index.
+ */
+export async function createEntryForEmployee(
+  input: CreateEntryInput,
+  actor: {
+    userId: number;
+    companyId: number;
+    sourceIp?: string | null;
+    sourceUserAgent?: string | null;
+  },
+): Promise<TimeEntry> {
+  const startedAt = new Date(input.startedAt);
+  const endedAt = new Date(input.endedAt);
+  if (Number.isNaN(startedAt.getTime())) throw BadRequest('Invalid startedAt');
+  if (Number.isNaN(endedAt.getTime())) throw BadRequest('Invalid endedAt');
+  if (endedAt <= startedAt) throw BadRequest('endedAt must be after startedAt');
+
+  return db.transaction(async (trx) => {
+    await ensureActiveEmployee(trx, actor.companyId, input.employeeId);
+    if (input.jobId != null) {
+      await ensureJobBelongsToCompany(trx, actor.companyId, input.jobId);
+    }
+
+    // Overlap check. Two ranges overlap when a.start < b.end AND a.end > b.start.
+    // Unclosed entries (ended_at IS NULL) are treated as extending to +inf.
+    const overlap = await trx<TimeEntryRow>('time_entries')
+      .where({ company_id: actor.companyId, employee_id: input.employeeId })
+      .whereNull('deleted_at')
+      .where('started_at', '<', endedAt)
+      .andWhere((qb) => {
+        qb.whereNull('ended_at').orWhere('ended_at', '>', startedAt);
+      })
+      .first();
+    if (overlap) {
+      throw Conflict('Proposed entry overlaps with an existing entry for this employee');
+    }
+
+    const [row] = await trx<TimeEntryRow>('time_entries')
+      .insert({
+        company_id: actor.companyId,
+        employee_id: input.employeeId,
+        shift_id: trx.raw('gen_random_uuid()'),
+        entry_type: input.entryType,
+        job_id: input.entryType === 'work' ? (input.jobId ?? null) : null,
+        started_at: startedAt,
+        ended_at: endedAt,
+        duration_seconds: secondsBetween(startedAt, endedAt),
+        source: 'web',
+        source_device_id: `web-admin-${actor.userId}`,
+        source_ip: actor.sourceIp ?? null,
+        source_user_agent: actor.sourceUserAgent ?? null,
+        created_by: actor.userId,
+        edited_by: actor.userId,
+        edit_reason: input.reason,
+      })
+      .returning<TimeEntryRow[]>('*');
+    if (!row) throw new Error('failed to insert time entry');
+
+    await writeAudit(trx, {
+      timeEntryId: row.id,
+      companyId: actor.companyId,
+      actorUserId: actor.userId,
+      action: 'create',
+      reason: input.reason,
+      newValue: {
+        entryType: input.entryType,
+        startedAt: startedAt.toISOString(),
+        endedAt: endedAt.toISOString(),
+        jobId: row.job_id,
+      },
+    });
+
+    return rowToTimeEntry(row);
   });
 }

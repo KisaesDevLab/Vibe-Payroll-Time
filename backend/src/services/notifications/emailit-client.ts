@@ -7,8 +7,12 @@
  * which matches every transactional email provider on the market.
  * If the live API differs, only `buildRequest` needs adjusting.
  */
-import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+
+// Hardcoded default — callers (service.ts) normally supply baseUrl from
+// the DB-backed appliance-settings resolver. This constant only matters
+// if a caller forgets to pass one.
+const DEFAULT_EMAILIT_BASE_URL = 'https://api.emailit.com/v1';
 
 export interface EmailItConfig {
   apiKey: string;
@@ -45,7 +49,7 @@ function buildRequest(
   config: EmailItConfig,
   payload: EmailPayload,
 ): { url: string; init: RequestInit } {
-  const base = (config.baseUrl ?? env.EMAILIT_API_BASE_URL).replace(/\/+$/, '');
+  const base = (config.baseUrl ?? DEFAULT_EMAILIT_BASE_URL).replace(/\/+$/, '');
   return {
     url: `${base}/emails`,
     init: {

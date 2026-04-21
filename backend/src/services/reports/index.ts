@@ -3,6 +3,7 @@ import { auditTrailReport } from './audit-trail.js';
 import { hoursByJobReport } from './hours-by-job.js';
 import { hoursByPeriodReport } from './hours-by-period.js';
 import { overtimeReport } from './overtime.js';
+import { punchActivityReport } from './punch-activity.js';
 import { timeCardReport } from './time-card.js';
 import type { ReportHandler } from './types.js';
 
@@ -11,6 +12,7 @@ import type { ReportHandler } from './types.js';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handlers: Record<string, ReportHandler<any>> = {
   [timeCardReport.name]: timeCardReport,
+  [punchActivityReport.name]: punchActivityReport,
   [hoursByPeriodReport.name]: hoursByPeriodReport,
   [hoursByJobReport.name]: hoursByJobReport,
   [overtimeReport.name]: overtimeReport,

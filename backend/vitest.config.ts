@@ -12,6 +12,14 @@ export default defineConfig({
     poolOptions: { forks: { singleFork: true } },
     // Env set here is applied before test modules load, which is required
     // because src/config/env.ts validates at import time.
+    //
+    // Integration tests TRUNCATE + re-seed core tables (users, companies,
+    // time_entries, ...). Pointing them at the dev DB wipes whatever the
+    // operator set up via the setup wizard on every `npm test` run —
+    // absolutely catastrophic UX. Default to a dedicated `vibept_test`
+    // database so dev and test are physically separate. Anyone can still
+    // override via POSTGRES_DB_TEST if they want to target a different
+    // database (CI, etc).
     env: {
       NODE_ENV: 'test',
       LOG_LEVEL: 'silent',
@@ -23,7 +31,7 @@ export default defineConfig({
       POSTGRES_PORT: process.env.POSTGRES_PORT ?? '5432',
       POSTGRES_USER: process.env.POSTGRES_USER ?? 'vibept',
       POSTGRES_PASSWORD: process.env.POSTGRES_PASSWORD ?? 'vibept_dev',
-      POSTGRES_DB: process.env.POSTGRES_DB ?? 'vibept',
+      POSTGRES_DB: process.env.POSTGRES_DB_TEST ?? 'vibept_test',
     },
   },
 });

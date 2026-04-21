@@ -100,6 +100,19 @@ export const deleteEntryRequestSchema = z.object({
 });
 export type DeleteEntryRequest = z.infer<typeof deleteEntryRequestSchema>;
 
+/** Admin/supervisor creates a complete (closed) entry on behalf of an
+ *  employee — the "missed punch" flow. Open entries (no endedAt) come
+ *  only from real punches and are rejected here. */
+export const createEntryRequestSchema = z.object({
+  employeeId: z.number().int().positive(),
+  startedAt: z.string().datetime(),
+  endedAt: z.string().datetime(),
+  entryType: z.enum(['work', 'break']),
+  jobId: z.number().int().positive().nullable().optional(),
+  reason: z.string().min(1).max(500),
+});
+export type CreateEntryRequest = z.infer<typeof createEntryRequestSchema>;
+
 // ---------------------------------------------------------------------------
 // Correction requests
 // ---------------------------------------------------------------------------

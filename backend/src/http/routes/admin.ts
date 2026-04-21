@@ -1,7 +1,18 @@
+import { updateApplianceSettingsRequestSchema, uploadLicenseRequestSchema } from '@vibept/shared';
 import { Router } from 'express';
 import { db } from '../../db/knex.js';
 import { env } from '../../config/env.js';
+import {
+  getApplianceSettingsForAdmin,
+  updateApplianceSettings,
+} from '../../services/appliance-settings.js';
 import { exportCompanyAll } from '../../services/backup-export.js';
+import {
+  clearLicense,
+  getApplianceLicenseStatus,
+  uploadLicense,
+} from '../../services/licensing/state.js';
+import { LicenseVerifyError } from '../../services/licensing/verifier.js';
 import {
   checkLatestRelease,
   getRunningVersion,
@@ -11,7 +22,7 @@ import {
   requestUpdate,
 } from '../../services/update-manager.js';
 import { VERSION, GIT_SHA, BUILD_DATE } from '../../version.js';
-import { Conflict, NotFound, Unauthorized } from '../errors.js';
+import { Conflict, HttpError, NotFound, Unauthorized } from '../errors.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 
 export const adminRouter: Router = Router();
@@ -37,7 +48,11 @@ adminRouter.get('/health', requireAuth, requireSuperAdmin, async (_req, res, nex
     const companies = dbOk
       ? await db('companies')
           .leftJoin('employees', function () {
-            this.on('employees.company_id', '=', 'companies.id').andOnNull('employees.deleted_at');
+            // Count not-terminated employees. `employees` uses status +
+            // terminated_at for lifecycle — no deleted_at column.
+            this.on('employees.company_id', '=', 'companies.id').andOnNull(
+              'employees.terminated_at',
+            );
           })
           .groupBy('companies.id')
           .select<
@@ -63,7 +78,7 @@ adminRouter.get('/health', requireAuth, requireSuperAdmin, async (_req, res, nex
     const sinceIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const notif24h = dbOk
       ? await db('notifications_log')
-          .where('created_at', '>=', sinceIso)
+          .where('queued_at', '>=', sinceIso)
           .select('status')
           .count<{ status: string; count: string }[]>('* as count')
           .groupBy('status')
@@ -190,6 +205,69 @@ adminRouter.post('/update/run', requireAuth, requireSuperAdmin, async (req, res,
     if (err instanceof Error && (err as { code?: string }).code === 'conflict') {
       return next(Conflict(err.message));
     }
+    next(err);
+  }
+});
+
+// ---- Appliance settings (SuperAdmin only) ----
+// DB-backed config the operator is expected to edit at runtime. Covers
+// EmailIt/AI fallbacks, retention, log level. GET never returns secret
+// plaintext — instead each secret has a `*HasSecret` flag. PATCH
+// accepts null to clear, a string to set, undefined to leave alone.
+adminRouter.get('/settings', requireAuth, requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const data = await getApplianceSettingsForAdmin();
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.patch('/settings', requireAuth, requireSuperAdmin, async (req, res, next) => {
+  try {
+    const body = updateApplianceSettingsRequestSchema.parse(req.body);
+    const data = await updateApplianceSettings(body);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- Appliance-wide license (SuperAdmin only) ----
+// Licensing is per-appliance, not per-company. One JWT covers every
+// non-internal company on the appliance; internal companies always
+// bypass enforcement regardless.
+adminRouter.get('/license', requireAuth, requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const data = await getApplianceLicenseStatus();
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post('/license', requireAuth, requireSuperAdmin, async (req, res, next) => {
+  try {
+    const body = uploadLicenseRequestSchema.parse(req.body);
+    try {
+      const data = await uploadLicense(body.jwt);
+      res.status(201).json({ data });
+    } catch (err) {
+      if (err instanceof LicenseVerifyError) {
+        throw new HttpError(400, `license_${err.code}`, err.message);
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.delete('/license', requireAuth, requireSuperAdmin, async (_req, res, next) => {
+  try {
+    await clearLicense();
+    res.status(204).end();
+  } catch (err) {
     next(err);
   }
 });

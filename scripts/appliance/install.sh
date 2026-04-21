@@ -374,12 +374,8 @@ CLOUDFLARE_TUNNEL_TOKEN=${CHOSEN_CF_TOKEN}
 TAILSCALE_AUTHKEY=${CHOSEN_TS_AUTHKEY}
 TAILSCALE_HOSTNAME=${CHOSEN_TS_HOSTNAME:-vibept}
 
-# Email (EmailIt). Configure per-company from the Admin UI, or set an
-# appliance-wide fallback here later.
-EMAILIT_API_KEY=
-EMAILIT_FROM_EMAIL=
-EMAILIT_FROM_NAME=Vibe Payroll Time
-EMAILIT_API_BASE_URL=https://api.emailit.com/v1
+# Dev/test only. Leave false on a real appliance — set per-company
+# muting in the notifications UI instead.
 NOTIFICATIONS_DISABLED=false
 
 # Payroll CSV export directory (relative to the backend container's cwd).
@@ -391,8 +387,9 @@ LICENSING_ENFORCED=false
 LICENSE_PUBKEY_PEM=
 LICENSE_PORTAL_HEARTBEAT_URL=
 
-# Rotating backup retention (Level 2 pg_dump).
-RETENTION_DAYS=14
+# EmailIt appliance-wide fallback, AI fallback, retention, and log level
+# are all edited from the SuperAdmin UI at /appliance/settings. They are
+# deliberately NOT in this file — no SSH needed.
 ENV
   chmod 600 "$env_path"
 }

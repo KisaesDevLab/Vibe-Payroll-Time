@@ -179,10 +179,30 @@ function ParamInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
         >
-          <option value="">Select employee…</option>
+          <option value="">{field.required ? 'Select employee…' : 'All employees'}</option>
           {roster.map((e) => (
             <option key={e.id} value={e.id}>
               {e.lastName}, {e.firstName}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  if (field.type === 'enum') {
+    return (
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">{field.label}</span>
+        <select
+          required={field.required}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {!field.required && <option value="">—</option>}
+          {(field.choices ?? []).map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
             </option>
           ))}
         </select>
