@@ -317,8 +317,26 @@ timesheetsRouter.get('/entries/:entryId/audit', requireAuth, async (req, res, ne
   try {
     if (!req.user) return next(Unauthorized());
     const { companyId } = approveQuery.parse(req.query);
-    await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, companyId);
-    const rows = await getEntryAudit(companyId, Number(req.params.entryId));
+    const role = await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, companyId);
+
+    const entryId = Number(req.params.entryId);
+
+    // Employees may only read the audit trail of their OWN entries.
+    // Without this gate, any employee who can guess or enumerate an
+    // entryId could read the audit of another employee's timesheet —
+    // including who edited what and when. Supervisors and admins can
+    // read every entry's audit in their company.
+    if (role === 'employee' && req.user.roleGlobal !== 'super_admin') {
+      const own = await db('time_entries as te')
+        .join('employees as e', 'e.id', 'te.employee_id')
+        .where('te.id', entryId)
+        .andWhere('te.company_id', companyId)
+        .andWhere('e.user_id', req.user.id)
+        .first<{ id: number }>();
+      if (!own) return next(Forbidden("Cannot read another employee's entry audit"));
+    }
+
+    const rows = await getEntryAudit(companyId, entryId);
     res.json({ data: rows });
   } catch (err) {
     next(err);

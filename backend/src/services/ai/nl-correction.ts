@@ -262,12 +262,34 @@ export async function applyNLCorrection(
   let skipped = 0;
   const errors: Array<{ toolCallId: string; message: string }> = [];
 
+  /**
+   * Re-verify every tool call's entry belongs to `body.employeeId` BEFORE
+   * dispatching to editEntry / deleteEntry. The HTTP-level edit routes
+   * go through `loadEditContext` → `assertCanEdit`, which compares
+   * `employees.user_id === actor.userId`. This path bypasses those
+   * middlewares, so an employee who passes `body.employeeId = self` to
+   * clear authorizeForEmployee could otherwise smuggle a coworker's
+   * `entryId` into a toolCall and edit their timesheet. Defense in
+   * depth: confirm entry.employee_id matches the already-authorized
+   * subject.
+   */
+  const assertCallTargetsAuthorizedEmployee = async (entryId: number): Promise<void> => {
+    const row = await db('time_entries')
+      .where({ id: entryId, company_id: actor.companyId })
+      .first<{ employee_id: number; deleted_at: Date | null }>();
+    if (!row) throw NotFound('Time entry not found');
+    if (row.employee_id !== body.employeeId) {
+      throw Forbidden("Tool call targets an entry outside the authorized employee's timesheet");
+    }
+  };
+
   for (const call of body.toolCalls) {
     const reason = `AI: ${body.originalPrompt.slice(0, 200)}`;
     try {
       if (call.name === 'edit_entry') {
         const entryId = Number(call.arguments.entryId);
         if (!Number.isFinite(entryId)) throw new Error('invalid entryId');
+        await assertCallTargetsAuthorizedEmployee(entryId);
         const patch = {
           ...(typeof call.arguments.startedAt === 'string'
             ? { startedAt: call.arguments.startedAt }
@@ -292,6 +314,7 @@ export async function applyNLCorrection(
       } else if (call.name === 'delete_entry') {
         const entryId = Number(call.arguments.entryId);
         if (!Number.isFinite(entryId)) throw new Error('invalid entryId');
+        await assertCallTargetsAuthorizedEmployee(entryId);
         await deleteEntry(entryId, { userId: actor.userId, companyId: actor.companyId }, reason);
         applied += 1;
       } else {

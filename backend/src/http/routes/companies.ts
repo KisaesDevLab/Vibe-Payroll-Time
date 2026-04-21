@@ -70,11 +70,26 @@ function companyIdFromParams(req: Request): number {
   return raw;
 }
 
+/** True iff the caller is company_admin for this company (or a SuperAdmin).
+ *  Supervisors return false — used to gate PIN plaintext reveal so a
+ *  supervisor can't walk the kiosk as another employee. */
+async function callerIsCompanyAdmin(
+  userId: number,
+  roleGlobal: 'super_admin' | 'none',
+  companyId: number,
+): Promise<boolean> {
+  return userCanAccessCompany(userId, companyId, roleGlobal, 'company_admin');
+}
+
 // ---------------------------------------------------------------------------
 // Companies (top level)
 // ---------------------------------------------------------------------------
 
-// All authenticated users can list companies — the service scopes results.
+// All authenticated users can list companies — the service scopes results
+// to companies the caller is a member of. Sensitive commercial detail
+// (license claims / tier / seat cap) is NOT in this payload — it only
+// surfaces via /api/v1/companies/:id/license, which gates claims on
+// company_admin role.
 companiesRouter.get('/', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
@@ -279,10 +294,22 @@ companiesRouter.get(
   }),
   async (req, res, next) => {
     try {
+      if (!req.user) return next(Unauthorized());
       const q = listEmployeesQuerySchema.parse(req.query);
-      // Any caller reaching this route has company_admin or supervisor
-      // role (or is a global super_admin) — all authorized to see PINs.
-      const rows = await listEmployees(companyIdFromParams(req), { ...q, includePin: true });
+      // Plaintext PIN visibility is company_admin + SuperAdmin only. A
+      // supervisor who can see every employee's PIN could walk up to the
+      // kiosk and punch in as anyone — defeating the kiosk's anti-buddy
+      // -punching posture (the product relies on PIN confidentiality;
+      // there is no GPS / photo / biometric backstop by design). The
+      // Employee row still carries `hasPin: true/false`; supervisors use
+      // that plus the "regenerate PIN" action (company_admin-only) to
+      // help forgetful employees.
+      const includePin = await callerIsCompanyAdmin(
+        req.user.id,
+        req.user.roleGlobal,
+        companyIdFromParams(req),
+      );
+      const rows = await listEmployees(companyIdFromParams(req), { ...q, includePin });
       res.json({ data: rows });
     } catch (err) {
       next(err);
@@ -328,8 +355,16 @@ companiesRouter.get(
   }),
   async (req, res, next) => {
     try {
+      if (!req.user) return next(Unauthorized());
+      // Same rule as the list endpoint: plaintext PIN is company_admin
+      // (+ SuperAdmin) only.
+      const includePin = await callerIsCompanyAdmin(
+        req.user.id,
+        req.user.roleGlobal,
+        companyIdFromParams(req),
+      );
       const row = await getEmployee(companyIdFromParams(req), Number(req.params.employeeId), {
-        includePin: true,
+        includePin,
       });
       res.json({ data: row });
     } catch (err) {

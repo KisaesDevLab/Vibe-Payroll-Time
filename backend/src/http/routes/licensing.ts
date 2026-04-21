@@ -4,8 +4,9 @@
 import { markInternalRequestSchema } from '@vibept/shared';
 import { Router } from 'express';
 import { db } from '../../db/knex.js';
+import { userCanAccessCompany } from '../../services/companies.js';
 import { getLicenseStatusForCompany } from '../../services/licensing/state.js';
-import { HttpError, Unauthorized } from '../errors.js';
+import { Forbidden, HttpError, Unauthorized } from '../errors.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 
 export const licensingRouter: Router = Router({ mergeParams: true });
@@ -15,12 +16,40 @@ export const licensingRouter: Router = Router({ mergeParams: true });
  * per-company GET is kept for backward compat — the banner on each
  * company page just needs the state, and for internal companies that
  * state is always `internal_free` regardless of the appliance license.
+ *
+ * Gated two ways:
+ *   1. Caller must be a member of the target company (or SuperAdmin) —
+ *      otherwise the endpoint would leak license state to anyone who
+ *      can guess a company id.
+ *   2. The `claims` field (tier / employee-count cap / company-count
+ *      cap / issuer / exp) is commercial metadata only company_admin +
+ *      SuperAdmin need to see. Employees and supervisors get the
+ *      effective state + expiry without the pricing-tier fingerprint.
  */
 licensingRouter.get('/:companyId/license', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
-    const result = await getLicenseStatusForCompany(Number(req.params.companyId));
-    res.json({ data: result });
+    const companyId = Number(req.params.companyId);
+    if (!Number.isFinite(companyId) || companyId <= 0) {
+      return next(Forbidden('Company context required'));
+    }
+
+    const hasAccess = await userCanAccessCompany(req.user.id, companyId, req.user.roleGlobal);
+    if (!hasAccess) return next(Forbidden('Not a member of this company'));
+
+    const status = await getLicenseStatusForCompany(companyId);
+
+    // Redact commercial claims for non-admins.
+    if (req.user.roleGlobal !== 'super_admin') {
+      const membership = await db('company_memberships')
+        .where({ user_id: req.user.id, company_id: companyId })
+        .first<{ role: 'company_admin' | 'supervisor' | 'employee' }>();
+      if (membership?.role !== 'company_admin') {
+        status.claims = null;
+      }
+    }
+
+    res.json({ data: status });
   } catch (err) {
     next(err);
   }

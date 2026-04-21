@@ -634,6 +634,28 @@ export async function copyLastWeek(input: CopyLastWeekInput): Promise<{
 
   const config = await loadCompanyConfig(db, input.companyId);
 
+  // Gate BEFORE the prior-week aggregation runs — otherwise an
+  // employee-role actor passing another employee's id would still cause
+  // the server to read the victim's prior-week punches into memory, and
+  // the per-cell Forbidden rejections would leak a rough activity
+  // profile through skippedCount. Fail fast with a clear error instead.
+  const preCheckActor = await loadActorContext(
+    db,
+    { userId: input.actor.userId, roleGlobal: input.actor.roleGlobal },
+    input.companyId,
+    input.employeeId,
+  );
+  const preCheckDecision = canManualEdit(preCheckActor, {
+    // isApproved is per-entry; at the whole-week gate the only signal
+    // that matters is role + ownership. Supervisors and admins pass
+    // regardless; employees must target their own employee row.
+    isApproved: false,
+    mode: config.manualEntryMode,
+  });
+  if (!preCheckDecision.allowed) {
+    throw Forbidden(preCheckDecision.reason ?? "Not allowed to copy this employee's week");
+  }
+
   const prior = await db.raw<{ rows: Array<{ d: string }> }>(
     `SELECT to_char((?::date - INTERVAL '7 day')::date, 'YYYY-MM-DD') AS d`,
     [input.weekStart],
