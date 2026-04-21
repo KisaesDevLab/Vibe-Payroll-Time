@@ -27,8 +27,27 @@ export const PunchSource = {
   Kiosk: 'kiosk',
   Web: 'web',
   MobilePwa: 'mobile_pwa',
+  /** Manager/supervisor-supplied override or allocation; distinct from
+   *  `web` (which is a live web-PWA punch). Always carries an
+   *  `entry_reason` and may carry `supersedes_entry_ids` for punch
+   *  replacements. */
+  WebManual: 'web_manual',
 } as const;
 export type PunchSource = (typeof PunchSource)[keyof typeof PunchSource];
+
+export const EmployeeManualEntryMode = {
+  Allowed: 'allowed',
+  OverrideOnly: 'override_only',
+  Disabled: 'disabled',
+} as const;
+export type EmployeeManualEntryMode =
+  (typeof EmployeeManualEntryMode)[keyof typeof EmployeeManualEntryMode];
+
+export const TimeFormat = {
+  Decimal: 'decimal',
+  Hhmm: 'hhmm',
+} as const;
+export type TimeFormat = (typeof TimeFormat)[keyof typeof TimeFormat];
 
 export const PayPeriodType = {
   Weekly: 'weekly',
@@ -63,6 +82,11 @@ export const AuditAction = {
   Unapprove: 'unapprove',
   Delete: 'delete',
   AutoClose: 'auto_close',
+  ManualCreate: 'manual_create',
+  ManualUpdate: 'manual_update',
+  ManualDelete: 'manual_delete',
+  ManualOverride: 'manual_override',
+  ManualRevert: 'manual_revert',
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

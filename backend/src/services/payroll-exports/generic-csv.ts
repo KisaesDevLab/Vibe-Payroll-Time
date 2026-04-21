@@ -1,7 +1,7 @@
-import { GENERIC_COLUMN_KEYS, type GenericColumnKey } from '@vibept/shared';
+import { GENERIC_COLUMN_KEYS, formatHours, type GenericColumnKey } from '@vibept/shared';
 import { BadRequest } from '../../http/errors.js';
 import { csvLine, hoursDecimal } from './csv.js';
-import type { EmployeeSummary, FormatFn } from './types.js';
+import type { EmployeeSummary, ExportContext, FormatFn } from './types.js';
 
 /**
  * Generic CSV exporter. Columns + order are configurable per run.
@@ -11,6 +11,11 @@ import type { EmployeeSummary, FormatFn } from './types.js';
  *
  * Column keys are drawn from GENERIC_COLUMN_KEYS (exported from shared)
  * so the UI's checklist matches what the server accepts.
+ *
+ * Time format: hour columns render in either decimal or HH:MM per
+ * `ctx.genericTimeFormat` (defaults to decimal when absent). Vendor
+ * formats (Payroll Relief / Gusto / QBO) always stay decimal because
+ * those targets only ingest decimal natively.
  */
 const HEADER_LABELS: Record<GenericColumnKey, string> = {
   employee_number: 'Employee #',
@@ -24,6 +29,9 @@ const HEADER_LABELS: Record<GenericColumnKey, string> = {
   job_breakdown_json: 'Job breakdown',
   period_start: 'Period start',
   period_end: 'Period end',
+  manual_hours: 'Manual hours',
+  source: 'Source',
+  override_reasons: 'Override reasons',
 };
 
 export const genericCsv: FormatFn = (ctx) => {
@@ -52,18 +60,35 @@ export const genericCsv: FormatFn = (ctx) => {
 
   for (const e of ctx.employees) {
     if (e.workSeconds === 0) continue;
-    const cells = columns.map((c) => formatCellFor(c, e, periodStart, periodEnd));
+    const cells = columns.map((c) => formatCellFor(c, e, periodStart, periodEnd, ctx));
     rows.push(csvLine(cells));
   }
 
   return rows.join('');
 };
 
+function renderHours(seconds: number, ctx: ExportContext): string {
+  if (ctx.genericTimeFormat === 'hhmm') {
+    return formatHours(seconds, 'hhmm');
+  }
+  return hoursDecimal(seconds);
+}
+
+function sourceLabelFor(e: EmployeeSummary): string {
+  const hasManual = e.manualSeconds > 0;
+  const hasPunched = e.workSeconds - e.manualSeconds > 0;
+  if (hasManual && hasPunched) return 'punched+manual';
+  if (hasManual) return 'web_manual';
+  if (hasPunched) return 'punched';
+  return '';
+}
+
 function formatCellFor(
   column: GenericColumnKey,
   e: EmployeeSummary,
   periodStart: string,
   periodEnd: string,
+  ctx: ExportContext,
 ): string | number {
   switch (column) {
     case 'employee_number':
@@ -75,13 +100,19 @@ function formatCellFor(
     case 'email':
       return e.email ?? '';
     case 'regular_hours':
-      return hoursDecimal(e.regularSeconds);
+      return renderHours(e.regularSeconds, ctx);
     case 'overtime_hours':
-      return hoursDecimal(e.overtimeSeconds);
+      return renderHours(e.overtimeSeconds, ctx);
     case 'break_hours':
-      return hoursDecimal(e.breakSeconds);
+      return renderHours(e.breakSeconds, ctx);
     case 'total_hours':
-      return hoursDecimal(e.workSeconds);
+      return renderHours(e.workSeconds, ctx);
+    case 'manual_hours':
+      return renderHours(e.manualSeconds, ctx);
+    case 'source':
+      return sourceLabelFor(e);
+    case 'override_reasons':
+      return e.overrideReasons.join(' · ');
     case 'job_breakdown_json':
       return JSON.stringify(
         e.byJob.map((j) => ({ jobCode: j.jobCode, hours: Number(hoursDecimal(j.workSeconds)) })),

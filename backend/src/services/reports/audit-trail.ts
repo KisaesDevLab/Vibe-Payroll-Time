@@ -1,4 +1,4 @@
-import { auditTrailParamsSchema, type AuditTrailParams } from '@vibept/shared';
+import { auditTrailParamsSchema, detectFormatKind, type AuditTrailParams } from '@vibept/shared';
 import { db } from '../../db/knex.js';
 import type { ReportHandler } from './types.js';
 
@@ -17,6 +17,11 @@ export const auditTrailReport: ReportHandler<typeof auditTrailParamsSchema> = {
     { key: 'oldValue', label: 'Old', type: 'string' },
     { key: 'newValue', label: 'New', type: 'string' },
     { key: 'reason', label: 'Reason', type: 'string' },
+    // Manual-entry addenda per ADDENDUM_TABULAR_ENTRY: surface the
+    // typed input string + its detected format alongside the canonical
+    // seconds stored in `new_value`. Non-manual rows leave these blank.
+    { key: 'typedInput', label: 'Typed input', type: 'string' },
+    { key: 'typedFormat', label: 'Typed format', type: 'string' },
   ],
   paramFields: [
     { key: 'periodStart', label: 'From', type: 'date', required: true },
@@ -64,6 +69,7 @@ export const auditTrailReport: ReportHandler<typeof auditTrailParamsSchema> = {
       new_value: unknown;
       reason: string | null;
     }>) {
+      const typed = extractTypedInput(r.new_value);
       yield {
         createdAt: r.created_at,
         action: r.action,
@@ -74,10 +80,29 @@ export const auditTrailReport: ReportHandler<typeof auditTrailParamsSchema> = {
         oldValue: stringify(r.old_value),
         newValue: stringify(r.new_value),
         reason: r.reason ?? '',
+        typedInput: typed ?? '',
+        typedFormat: typed ? detectFormatKind(typed) : '',
       };
     }
   },
 };
+
+function extractTypedInput(v: unknown): string | null {
+  if (v == null) return null;
+  let obj: Record<string, unknown> | null = null;
+  if (typeof v === 'string') {
+    try {
+      obj = JSON.parse(v) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  } else if (typeof v === 'object') {
+    obj = v as Record<string, unknown>;
+  }
+  if (!obj) return null;
+  const typed = obj.typedInput;
+  return typeof typed === 'string' && typed.length > 0 ? typed : null;
+}
 
 function stringify(v: unknown): string {
   if (v === null || v === undefined) return '';

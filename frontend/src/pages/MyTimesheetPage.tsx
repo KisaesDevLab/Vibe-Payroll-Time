@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeEntry } from '@vibept/shared';
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
@@ -45,6 +46,17 @@ export function MyTimesheetPage() {
             <p className="mt-1 text-sm text-slate-600">
               Current pay period. Request a fix on any entry that needs correcting.
             </p>
+            {sheet.data && companyId != null && (
+              <div className="mt-3 inline-flex overflow-hidden rounded-full border border-slate-300 text-xs font-medium">
+                <span className="bg-slate-900 px-3 py-1.5 text-white">List view</span>
+                <Link
+                  to={`/companies/${companyId}/timesheets/${sheet.data.employee.id}/week`}
+                  className="px-3 py-1.5 text-slate-600 hover:bg-slate-100"
+                >
+                  Grid view →
+                </Link>
+              </div>
+            )}
           </div>
           {memberships.length > 1 && (
             <select

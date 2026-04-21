@@ -60,3 +60,34 @@ original request attached.
 - The app never tracks your location or photographs you.
 - It does not identify your device to other employees.
 - Your PIN is hashed on the server; even the SuperAdmin cannot read it back.
+
+## Weekly grid
+
+Your **My timesheet** page has a **Grid view** tab. Seven days across,
+jobs down. Tap any cell to edit or add time.
+
+- Cell with **PUNCHED** tag → your clock-in/out on that day already
+  covers this job. Tap to override; override requires a reason.
+- Cell with **MANUAL** tag → a manual entry; tap to edit the number or
+  the reason.
+- Blank cell with a dash → nothing logged yet. Tap to add.
+
+If your company has set "override only" policy, you'll see a message
+when you try to add time on a day+job you didn't actually punch for.
+
+### Accepted input formats
+
+Inputs accept any of these styles — the grid auto-detects:
+
+- **Decimal:** `5`, `5.0`, `5.80`, `.5` → hours
+- **HH:MM:** `5:48`, `0:30`, `8:00`
+- **Labeled:** `5h 48m`, `5hr 48min`, `5 hrs`, `48 min`, `90m`
+
+Rejected inputs tell you why (e.g., "5:60" → "Minutes must be 0–59";
+"5 48" → "That's ambiguous — use 5:48 or 5.48").
+
+## Time format preference
+
+**User menu → Preferences → Time format.** Flip between decimal and HH:MM
+at any time. Hours everywhere in the app re-render instantly — this is
+a display setting only, it never changes the actual time stored.

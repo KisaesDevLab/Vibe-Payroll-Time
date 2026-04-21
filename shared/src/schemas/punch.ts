@@ -14,7 +14,7 @@ export const timeEntrySchema = z.object({
   startedAt: z.string().datetime(),
   endedAt: z.string().datetime().nullable(),
   durationSeconds: z.number().int().nonnegative().nullable(),
-  source: z.enum(['kiosk', 'web', 'mobile_pwa']),
+  source: z.enum(['kiosk', 'web', 'mobile_pwa', 'web_manual']),
   sourceOffline: z.boolean(),
   /** Per-punch network attribution. Null for cron-closed entries and
    *  legacy rows pre-dating the column. Sensitive — only include in
@@ -24,6 +24,18 @@ export const timeEntrySchema = z.object({
   approvedAt: z.string().datetime().nullable(),
   approvedBy: z.number().int().positive().nullable(),
   isAutoClosed: z.boolean(),
+  /** Non-null on `web_manual` rows — the free-text reason the manual
+   *  entry was created. */
+  entryReason: z.string().nullable(),
+  /** Non-null on punches that a later manual entry superseded. The row
+   *  stays in the DB; only its "active" status changes. */
+  supersededByEntryId: z.number().int().positive().nullable(),
+  /** Non-null on manual entries — the punches they replaced. Used to
+   *  restore on delete. */
+  supersedesEntryIds: z.array(z.number().int().positive()).nullable(),
+  /** Derived: `source === 'web_manual'`. Kept explicit so callers don't
+   *  string-match. */
+  isManual: z.boolean(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

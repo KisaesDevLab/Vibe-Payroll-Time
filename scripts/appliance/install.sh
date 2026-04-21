@@ -42,6 +42,7 @@ BRANCH="${BRANCH:-main}"
 # Global state — filled in by gather_config / load_env_profile.
 CHOSEN_PROFILE=""
 CHOSEN_APP_DOMAIN=""
+CHOSEN_SEED_DEMO="false"
 CHOSEN_ACME_EMAIL=""
 CHOSEN_CF_TOKEN=""
 CHOSEN_TS_AUTHKEY=""
@@ -269,6 +270,36 @@ EOF
   CHOSEN_TS_HOSTNAME="${TAILSCALE_HOSTNAME:-$(ask "Hostname on the tailnet" "vibept")}"
 }
 
+prompt_seed_demo() {
+  # Env override wins (for unattended installs).
+  case "${SEED_DEMO:-}" in
+    true|1|yes) CHOSEN_SEED_DEMO="true"; return ;;
+    false|0|no) CHOSEN_SEED_DEMO="false"; return ;;
+  esac
+  if ! is_interactive; then
+    CHOSEN_SEED_DEMO="false"
+    return
+  fi
+  echo
+  cat <<'EOF'
+Load the built-in demo company?
+
+  "Acme Plumbing Co" — one internal firm with 6 employees, 3 jobs, and
+  roughly two weeks of realistic time entries (open shifts, auto-closed
+  shifts, an admin-created entry, a mix of kiosk / web / mobile punches).
+  Lets you click around the UI before onboarding real people.
+
+  Safe to say yes on a fresh appliance or a demo VM. Say no on a production
+  appliance — the seed resets its own company on every run.
+
+EOF
+  if yn "Seed the demo company?" n; then
+    CHOSEN_SEED_DEMO="true"
+  else
+    CHOSEN_SEED_DEMO="false"
+  fi
+}
+
 gather_config() {
   prompt_profile
   case "$CHOSEN_PROFILE" in
@@ -276,6 +307,7 @@ gather_config() {
     cloudflare) prompt_cloudflare_config ;;
     tailscale)  prompt_tailscale_config ;;
   esac
+  prompt_seed_demo
 }
 
 summarize_config() {
@@ -296,6 +328,7 @@ summarize_config() {
       echo "  Tailnet hostname: $CHOSEN_TS_HOSTNAME"
       ;;
   esac
+  echo "  Demo seed:        $CHOSEN_SEED_DEMO"
   echo
   yn "Continue with these settings?" y || { err "aborted"; exit 1; }
 }
@@ -360,6 +393,10 @@ VITE_API_BASE_URL=/api/v1
 VITE_APP_NAME=Vibe Payroll Time
 
 MIGRATE_ON_BOOT=true
+# Leave the boot-time seed off — the installer runs the seed once as a
+# one-shot post-install step if the operator opted in. Flipping this to
+# true makes every restart re-seed and wipe demo edits.
+SEED_DEMO_ON_BOOT=false
 
 # Ingress — public profile
 APP_DOMAIN=${CHOSEN_APP_DOMAIN}
@@ -530,6 +567,44 @@ install_updater_units() {
   }
 }
 
+install_tunnel_units() {
+  local src_dir="$INSTALL_DIR/scripts/appliance/systemd"
+  local path_unit=/etc/systemd/system/vibept-tunnel.path
+  local svc_unit=/etc/systemd/system/vibept-tunnel.service
+  local applier="$INSTALL_DIR/scripts/appliance/tunnel-from-request.sh"
+  local changed=0
+
+  if [[ ! -f "$src_dir/vibept-tunnel.path" ]] || [[ ! -f "$src_dir/vibept-tunnel.service" ]]; then
+    warn "tunnel systemd templates missing in $src_dir — skipping tunnel manager wiring"
+    return
+  fi
+  if [[ ! -f "$applier" ]]; then
+    warn "tunnel applier missing at $applier — skipping tunnel manager wiring"
+    return
+  fi
+  chmod +x "$applier" 2>/dev/null || true
+
+  if ! cmp -s "$src_dir/vibept-tunnel.path" "$path_unit"; then
+    install -m 0644 "$src_dir/vibept-tunnel.path" "$path_unit"
+    changed=1
+  fi
+  if ! cmp -s "$src_dir/vibept-tunnel.service" "$svc_unit"; then
+    install -m 0644 "$src_dir/vibept-tunnel.service" "$svc_unit"
+    changed=1
+  fi
+
+  if [[ $changed -eq 1 ]]; then
+    log "installed/updated vibept-tunnel.{path,service}"
+    systemctl daemon-reload
+  else
+    log "tunnel systemd units already up-to-date"
+  fi
+
+  systemctl enable --now vibept-tunnel.path >/dev/null 2>&1 || {
+    warn "failed to enable vibept-tunnel.path — SuperAdmin tunnel toggle will not apply"
+  }
+}
+
 wait_for_health() {
   log "waiting for backend to report healthy (up to 120s)..."
   local status
@@ -545,6 +620,25 @@ wait_for_health() {
   docker compose -f "$INSTALL_DIR/docker-compose.prod.yml" --profile "$CHOSEN_PROFILE" \
     logs --tail=40 backend 2>&1 | sed 's/^/  /' >&2 || true
   return 1
+}
+
+# One-shot seed invocation. Runs once post-install; subsequent restarts
+# do NOT re-seed because SEED_DEMO_ON_BOOT is baked in as `false`.
+run_demo_seed_once() {
+  if [[ $CHOSEN_SEED_DEMO != true ]]; then
+    return 0
+  fi
+  log "seeding demo company (Acme Plumbing)..."
+  # The backend image has npm + the backend workspace; --workspace=backend
+  # makes npm cd into backend/ so knex finds knexfile.cjs natively.
+  if docker compose -f "$INSTALL_DIR/docker-compose.prod.yml" --profile "$CHOSEN_PROFILE" \
+       exec -T backend npm run seed:run --workspace=backend 2>&1 | sed 's/^/  /'; then
+    ok "demo seed applied"
+  else
+    warn "demo seed failed — you can rerun it later with:"
+    warn "  docker compose -f $INSTALL_DIR/docker-compose.prod.yml \\"
+    warn "    exec backend npm run seed:run --workspace=backend"
+  fi
 }
 
 print_completion_banner() {
@@ -598,7 +692,9 @@ main() {
   bring_up_stack
   install_systemd_unit
   install_updater_units
+  install_tunnel_units
   wait_for_health || warn "continuing despite health-check timeout — see logs above"
+  run_demo_seed_once
   print_completion_banner
 }
 

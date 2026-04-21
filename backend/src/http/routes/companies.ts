@@ -8,6 +8,7 @@ import {
   inviteMembershipRequestSchema,
   renameKioskDeviceRequestSchema,
   revokeBadgeRequestSchema,
+  setEmployeePinRequestSchema,
   updateCompanyRequestSchema,
   updateCompanySettingsRequestSchema,
   updateEmployeeRequestSchema,
@@ -38,6 +39,7 @@ import {
   importEmployeesCsv,
   listEmployees,
   regeneratePin,
+  setEmployeePinManually,
   updateEmployee,
 } from '../../services/employees.js';
 import { archiveJob, createJob, listJobs, unarchiveJob, updateJob } from '../../services/jobs.js';
@@ -275,7 +277,9 @@ companiesRouter.get(
   async (req, res, next) => {
     try {
       const q = listEmployeesQuerySchema.parse(req.query);
-      const rows = await listEmployees(companyIdFromParams(req), q);
+      // Any caller reaching this route has company_admin or supervisor
+      // role (or is a global super_admin) — all authorized to see PINs.
+      const rows = await listEmployees(companyIdFromParams(req), { ...q, includePin: true });
       res.json({ data: rows });
     } catch (err) {
       next(err);
@@ -321,7 +325,9 @@ companiesRouter.get(
   }),
   async (req, res, next) => {
     try {
-      const row = await getEmployee(companyIdFromParams(req), Number(req.params.employeeId));
+      const row = await getEmployee(companyIdFromParams(req), Number(req.params.employeeId), {
+        includePin: true,
+      });
       res.json({ data: row });
     } catch (err) {
       next(err);
@@ -363,6 +369,27 @@ companiesRouter.post(
         companyIdFromParams(req),
         Number(req.params.employeeId),
         length,
+      );
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Admin sets an employee's PIN manually. Same authorization as
+// regenerate; the service validates shape + weak-pattern.
+companiesRouter.put(
+  '/:companyId/employees/:employeeId/pin',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      const body = setEmployeePinRequestSchema.parse(req.body);
+      const result = await setEmployeePinManually(
+        companyIdFromParams(req),
+        Number(req.params.employeeId),
+        body.pin,
       );
       res.json({ data: result });
     } catch (err) {

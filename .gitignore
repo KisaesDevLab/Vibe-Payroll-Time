@@ -51,3 +51,4 @@ backups/
 
 ## Dev-only license signing keypair — never commit.
 dev-keys/
+/.claude/

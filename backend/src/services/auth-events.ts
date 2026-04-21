@@ -9,7 +9,9 @@ export type AuthEventType =
   | 'setup_initial'
   | 'password_change'
   | 'password_reset_requested'
-  | 'password_reset_completed';
+  | 'password_reset_completed'
+  | 'magic_link_requested'
+  | 'magic_link_consumed';
 
 export interface RecordAuthEventInput {
   eventType: AuthEventType;

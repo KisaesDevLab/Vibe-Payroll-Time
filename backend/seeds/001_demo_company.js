@@ -22,7 +22,57 @@
  *   POSTGRES_DB=vibept npm run seed:run --workspace=backend
  */
 
+/* eslint-disable @typescript-eslint/no-var-requires -- knex seeds run as CJS scripts */
+const crypto = require('node:crypto');
+const bcrypt = require('bcrypt');
+
 const SLUG = 'acme-plumbing';
+
+// Mini-crypto helpers — duplicate the AES-GCM envelope and HMAC
+// fingerprint logic from backend/src/services/crypto.ts so the seed
+// stays a plain .js file (the knex CLI convention) without pulling in
+// TS services. Formats MUST match what encryptSecret / pinFingerprint
+// in crypto.ts produce, or the backend won't be able to decrypt / look
+// up what we insert here.
+function requireEncryptionKey() {
+  const hex = process.env.SECRETS_ENCRYPTION_KEY;
+  if (!hex) throw new Error('SECRETS_ENCRYPTION_KEY env var is required for seeding PINs');
+  const buf = Buffer.from(hex, 'hex');
+  if (buf.length !== 32) throw new Error('SECRETS_ENCRYPTION_KEY must be 32 bytes hex');
+  return buf;
+}
+
+function aesGcmEncrypt(plaintext, key) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return ['v1', iv.toString('base64url'), tag.toString('base64url'), ct.toString('base64url')].join(
+    '.',
+  );
+}
+
+function pinFingerprintFn(companyId, pin, key) {
+  const derived = crypto.hkdfSync(
+    'sha256',
+    key,
+    Buffer.alloc(0),
+    Buffer.from('vibept:pin-fingerprint:v1', 'utf8'),
+    32,
+  );
+  const h = crypto.createHmac('sha256', Buffer.from(derived));
+  h.update(`${companyId}:${pin}`);
+  return h.digest('hex');
+}
+
+async function pinMaterialFor(companyId, pin, key) {
+  return {
+    pin,
+    hash: await bcrypt.hash(pin, 10),
+    fingerprint: pinFingerprintFn(companyId, pin, key),
+    encrypted: aesGcmEncrypt(pin, key),
+  };
+}
 
 // Deterministic IPs for the demo so the Punch activity report shows
 // clustering by location. No real privacy concern — example ranges only.
@@ -46,7 +96,6 @@ const UA_WEB =
 const NOW = new Date();
 const TODAY_NOON = new Date(NOW);
 TODAY_NOON.setHours(12, 0, 0, 0);
-const MS_DAY = 86_400_000;
 const MS_HOUR = 3_600_000;
 
 function atLocal(daysAgo, hour, minute = 0) {
@@ -105,65 +154,80 @@ exports.seed = async function seed(knex) {
     .returning(['id', 'code']);
   const jobs = Object.fromEntries(jobRows.map((j) => [j.code, j.id]));
 
-  // 5. Employees
-  const employeeRows = await knex('employees')
-    .insert([
-      {
+  // 5. Employees. Each gets a deterministic 6-digit PIN (non-weak)
+  //    so the demo exercises the PIN-encryption flow and the admin
+  //    immediately sees realistic values in the new PIN column.
+  const encryptionKey = requireEncryptionKey();
+  const seedEmployees = [
+    {
+      first_name: 'Alice',
+      last_name: 'Anderson',
+      employee_number: 'E001',
+      email: 'alice@acme.demo',
+      hired_at: atLocal(400, 9),
+      pin: '100623',
+    },
+    {
+      first_name: 'Bob',
+      last_name: 'Burns',
+      employee_number: 'E002',
+      email: 'bob@acme.demo',
+      hired_at: atLocal(320, 9),
+      pin: '204816',
+    },
+    {
+      first_name: 'Carol',
+      last_name: 'Chen',
+      employee_number: 'E003',
+      email: 'carol@acme.demo',
+      hired_at: atLocal(210, 9),
+      pin: '307291',
+    },
+    {
+      first_name: 'David',
+      last_name: 'Davis',
+      employee_number: 'E004',
+      email: 'david@acme.demo',
+      hired_at: atLocal(180, 9),
+      pin: '401375',
+    },
+    {
+      first_name: 'Eva',
+      last_name: 'Estes',
+      employee_number: 'E005',
+      email: 'eva@acme.demo',
+      hired_at: atLocal(90, 9),
+      pin: '508264',
+    },
+    {
+      first_name: 'Frank',
+      last_name: 'Fox',
+      employee_number: 'E006',
+      email: 'frank@acme.demo',
+      hired_at: atLocal(60, 9),
+      pin: '603571',
+    },
+  ];
+
+  const insertRows = await Promise.all(
+    seedEmployees.map(async (e) => {
+      const m = await pinMaterialFor(companyId, e.pin, encryptionKey);
+      return {
         company_id: companyId,
-        first_name: 'Alice',
-        last_name: 'Anderson',
-        employee_number: 'E001',
-        email: 'alice@acme.demo',
+        first_name: e.first_name,
+        last_name: e.last_name,
+        employee_number: e.employee_number,
+        email: e.email,
         status: 'active',
-        hired_at: atLocal(400, 9),
-      },
-      {
-        company_id: companyId,
-        first_name: 'Bob',
-        last_name: 'Burns',
-        employee_number: 'E002',
-        email: 'bob@acme.demo',
-        status: 'active',
-        hired_at: atLocal(320, 9),
-      },
-      {
-        company_id: companyId,
-        first_name: 'Carol',
-        last_name: 'Chen',
-        employee_number: 'E003',
-        email: 'carol@acme.demo',
-        status: 'active',
-        hired_at: atLocal(210, 9),
-      },
-      {
-        company_id: companyId,
-        first_name: 'David',
-        last_name: 'Davis',
-        employee_number: 'E004',
-        email: 'david@acme.demo',
-        status: 'active',
-        hired_at: atLocal(180, 9),
-      },
-      {
-        company_id: companyId,
-        first_name: 'Eva',
-        last_name: 'Estes',
-        employee_number: 'E005',
-        email: 'eva@acme.demo',
-        status: 'active',
-        hired_at: atLocal(90, 9),
-      },
-      {
-        company_id: companyId,
-        first_name: 'Frank',
-        last_name: 'Fox',
-        employee_number: 'E006',
-        email: 'frank@acme.demo',
-        status: 'active',
-        hired_at: atLocal(60, 9),
-      },
-    ])
-    .returning(['id', 'first_name']);
+        hired_at: e.hired_at,
+        pin_hash: m.hash,
+        pin_fingerprint: m.fingerprint,
+        pin_encrypted: m.encrypted,
+      };
+    }),
+  );
+
+  const employeeRows = await knex('employees').insert(insertRows).returning(['id', 'first_name']);
   const emp = Object.fromEntries(employeeRows.map((e) => [e.first_name, e.id]));
 
   // 6. Time entries. Rather than hand-writing every row, define each

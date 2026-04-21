@@ -52,6 +52,7 @@ payrollExportsRouter.post(
         acknowledgeReExport: body.acknowledgeReExport,
         ...(body.notes !== undefined ? { notes: body.notes } : {}),
         ...(body.genericColumns ? { genericColumns: body.genericColumns } : {}),
+        ...(body.genericTimeFormat ? { genericTimeFormat: body.genericTimeFormat } : {}),
       });
       res.status(201).json({ data: result });
     } catch (err) {

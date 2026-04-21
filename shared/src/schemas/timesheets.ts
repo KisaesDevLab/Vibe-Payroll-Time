@@ -153,7 +153,19 @@ export type DecideCorrectionRequest = z.infer<typeof decideCorrectionRequestSche
 
 export const entryAuditRowSchema = z.object({
   id: z.number().int().positive(),
-  action: z.enum(['create', 'edit', 'approve', 'unapprove', 'delete', 'auto_close']),
+  action: z.enum([
+    'create',
+    'edit',
+    'approve',
+    'unapprove',
+    'delete',
+    'auto_close',
+    'manual_create',
+    'manual_update',
+    'manual_delete',
+    'manual_override',
+    'manual_revert',
+  ]),
   field: z.string().nullable(),
   oldValue: z.unknown(),
   newValue: z.unknown(),

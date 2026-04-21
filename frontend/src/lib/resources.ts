@@ -1,6 +1,16 @@
 import type {
   ApprovePeriodRequest,
   ApprovePeriodResponse,
+  CopyLastWeekRequest,
+  CopyLastWeekResponse,
+  CreateManualEntryRequest,
+  DeleteManualEntryRequest,
+  ManualEntryResponse,
+  MultiEmployeeGridResponse,
+  UpdateManualEntryRequest,
+  UpdatePreferencesRequest,
+  UserPreferencesResponse,
+  WeeklyGridResponse,
   BadgeEvent,
   BulkIssueBadgesRequest,
   Company,
@@ -49,7 +59,12 @@ import type {
   UpdateEmployeePreferencesRequest,
   UpdateEmployeeRequest,
   ApplianceSettings,
+  TestEmailRequest,
+  TestSendResponse,
+  TestSmsRequest,
+  TunnelStatusResponse,
   UpdateApplianceSettingsRequest,
+  UpdateTunnelRequest,
   UpdateCheckResponse,
   UpdateJobRequest,
   UpdateLogResponse,
@@ -140,6 +155,11 @@ export const employees = {
         body: JSON.stringify({ length }),
       },
     ),
+  setPin: (companyId: number, employeeId: number, pin: string) =>
+    apiFetch<EmployeeWithPinResponse>(`/companies/${companyId}/employees/${employeeId}/pin`, {
+      method: 'PUT',
+      body: JSON.stringify({ pin }),
+    }),
   importCsv: (companyId: number, body: CsvImportRequest) =>
     apiFetch<CsvImportResponse>(`/companies/${companyId}/employees/import`, {
       method: 'POST',
@@ -524,6 +544,71 @@ export const admin = {
   settings: () => apiFetch<ApplianceSettings>('/admin/settings'),
   updateSettings: (body: UpdateApplianceSettingsRequest) =>
     apiFetch<ApplianceSettings>('/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  testEmail: (body: TestEmailRequest) =>
+    apiFetch<TestSendResponse>('/admin/test-email', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  testSms: (body: TestSmsRequest) =>
+    apiFetch<TestSendResponse>('/admin/test-sms', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  tunnel: () => apiFetch<TunnelStatusResponse>('/admin/tunnel'),
+  updateTunnel: (body: UpdateTunnelRequest) =>
+    apiFetch<TunnelStatusResponse>('/admin/tunnel', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Grids + manual entries + user preferences (Phase 6.5 / 6.6)
+// ---------------------------------------------------------------------------
+
+export const grids = {
+  weekly: (companyId: number, employeeId: number, weekStart: string) =>
+    apiFetch<WeeklyGridResponse>(
+      `/timesheets/${employeeId}/weekly-grid?companyId=${companyId}&weekStart=${weekStart}`,
+    ),
+  multi: (companyId: number, weekStart: string, employeeIds?: number[]) => {
+    const ids = employeeIds?.length ? `&employeeIds=${employeeIds.join(',')}` : '';
+    return apiFetch<MultiEmployeeGridResponse>(
+      `/timesheets/weekly-grid?companyId=${companyId}&weekStart=${weekStart}${ids}`,
+    );
+  },
+};
+
+export const manualEntries = {
+  create: (body: CreateManualEntryRequest) =>
+    apiFetch<ManualEntryResponse>('/manual-entries', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id: number, body: UpdateManualEntryRequest) =>
+    apiFetch<ManualEntryResponse>(`/manual-entries/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  remove: (id: number, body: DeleteManualEntryRequest) =>
+    apiFetch<void>(`/manual-entries/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify(body),
+    }),
+  copyLastWeek: (body: CopyLastWeekRequest) =>
+    apiFetch<CopyLastWeekResponse>('/manual-entries/copy-last-week', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const userPreferences = {
+  get: () => apiFetch<UserPreferencesResponse>('/me/preferences'),
+  update: (body: UpdatePreferencesRequest) =>
+    apiFetch<UserPreferencesResponse>('/me/preferences', {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),

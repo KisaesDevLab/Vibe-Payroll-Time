@@ -23,6 +23,11 @@ export async function findUserById(id: number): Promise<UserRow | undefined> {
   return db<UserRow>('users').where({ id }).whereNull('disabled_at').first();
 }
 
+/**
+ * Active SuperAdmins only — skips disabled rows. Used by UIs that need
+ * to know whether someone is available to do super-admin work (e.g.
+ * "add another SuperAdmin" warnings).
+ */
 export async function countSuperAdmins(trx?: Knex.Transaction): Promise<number> {
   const q = trx ?? db;
   const row = await q<UserRow>('users')
@@ -31,6 +36,22 @@ export async function countSuperAdmins(trx?: Knex.Transaction): Promise<number> 
     .count<{ count: string }>('id as count')
     .first();
   return Number(row?.count ?? 0);
+}
+
+/**
+ * Has a SuperAdmin EVER existed on this appliance, including disabled
+ * ones. This is the right gate for "has first-run setup completed",
+ * because disabling the only SuperAdmin must NOT reopen the setup
+ * wizard — otherwise anyone on the network could hit `POST /setup/initial`
+ * and mint themselves a new SuperAdmin. See docs/security.md.
+ */
+export async function anySuperAdminHasExisted(trx?: Knex.Transaction): Promise<boolean> {
+  const q = trx ?? db;
+  const row = await q<UserRow>('users')
+    .where({ role_global: 'super_admin' })
+    .count<{ count: string }>('id as count')
+    .first();
+  return Number(row?.count ?? 0) > 0;
 }
 
 export async function markLoginSuccess(userId: number): Promise<void> {

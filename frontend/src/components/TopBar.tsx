@@ -65,6 +65,9 @@ export function TopBar() {
                 SuperAdmin
               </span>
             )}
+            <Link to="/preferences" className="text-slate-600 hover:text-slate-900">
+              Preferences
+            </Link>
             <Button variant="secondary" onClick={logout}>
               Sign out
             </Button>

@@ -15,6 +15,7 @@ import { generateBadgeToken, verifyBadgeToken } from './badge-crypto.js';
 import type { KioskDeviceCtx } from './kiosk-verify.js';
 import { isKioskBadgeLocked, recordKioskBadgeScan } from './kiosk-badge-lockout.js';
 import { recordAuthEvent } from './auth-events.js';
+import { getKioskEmployeeState } from './punch.js';
 
 const KIOSK_EMPLOYEE_SESSION_TTL_SECONDS = 5 * 60;
 
@@ -445,13 +446,18 @@ export async function verifyBadge(
     },
   });
 
+  const { openEntry, todayWorkSeconds } = await getKioskEmployeeState(
+    device.companyId,
+    employee.id,
+  );
+
   return {
     employeeId: employee.id,
     firstName: employee.first_name,
     lastName: employee.last_name,
     sessionToken,
-    openEntry: null,
-    todayWorkSeconds: 0,
+    openEntry,
+    todayWorkSeconds,
   };
 }
 

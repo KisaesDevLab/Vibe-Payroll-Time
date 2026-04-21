@@ -8,6 +8,7 @@ import { recordAuthEvent } from './auth-events.js';
 import { pinFingerprint } from './crypto.js';
 import { isDeviceLocked, recordBadPin, recordGoodPin } from './kiosk-pin-lockout.js';
 import { verifyPin } from './passwords.js';
+import { getKioskEmployeeState } from './punch.js';
 
 /** Kiosk employee session TTL — short so a walk-away from the tablet
  *  doesn't leave a punchable session. */
@@ -84,12 +85,10 @@ export async function kioskVerifyPin(
     { algorithm: 'HS256', expiresIn: KIOSK_EMPLOYEE_SESSION_TTL_SECONDS },
   );
 
-  // Look up current open entry + today's running total. Both tables are
-  // added in Phase 5 — until then, these are "no open entry, 0 seconds".
-  // Once Phase 5 lands, plug real queries here without changing the
-  // response shape.
-  const openEntry = null;
-  const todayWorkSeconds = 0;
+  const { openEntry, todayWorkSeconds } = await getKioskEmployeeState(
+    device.companyId,
+    employee.id,
+  );
 
   await recordAuthEvent({
     eventType: 'login_success',

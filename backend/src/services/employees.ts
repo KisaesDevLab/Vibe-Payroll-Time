@@ -7,8 +7,11 @@ import type {
 } from '@vibept/shared';
 import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
+import { pinFingerprint } from './crypto.js';
+import { decryptSecret, encryptSecret } from './crypto.js';
 import { BadRequest, Conflict, NotFound } from '../http/errors.js';
-import { generatePinMaterial } from './pin-generator.js';
+import { hashPin } from './passwords.js';
+import { generatePinMaterial, validatePinShape } from './pin-generator.js';
 
 interface EmployeeRow {
   id: number;
@@ -21,6 +24,7 @@ interface EmployeeRow {
   phone: string | null;
   pin_hash: string | null;
   pin_fingerprint: string | null;
+  pin_encrypted: string | null;
   status: Employee['status'];
   hired_at: string | null;
   terminated_at: Date | null;
@@ -28,8 +32,8 @@ interface EmployeeRow {
   updated_at: Date;
 }
 
-function rowToEmployee(row: EmployeeRow): Employee {
-  return {
+function rowToEmployee(row: EmployeeRow, opts: { includePin?: boolean } = {}): Employee {
+  const base: Employee = {
     id: row.id,
     companyId: row.company_id,
     userId: row.user_id,
@@ -42,14 +46,27 @@ function rowToEmployee(row: EmployeeRow): Employee {
     hiredAt: row.hired_at,
     terminatedAt: row.terminated_at?.toISOString() ?? null,
     hasPin: !!row.pin_hash,
+    pin: null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+  if (opts.includePin && row.pin_encrypted) {
+    try {
+      base.pin = decryptSecret(row.pin_encrypted);
+    } catch {
+      base.pin = null;
+    }
+  }
+  return base;
 }
 
 export interface ListEmployeesOptions {
   status?: 'active' | 'terminated' | 'all';
   search?: string;
+  /** When true, decrypt and include each employee's PIN in the response.
+   *  The HTTP layer must enforce caller authorization (company_admin or
+   *  supervisor, or global super_admin) before setting this. */
+  includePin?: boolean;
 }
 
 export async function listEmployees(
@@ -69,15 +86,19 @@ export async function listEmployees(
     );
   }
   const rows = await q.orderBy(['last_name', 'first_name']);
-  return rows.map(rowToEmployee);
+  return rows.map((r) => rowToEmployee(r, { includePin: opts.includePin }));
 }
 
-export async function getEmployee(companyId: number, employeeId: number): Promise<Employee> {
+export async function getEmployee(
+  companyId: number,
+  employeeId: number,
+  opts: { includePin?: boolean } = {},
+): Promise<Employee> {
   const row = await db<EmployeeRow>('employees')
     .where({ company_id: companyId, id: employeeId })
     .first();
   if (!row) throw NotFound('Employee not found');
-  return rowToEmployee(row);
+  return rowToEmployee(row, opts);
 }
 
 async function ensureEmployeeNumberUnique(
@@ -121,6 +142,7 @@ export async function createEmployee(
       });
       insertRow.pin_hash = pin.hash;
       insertRow.pin_fingerprint = pin.fingerprint;
+      insertRow.pin_encrypted = encryptSecret(pin.pin);
       plaintextPin = pin.pin;
     }
 
@@ -169,6 +191,7 @@ export async function updateEmployee(
       if (patch.status === 'terminated') {
         updates.pin_hash = null;
         updates.pin_fingerprint = null;
+        updates.pin_encrypted = null;
       }
     }
 
@@ -192,15 +215,68 @@ export async function regeneratePin(
     if (!existing) throw NotFound('Active employee not found');
 
     const pin = await generatePinMaterial({ companyId, trx, length });
-    await trx('employees').where({ id: employeeId }).update({
-      pin_hash: pin.hash,
-      pin_fingerprint: pin.fingerprint,
-      updated_at: trx.fn.now(),
-    });
+    await trx('employees')
+      .where({ id: employeeId })
+      .update({
+        pin_hash: pin.hash,
+        pin_fingerprint: pin.fingerprint,
+        pin_encrypted: encryptSecret(pin.pin),
+        updated_at: trx.fn.now(),
+      });
 
     const fresh = await trx<EmployeeRow>('employees').where({ id: employeeId }).first();
     if (!fresh) throw new Error('employee vanished');
     return { employee: rowToEmployee(fresh), plaintextPin: pin.pin };
+  });
+}
+
+/**
+ * Admin sets a PIN manually. Validates:
+ *   - Shape: 4–6 digits, not a weak pattern (same rules as auto-gen).
+ *   - Uniqueness: fingerprint doesn't collide with another active
+ *     employee in the same company (partial unique index is the
+ *     ultimate backstop; we pre-check for a clean error).
+ *
+ * Stores all three columns (hash, fingerprint, encrypted) in the same
+ * transaction so an interrupted write never leaves the row half-updated.
+ */
+export async function setEmployeePinManually(
+  companyId: number,
+  employeeId: number,
+  pin: string,
+): Promise<EmployeeWithPinResponse> {
+  if (!validatePinShape(pin)) {
+    throw BadRequest('PIN must be 4–6 digits and must not be a weak pattern (e.g. 1234, 1111).');
+  }
+
+  return db.transaction(async (trx) => {
+    const existing = await trx<EmployeeRow>('employees')
+      .where({ company_id: companyId, id: employeeId, status: 'active' })
+      .first();
+    if (!existing) throw NotFound('Active employee not found');
+
+    const fp = pinFingerprint(companyId, pin);
+    const clash = await trx('employees')
+      .where({ company_id: companyId, pin_fingerprint: fp, status: 'active' })
+      .whereNot({ id: employeeId })
+      .first<{ id: number }>();
+    if (clash) {
+      throw Conflict('Another active employee already has that PIN.');
+    }
+
+    const hash = await hashPin(pin);
+    await trx('employees')
+      .where({ id: employeeId })
+      .update({
+        pin_hash: hash,
+        pin_fingerprint: fp,
+        pin_encrypted: encryptSecret(pin),
+        updated_at: trx.fn.now(),
+      });
+
+    const fresh = await trx<EmployeeRow>('employees').where({ id: employeeId }).first();
+    if (!fresh) throw new Error('employee vanished');
+    return { employee: rowToEmployee(fresh, { includePin: true }), plaintextPin: pin };
   });
 }
 

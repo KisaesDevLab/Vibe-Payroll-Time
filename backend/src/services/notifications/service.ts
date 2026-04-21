@@ -1,7 +1,7 @@
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { db } from '../../db/knex.js';
-import { getResolvedEmailit } from '../appliance-settings.js';
+import { getResolvedEmailit, getResolvedSmsProvider } from '../appliance-settings.js';
 import { decryptSecret } from '../crypto.js';
 import {
   sendViaEmailIt,
@@ -10,12 +10,20 @@ import {
   EmailDeliveryError,
 } from './emailit-client.js';
 import { renderTemplate, type NotificationType } from './templates.js';
+import { sendViaTextLinkSms, type TextLinkSmsConfig } from './textlinksms-client.js';
 import {
   sendViaTwilio,
   type TwilioConfig,
   type SmsPayload,
   SmsDeliveryError,
 } from './twilio-client.js';
+
+/** Tagged-union SMS config. The resolver picks ONE provider per send
+ *  based on company/appliance settings, and the dispatcher in sendSms
+ *  switches on `provider` to pick the right client. */
+type SmsConfig =
+  | ({ provider: 'twilio' } & TwilioConfig)
+  | ({ provider: 'textlinksms' } & TextLinkSmsConfig);
 
 // ---------------------------------------------------------------------------
 // Recipient + notify input
@@ -99,20 +107,59 @@ async function resolveEmailConfig(companyId: number): Promise<EmailItConfig | nu
   return null;
 }
 
-async function resolveTwilioConfig(companyId: number): Promise<TwilioConfig | null> {
-  const row = await db('company_settings').where({ company_id: companyId }).first<{
+/**
+ * Resolve the SMS provider + credentials for a company. Resolution:
+ *   1. Effective provider = company.sms_provider ?? appliance.sms_provider.
+ *   2. Effective creds for that provider = company row if complete, else
+ *      appliance row if complete, else null (silent disable).
+ * Returns a tagged union so the dispatcher can branch cleanly.
+ */
+async function resolveSmsConfig(companyId: number): Promise<SmsConfig | null> {
+  const company = await db('company_settings').where({ company_id: companyId }).first<{
+    sms_provider: 'twilio' | 'textlinksms' | null;
     twilio_account_sid: string | null;
     twilio_auth_token_encrypted: string | null;
     twilio_from_number: string | null;
+    textlinksms_api_key_encrypted: string | null;
+    textlinksms_from_number: string | null;
   }>();
-  if (!row?.twilio_account_sid || !row.twilio_auth_token_encrypted || !row.twilio_from_number) {
+
+  const appliance = await getResolvedSmsProvider();
+  const provider = company?.sms_provider ?? appliance.provider;
+  if (!provider) return null;
+
+  if (provider === 'twilio') {
+    if (
+      company?.twilio_account_sid &&
+      company.twilio_auth_token_encrypted &&
+      company.twilio_from_number
+    ) {
+      return {
+        provider: 'twilio',
+        accountSid: company.twilio_account_sid,
+        authToken: decryptSecret(company.twilio_auth_token_encrypted),
+        fromNumber: company.twilio_from_number,
+      };
+    }
+    if (appliance.provider === 'twilio' && appliance.twilio) {
+      return { provider: 'twilio', ...appliance.twilio };
+    }
     return null;
   }
-  return {
-    accountSid: row.twilio_account_sid,
-    authToken: decryptSecret(row.twilio_auth_token_encrypted),
-    fromNumber: row.twilio_from_number,
-  };
+
+  // textlinksms
+  if (company?.textlinksms_api_key_encrypted && company.textlinksms_from_number) {
+    return {
+      provider: 'textlinksms',
+      apiKey: decryptSecret(company.textlinksms_api_key_encrypted),
+      fromNumber: company.textlinksms_from_number,
+      baseUrl: appliance.textlinksms?.baseUrl ?? null,
+    };
+  }
+  if (appliance.provider === 'textlinksms' && appliance.textlinksms) {
+    return { provider: 'textlinksms', ...appliance.textlinksms };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,20 +314,23 @@ async function sendSms(input: NotifyInput, to: string, payload: SmsPayload): Pro
   if (env.NOTIFICATIONS_DISABLED) {
     return { status: 'disabled', providerMessageId: null, error: null };
   }
-  const config = await resolveTwilioConfig(input.companyId);
+  const config = await resolveSmsConfig(input.companyId);
   if (!config) {
     return {
       status: 'skipped',
       providerMessageId: null,
-      error: 'Twilio not configured for company',
+      error: 'No SMS provider configured for company or appliance',
     };
   }
   try {
-    const res = await sendViaTwilio(config, payload);
+    const res =
+      config.provider === 'twilio'
+        ? await sendViaTwilio(config, payload)
+        : await sendViaTextLinkSms(config, payload);
     return { status: 'sent', providerMessageId: res.messageId, error: null };
   } catch (err) {
     const msg = err instanceof SmsDeliveryError ? err.message : (err as Error).message;
-    logger.error({ err, to }, 'sms send failed');
+    logger.error({ err, to, provider: config.provider }, 'sms send failed');
     return { status: 'failed', providerMessageId: null, error: msg };
   }
 }

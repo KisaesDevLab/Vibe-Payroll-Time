@@ -141,20 +141,22 @@ export function KioskPinPage() {
     },
   });
 
-  const handleDecode = useCallback(
-    (payload: string) => {
-      if (scanInFlight.current) return;
-      if (!payload.startsWith('vpt1.')) {
-        // Ignore random QR codes (URLs, vCards, etc.). Don't call the
-        // server — that would just burn the per-kiosk scan budget.
-        setError('This QR is not a Vibe PT badge.');
-        return;
-      }
-      scanInFlight.current = true;
-      scan.mutate(payload);
-    },
-    [scan],
-  );
+  // `scan.mutate` is stable across renders; keep the callback identity stable
+  // too so BadgeScanner's init effect doesn't churn on every parent render.
+  const scanMutateRef = useRef(scan.mutate);
+  scanMutateRef.current = scan.mutate;
+
+  const handleDecode = useCallback((payload: string) => {
+    if (scanInFlight.current) return;
+    if (!payload.startsWith('vpt1.')) {
+      // Ignore random QR codes (URLs, vCards, etc.). Don't call the
+      // server — that would just burn the per-kiosk scan budget.
+      setError('This QR is not a Vibe PT badge.');
+      return;
+    }
+    scanInFlight.current = true;
+    scanMutateRef.current(payload);
+  }, []);
 
   const punch = useMutation({
     mutationFn: async (action: 'clockIn' | 'clockOut' | 'breakIn' | 'breakOut') => {

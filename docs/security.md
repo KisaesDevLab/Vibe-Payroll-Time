@@ -153,3 +153,23 @@ scoped to one employee.
 Email **security@kisaes.com** with "Vibe Payroll Time" in the subject. We
 commit to acknowledging within two business days and to a coordinated-
 disclosure timeline thereafter.
+
+## Manual entries preserve punches
+
+When a manager posts a manual override, the punch rows it replaces are
+marked `superseded_by_entry_id` in the DB — they are never deleted.
+Delete the manual entry and the punches return to the active view.
+
+This matters for wage-and-hour defensibility. A DOL investigator
+asking "show me every punch that was edited" can see both the original
+event (the punch) and the override (the manual entry with its reason
+and actor) by reading `time_entry_audit`, which records a
+`manual_override` action per superseded punch plus `manual_create` /
+`manual_update` / `manual_delete` / `manual_revert` events for the
+lifecycle of the manual entry.
+
+Authorization for manual entries is in three layers: the `canManualEdit`
+pure function (unit-tested across the full role × mode × approval
+matrix), the service layer that rechecks the actor and the approval
+state under a transaction, and the DB partial-unique index that
+prevents a second active manual entry on the same (employee, day, job).

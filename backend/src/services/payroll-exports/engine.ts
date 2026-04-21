@@ -70,6 +70,7 @@ export interface RunExportOpts {
   acknowledgeReExport: boolean;
   notes?: string | undefined;
   genericColumns?: string[] | undefined;
+  genericTimeFormat?: 'decimal' | 'hhmm' | undefined;
 }
 
 /**
@@ -120,6 +121,7 @@ export async function runExport(opts: RunExportOpts): Promise<PayrollExport> {
     periodEnd: opts.periodEnd,
     employees,
     ...(opts.genericColumns ? { genericColumns: opts.genericColumns } : {}),
+    ...(opts.genericTimeFormat ? { genericTimeFormat: opts.genericTimeFormat } : {}),
   });
 
   const hash = crypto.createHash('sha256').update(csv, 'utf8').digest('hex');

@@ -13,8 +13,10 @@ import { companiesRouter } from './routes/companies.js';
 import { healthRouter, versionRouter } from './routes/health.js';
 import { kioskRouter } from './routes/kiosk.js';
 import { licensingRouter } from './routes/licensing.js';
+import { manualEntriesRouter } from './routes/manual-entries.js';
 import { notificationsAdminRouter, notificationsRouter } from './routes/notifications.js';
 import { payrollExportsRouter } from './routes/payroll-exports.js';
+import { preferencesRouter } from './routes/preferences.js';
 import { punchRouter } from './routes/punch.js';
 import { reportsRouter } from './routes/reports.js';
 import { setupRouter } from './routes/setup.js';
@@ -64,6 +66,8 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/punch`, punchRouter);
   app.use(`${API_PREFIX}/kiosk`, kioskRouter);
   app.use(`${API_PREFIX}/timesheets`, timesheetsRouter);
+  app.use(`${API_PREFIX}/manual-entries`, manualEntriesRouter);
+  app.use(`${API_PREFIX}/me/preferences`, preferencesRouter);
   app.use(`${API_PREFIX}/notifications`, notificationsRouter);
   app.use(`${API_PREFIX}/admin`, adminRouter);
 

@@ -31,6 +31,10 @@ export interface TimeEntryRow {
   approved_at: Date | null;
   approved_by: number | null;
   is_auto_closed: boolean;
+  entry_reason: string | null;
+  superseded_by_entry_id: number | null;
+  supersedes_entry_ids: number[] | null;
+  is_manual: boolean;
   deleted_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -54,6 +58,10 @@ export function rowToTimeEntry(row: TimeEntryRow): TimeEntry {
     approvedAt: row.approved_at?.toISOString() ?? null,
     approvedBy: row.approved_by,
     isAutoClosed: row.is_auto_closed,
+    entryReason: row.entry_reason,
+    supersededByEntryId: row.superseded_by_entry_id,
+    supersedesEntryIds: row.supersedes_entry_ids,
+    isManual: row.is_manual,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -157,6 +165,96 @@ async function findOpenEntry(
     .whereNull('ended_at')
     .whereNull('deleted_at')
     .first();
+}
+
+// ---------------------------------------------------------------------------
+// Read-only state used by the kiosk + PWA "current punch state" views. Split
+// from findOpenEntry (which takes a trx) because these reads happen outside
+// any mutation — kiosk PIN verify, badge scan, personal-device dashboard.
+// ---------------------------------------------------------------------------
+
+/** Narrow view used by the kiosk PIN + badge verify responses. */
+export interface KioskEmployeeState {
+  openEntry: { entryType: 'work' | 'break'; startedAt: string } | null;
+  todayWorkSeconds: number;
+}
+
+/** Full open-entry row lookup — shared by kiosk and PWA current-state reads. */
+export async function getOpenEntry(
+  companyId: number,
+  employeeId: number,
+): Promise<TimeEntryRow | null> {
+  const row = await db<TimeEntryRow>('time_entries')
+    .where({ company_id: companyId, employee_id: employeeId })
+    .whereNull('ended_at')
+    .whereNull('deleted_at')
+    .first();
+  return row ?? null;
+}
+
+/**
+ * Today's work-seconds running total, evaluated in the company's local
+ * timezone. Every work entry — completed OR still open — is clipped to the
+ * [local midnight, local midnight + 24h] window and summed. Correctly
+ * attributes overnight shifts to both days: an 11 PM → 2 AM shift
+ * contributes 1 hour to the starting day and 2 hours to the next.
+ */
+export async function getTodayWorkSeconds(companyId: number, employeeId: number): Promise<number> {
+  const company = await db('companies').where({ id: companyId }).first<{ timezone: string }>();
+  const tz = company?.timezone ?? 'UTC';
+
+  const result = await db.raw<{
+    rows: Array<{ seconds: string | number | null }>;
+  }>(
+    `
+    WITH bounds AS (
+      SELECT
+        (date_trunc('day', NOW() AT TIME ZONE ?) AT TIME ZONE ?) AS day_start,
+        ((date_trunc('day', NOW() AT TIME ZONE ?) + INTERVAL '1 day') AT TIME ZONE ?) AS day_end
+    )
+    SELECT COALESCE(SUM(
+      EXTRACT(EPOCH FROM (
+        LEAST(COALESCE(te.ended_at, NOW()), b.day_end)
+          - GREATEST(te.started_at, b.day_start)
+      ))
+    ), 0)::bigint AS seconds
+    FROM time_entries te
+    CROSS JOIN bounds b
+    WHERE te.company_id = ?
+      AND te.employee_id = ?
+      AND te.deleted_at IS NULL
+      AND te.entry_type = 'work'
+      AND te.started_at < b.day_end
+      AND COALESCE(te.ended_at, NOW()) > b.day_start
+    `,
+    [tz, tz, tz, tz, companyId, employeeId],
+  );
+  const raw = result.rows[0]?.seconds ?? 0;
+  return Math.max(0, Math.floor(Number(raw)));
+}
+
+/**
+ * Bundled state for the kiosk verify + scan responses — the UI needs both
+ * the open entry shape and today's running total to render the right
+ * action buttons.
+ */
+export async function getKioskEmployeeState(
+  companyId: number,
+  employeeId: number,
+): Promise<KioskEmployeeState> {
+  const [open, todayWorkSeconds] = await Promise.all([
+    getOpenEntry(companyId, employeeId),
+    getTodayWorkSeconds(companyId, employeeId),
+  ]);
+  return {
+    openEntry: open
+      ? {
+          entryType: open.entry_type,
+          startedAt: open.started_at.toISOString(),
+        }
+      : null,
+    todayWorkSeconds,
+  };
 }
 
 async function writeAudit(

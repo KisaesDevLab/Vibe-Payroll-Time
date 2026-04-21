@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ApplianceSettings,
   ApplianceSettingsSource,
+  TunnelStatusResponse,
   UpdateApplianceSettingsRequest,
+  UpdateTunnelRequest,
 } from '@vibept/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -40,6 +42,20 @@ interface FormState {
     apiBaseUrl: string | null;
     apiBaseUrlDirty: boolean;
   };
+  sms: {
+    provider: ApplianceSettings['sms']['provider'];
+    providerDirty: boolean;
+    twilioAccountSid: string | null;
+    twilioAccountSidDirty: boolean;
+    twilioAuthToken: SecretState;
+    twilioFromNumber: string | null;
+    twilioFromNumberDirty: boolean;
+    textlinkApiKey: SecretState;
+    textlinkFromNumber: string | null;
+    textlinkFromNumberDirty: boolean;
+    textlinkBaseUrl: string | null;
+    textlinkBaseUrlDirty: boolean;
+  };
   ai: {
     provider: ApplianceSettings['ai']['provider'];
     providerDirty: boolean;
@@ -65,6 +81,20 @@ function initialForm(s: ApplianceSettings): FormState {
       fromNameDirty: false,
       apiBaseUrl: s.emailit.apiBaseUrl,
       apiBaseUrlDirty: false,
+    },
+    sms: {
+      provider: s.sms.provider,
+      providerDirty: false,
+      twilioAccountSid: s.sms.twilio.accountSid,
+      twilioAccountSidDirty: false,
+      twilioAuthToken: { mode: 'unchanged' },
+      twilioFromNumber: s.sms.twilio.fromNumber,
+      twilioFromNumberDirty: false,
+      textlinkApiKey: { mode: 'unchanged' },
+      textlinkFromNumber: s.sms.textlinksms.fromNumber,
+      textlinkFromNumberDirty: false,
+      textlinkBaseUrl: s.sms.textlinksms.baseUrl,
+      textlinkBaseUrlDirty: false,
     },
     ai: {
       provider: s.ai.provider,
@@ -104,6 +134,28 @@ function toPatch(f: FormState): UpdateApplianceSettingsRequest {
   if (f.ai.baseUrlDirty) a.baseUrl = f.ai.baseUrl?.trim() ? f.ai.baseUrl.trim() : null;
   if (Object.keys(a).length > 0) patch.ai = a;
 
+  const sms: NonNullable<UpdateApplianceSettingsRequest['sms']> = {};
+  if (f.sms.providerDirty) sms.provider = f.sms.provider;
+  const tw: NonNullable<typeof sms.twilio> = {};
+  if (f.sms.twilioAccountSidDirty)
+    tw.accountSid = f.sms.twilioAccountSid?.trim() ? f.sms.twilioAccountSid.trim() : null;
+  if (f.sms.twilioAuthToken.mode === 'new') tw.authToken = f.sms.twilioAuthToken.value;
+  else if (f.sms.twilioAuthToken.mode === 'clear') tw.authToken = null;
+  if (f.sms.twilioFromNumberDirty)
+    tw.fromNumber = f.sms.twilioFromNumber?.trim() ? f.sms.twilioFromNumber.trim() : null;
+  if (Object.keys(tw).length > 0) sms.twilio = tw;
+
+  const tl: NonNullable<typeof sms.textlinksms> = {};
+  if (f.sms.textlinkApiKey.mode === 'new') tl.apiKey = f.sms.textlinkApiKey.value;
+  else if (f.sms.textlinkApiKey.mode === 'clear') tl.apiKey = null;
+  if (f.sms.textlinkFromNumberDirty)
+    tl.fromNumber = f.sms.textlinkFromNumber?.trim() ? f.sms.textlinkFromNumber.trim() : null;
+  if (f.sms.textlinkBaseUrlDirty)
+    tl.baseUrl = f.sms.textlinkBaseUrl?.trim() ? f.sms.textlinkBaseUrl.trim() : null;
+  if (Object.keys(tl).length > 0) sms.textlinksms = tl;
+
+  if (Object.keys(sms).length > 0) patch.sms = sms;
+
   if (f.retentionDaysDirty) patch.retentionDays = f.retentionDays;
   if (f.logLevelDirty) patch.logLevel = f.logLevel;
 
@@ -116,6 +168,13 @@ function isDirty(f: FormState): boolean {
     f.emailit.fromEmailDirty ||
     f.emailit.fromNameDirty ||
     f.emailit.apiBaseUrlDirty ||
+    f.sms.providerDirty ||
+    f.sms.twilioAccountSidDirty ||
+    f.sms.twilioAuthToken.mode !== 'unchanged' ||
+    f.sms.twilioFromNumberDirty ||
+    f.sms.textlinkApiKey.mode !== 'unchanged' ||
+    f.sms.textlinkFromNumberDirty ||
+    f.sms.textlinkBaseUrlDirty ||
     f.ai.providerDirty ||
     f.ai.apiKey.mode !== 'unchanged' ||
     f.ai.modelDirty ||
@@ -185,9 +244,11 @@ export function ApplianceSettingsPage() {
             }}
           >
             <EmailItSection data={data} form={form} setForm={setForm} />
+            <SmsSection data={data} form={form} setForm={setForm} />
             <AISection data={data} form={form} setForm={setForm} />
             <RetentionSection data={data} form={form} setForm={setForm} />
             <LogLevelSection data={data} form={form} setForm={setForm} />
+            <TunnelSection />
             <LicenseSection />
 
             <div className="sticky bottom-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -378,7 +439,295 @@ function EmailItSection({ data, form, setForm }: SectionProps) {
           }
         />
       </Field>
+      <TestEmailWidget disabled={!data.emailit.apiKeyHasSecret || !data.emailit.fromEmail} />
     </Card>
+  );
+}
+
+function TestEmailWidget({ disabled }: { disabled: boolean }) {
+  const [to, setTo] = useState('');
+  const send = useMutation({
+    mutationFn: () => admin.testEmail({ to: to.trim() }),
+  });
+  const result = send.data ?? null;
+  return (
+    <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-end gap-2">
+        <Field
+          label="Test recipient"
+          source="db"
+          hint="Uses the appliance-level EmailIt credentials above."
+        >
+          <input
+            type="email"
+            className={textInputClass()}
+            placeholder="you@yourfirm.com"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </Field>
+        <button
+          type="button"
+          onClick={() => send.mutate()}
+          disabled={disabled || !to.trim() || send.isPending}
+          className="mb-0.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-100 disabled:opacity-50"
+        >
+          {send.isPending ? 'Sending…' : 'Send test email'}
+        </button>
+      </div>
+      <TestResultBanner result={result} disabled={disabled} />
+    </div>
+  );
+}
+
+function TestResultBanner({
+  result,
+  disabled,
+}: {
+  result: {
+    ok: boolean;
+    error: string | null;
+    provider: string | null;
+    providerMessageId: string | null;
+  } | null;
+  disabled: boolean;
+}) {
+  if (disabled) {
+    return (
+      <p className="mt-2 text-xs text-slate-500">
+        Configure credentials above (and save) before sending a test.
+      </p>
+    );
+  }
+  if (!result) return null;
+  if (result.ok) {
+    return (
+      <p className="mt-2 rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-900">
+        Sent via {result.provider ?? 'provider'}
+        {result.providerMessageId ? ` · ${result.providerMessageId}` : ''}
+      </p>
+    );
+  }
+  return (
+    <p className="mt-2 rounded bg-red-100 px-2 py-1 text-xs text-red-800">
+      Failed: {result.error ?? 'unknown error'}
+    </p>
+  );
+}
+
+function SmsSection({ data, form, setForm }: SectionProps) {
+  // Which provider's credential fields to render. Defaults to whatever
+  // the appliance has picked, or 'twilio' if nothing picked yet so the
+  // form isn't blank when an operator first visits.
+  const activeProvider = form.sms.provider ?? 'twilio';
+
+  return (
+    <Card
+      title="SMS"
+      description="Appliance-wide fallback for per-company SMS. Pick a provider; companies that don't override it inherit this one. Feature-complete regardless of provider — the magic-link text, missed-punch SMS, and verification codes all route through whichever provider you choose."
+    >
+      <Field label="Provider">
+        <div className="flex gap-2">
+          {(['twilio', 'textlinksms'] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() =>
+                setForm(
+                  (f) =>
+                    f && {
+                      ...f,
+                      sms: { ...f.sms, provider: p, providerDirty: true },
+                    },
+                )
+              }
+              className={
+                'rounded-md border px-3 py-1.5 text-sm ' +
+                (activeProvider === p
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50')
+              }
+            >
+              {p === 'twilio' ? 'Twilio' : 'TextLinkSMS'}
+            </button>
+          ))}
+          {form.sms.provider !== null && (
+            <button
+              type="button"
+              onClick={() =>
+                setForm(
+                  (f) =>
+                    f && {
+                      ...f,
+                      sms: { ...f.sms, provider: null, providerDirty: true },
+                    },
+                )
+              }
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              None
+            </button>
+          )}
+        </div>
+      </Field>
+
+      {activeProvider === 'twilio' ? (
+        <>
+          <Field label="Account SID">
+            <input
+              className={textInputClass()}
+              placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              value={form.sms.twilioAccountSid ?? ''}
+              onChange={(e) =>
+                setForm(
+                  (f) =>
+                    f && {
+                      ...f,
+                      sms: {
+                        ...f.sms,
+                        twilioAccountSid: e.target.value,
+                        twilioAccountSidDirty: true,
+                      },
+                    },
+                )
+              }
+            />
+          </Field>
+          <SecretField
+            label="Auth token"
+            source={data.sms.twilio.authTokenHasSecret ? 'db' : 'unset'}
+            hasSecret={data.sms.twilio.authTokenHasSecret}
+            state={form.sms.twilioAuthToken}
+            onChange={(twilioAuthToken) =>
+              setForm((f) => f && { ...f, sms: { ...f.sms, twilioAuthToken } })
+            }
+          />
+          <Field label="From number" hint="E.164 format, e.g. +15551234567">
+            <input
+              className={textInputClass()}
+              placeholder="+15551234567"
+              value={form.sms.twilioFromNumber ?? ''}
+              onChange={(e) =>
+                setForm(
+                  (f) =>
+                    f && {
+                      ...f,
+                      sms: {
+                        ...f.sms,
+                        twilioFromNumber: e.target.value,
+                        twilioFromNumberDirty: true,
+                      },
+                    },
+                )
+              }
+            />
+          </Field>
+        </>
+      ) : (
+        <>
+          <SecretField
+            label="API key"
+            source={data.sms.textlinksms.apiKeyHasSecret ? 'db' : 'unset'}
+            hasSecret={data.sms.textlinksms.apiKeyHasSecret}
+            state={form.sms.textlinkApiKey}
+            onChange={(textlinkApiKey) =>
+              setForm((f) => f && { ...f, sms: { ...f.sms, textlinkApiKey } })
+            }
+          />
+          <Field label="From number" hint="The sender ID TextLinkSMS provisioned for your account">
+            <input
+              className={textInputClass()}
+              placeholder="+15551234567"
+              value={form.sms.textlinkFromNumber ?? ''}
+              onChange={(e) =>
+                setForm(
+                  (f) =>
+                    f && {
+                      ...f,
+                      sms: {
+                        ...f.sms,
+                        textlinkFromNumber: e.target.value,
+                        textlinkFromNumberDirty: true,
+                      },
+                    },
+                )
+              }
+            />
+          </Field>
+          <Field
+            label="API base URL"
+            hint="Override only if TextLinkSMS publishes a different endpoint."
+          >
+            <input
+              className={textInputClass()}
+              placeholder="https://app.textlinksms.com/api/v1"
+              value={form.sms.textlinkBaseUrl ?? ''}
+              onChange={(e) =>
+                setForm(
+                  (f) =>
+                    f && {
+                      ...f,
+                      sms: {
+                        ...f.sms,
+                        textlinkBaseUrl: e.target.value,
+                        textlinkBaseUrlDirty: true,
+                      },
+                    },
+                )
+              }
+            />
+          </Field>
+        </>
+      )}
+      <TestSmsWidget data={data} />
+    </Card>
+  );
+}
+
+function TestSmsWidget({ data }: { data: ApplianceSettings }) {
+  const [to, setTo] = useState('');
+  const send = useMutation({
+    mutationFn: () => admin.testSms({ to: to.trim() }),
+  });
+  const provider = data.sms.provider;
+  const hasCreds =
+    (provider === 'twilio' &&
+      !!data.sms.twilio.accountSid &&
+      data.sms.twilio.authTokenHasSecret &&
+      !!data.sms.twilio.fromNumber) ||
+    (provider === 'textlinksms' &&
+      data.sms.textlinksms.apiKeyHasSecret &&
+      !!data.sms.textlinksms.fromNumber);
+  const disabled = !provider || !hasCreds;
+  const result = send.data ?? null;
+
+  return (
+    <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-end gap-2">
+        <Field
+          label="Test recipient"
+          source="db"
+          hint="Uses the appliance-level SMS credentials above. E.164 format."
+        >
+          <input
+            type="tel"
+            className={textInputClass()}
+            placeholder="+15555550123"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </Field>
+        <button
+          type="button"
+          onClick={() => send.mutate()}
+          disabled={disabled || !to.trim() || send.isPending}
+          className="mb-0.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-100 disabled:opacity-50"
+        >
+          {send.isPending ? 'Sending…' : 'Send test SMS'}
+        </button>
+      </div>
+      <TestResultBanner result={result} disabled={disabled} />
+    </div>
   );
 }
 
@@ -598,6 +947,199 @@ function SecretField({
       )}
     </Field>
   );
+}
+
+// ---------------------- Cloudflare Tunnel section ----------------------
+
+function TunnelSection() {
+  const qc = useQueryClient();
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['admin-tunnel'],
+    queryFn: admin.tunnel,
+    // Poll while an apply is in progress so the UI sees the terminal
+    // state without the operator refreshing.
+    refetchInterval: (q) => {
+      const s = q.state.data?.applyState;
+      return s === 'queued' || s === 'running' ? 2000 : false;
+    },
+  });
+
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [showToken, setShowToken] = useState(false);
+
+  const patchMut = useMutation({
+    mutationFn: (body: UpdateTunnelRequest) => admin.updateTunnel(body),
+    onSuccess: (next) => {
+      qc.setQueryData(['admin-tunnel'], next);
+      setTokenDraft('');
+    },
+  });
+
+  const busy =
+    patchMut.isPending || data?.applyState === 'queued' || data?.applyState === 'running';
+
+  return (
+    <Card
+      title="Cloudflare Tunnel"
+      description="Toggle the cloudflared sidecar and set or rotate its token without SSH. Applies by editing .env and restarting the cloudflare compose profile."
+    >
+      {isLoading && <p className="text-sm text-slate-500">Loading tunnel status…</p>}
+      {error && (
+        <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error instanceof ApiError ? error.message : 'Failed to load tunnel status.'}
+        </p>
+      )}
+      {data && !data.updaterWired && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          The host-side systemd units (<code>vibept-tunnel.path</code> /{' '}
+          <code>vibept-tunnel.service</code>) aren't installed. Re-run{' '}
+          <code>scripts/appliance/install.sh</code> to wire them up — until then the toggle below
+          will return a 503.
+        </p>
+      )}
+      {data && (
+        <div className="flex flex-col gap-4">
+          <ApplyStateBanner state={data.applyState} lastError={data.lastError} />
+          <Field
+            label="Tunnel sidecar"
+            source="db"
+            hint="Enable runs cloudflared alongside the backend; disable stops the sidecar only (the rest of the stack keeps running)."
+          >
+            <label className="inline-flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={data.enabled}
+                onChange={(e) => patchMut.mutate({ enabled: e.target.checked })}
+                disabled={busy || !data.updaterWired}
+                className="h-4 w-4"
+              />
+              <span className="text-sm">
+                {data.enabled ? (
+                  <span className="text-emerald-700">Enabled</span>
+                ) : (
+                  <span className="text-slate-500">Disabled</span>
+                )}
+              </span>
+            </label>
+          </Field>
+
+          <Field
+            label="Tunnel token"
+            source={data.hasToken ? 'db' : 'unset'}
+            hint="Create or refresh the tunnel at one.dash.cloudflare.com → Networks → Tunnels → Overview. Paste the token once — we never echo it back."
+          >
+            <div className="flex flex-col gap-2">
+              <div className="text-xs text-slate-500">
+                Status:{' '}
+                {data.hasToken ? (
+                  <span className="text-emerald-700">Configured</span>
+                ) : (
+                  <span className="text-slate-500">Not set</span>
+                )}
+                {data.lastAppliedAt && (
+                  <>
+                    {' · Last applied '}
+                    {new Date(data.lastAppliedAt).toLocaleString()}
+                  </>
+                )}
+              </div>
+              <div className="flex items-stretch gap-2">
+                <input
+                  type={showToken ? 'text' : 'password'}
+                  className={textInputClass() + ' font-mono'}
+                  placeholder="eyJhIjoi… (paste from Cloudflare)"
+                  value={tokenDraft}
+                  onChange={(e) => setTokenDraft(e.target.value)}
+                  disabled={busy || !data.updaterWired}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken((v) => !v)}
+                  className="rounded-md border border-slate-300 bg-white px-2 text-xs hover:bg-slate-100"
+                >
+                  {showToken ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => patchMut.mutate({ token: tokenDraft.trim() })}
+                  disabled={busy || !data.updaterWired || tokenDraft.trim().length < 20}
+                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {data.hasToken ? 'Rotate token' : 'Save token'}
+                </button>
+                {data.hasToken && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          'Clear the tunnel token? This will also disable the sidecar (cloudflared fails immediately without a token).',
+                        )
+                      ) {
+                        patchMut.mutate({ token: null });
+                      }
+                    }}
+                    disabled={busy || !data.updaterWired}
+                    className="rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    Clear token
+                  </button>
+                )}
+              </div>
+              {patchMut.error && (
+                <p className="text-xs text-red-700">
+                  {patchMut.error instanceof ApiError
+                    ? patchMut.error.message
+                    : 'Tunnel update failed.'}
+                </p>
+              )}
+            </div>
+          </Field>
+
+          <p className="text-xs text-slate-500">
+            Route mapping (hostname → <code>caddy:8080</code>) still happens at{' '}
+            <a
+              className="underline hover:text-slate-900"
+              href="https://one.dash.cloudflare.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              one.dash.cloudflare.com
+            </a>
+            . This page only controls whether the sidecar runs and which token it uses.
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ApplyStateBanner({
+  state,
+  lastError,
+}: {
+  state: TunnelStatusResponse['applyState'];
+  lastError: string | null;
+}) {
+  if (state === 'queued' || state === 'running') {
+    return (
+      <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+        {state === 'queued' ? 'Waiting for host to pick up the request…' : 'Applying on host…'}
+      </div>
+    );
+  }
+  if (state === 'failed' && lastError) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+        Last apply failed: {lastError}
+      </div>
+    );
+  }
+  return null;
 }
 
 // ---------------------- License section ----------------------

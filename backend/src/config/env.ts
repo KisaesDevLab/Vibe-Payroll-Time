@@ -50,6 +50,16 @@ const envSchema = z.object({
     .default('true')
     .transform((v) => v === 'true'),
 
+  /** Run the demo-company seed (Acme Plumbing, six employees, ~14 days of
+   *  entries) after migrations on boot. Idempotent — the seed deletes
+   *  and recreates the demo company on each run, so flipping this on
+   *  in a live appliance will wipe any local demo edits the operator
+   *  made. Safe on a fresh appliance or a demo VM. Default off. */
+  SEED_DEMO_ON_BOOT: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
   /** Where payroll-export CSV files are written. Relative paths resolve
    *  against the backend's cwd. The directory is created lazily. */
   EXPORTS_DIR: z.string().default('./exports'),

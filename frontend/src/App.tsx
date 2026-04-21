@@ -18,15 +18,19 @@ import { KioskPairPage } from './pages/kiosk/KioskPairPage';
 import { KioskRoot } from './pages/kiosk/KioskRoot';
 import { LicensePage } from './pages/LicensePage';
 import { LoginPage } from './pages/LoginPage';
+import { MagicLinkConsumePage } from './pages/MagicLinkConsumePage';
 import { MyPunchPage } from './pages/MyPunchPage';
 import { MyTimesheetPage } from './pages/MyTimesheetPage';
 import { NotificationPreferencesPage } from './pages/NotificationPreferencesPage';
 import { NotificationsLogPage } from './pages/NotificationsLogPage';
 import { PayrollExportsPage } from './pages/PayrollExportsPage';
+import { PreferencesPage } from './pages/PreferencesPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SetupPage } from './pages/SetupPage';
 import { TeamPage } from './pages/TeamPage';
+import { MultiEmployeeGridPage } from './pages/MultiEmployeeGridPage';
 import { TimesheetsReviewPage } from './pages/TimesheetsReviewPage';
+import { WeeklyGridPage } from './pages/WeeklyGridPage';
 
 function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -95,6 +99,10 @@ export function App() {
     <AppShell>
       <Routes>
         <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
+        {/* Magic-link callback. Must run unauthenticated — the whole
+            point is to MINT a session. Even if the user already has
+            one, hit consume so the new token rotates them in. */}
+        <Route path="/auth/magic" element={<MagicLinkConsumePage />} />
         <Route path="/setup" element={<Navigate to="/" replace />} />
 
         <Route path="/kiosk" element={<KioskRoot />} />
@@ -121,6 +129,14 @@ export function App() {
           element={
             <RequireSession>
               <NotificationPreferencesPage />
+            </RequireSession>
+          }
+        />
+        <Route
+          path="/preferences"
+          element={
+            <RequireSession>
+              <PreferencesPage />
             </RequireSession>
           }
         />
@@ -170,6 +186,8 @@ export function App() {
         >
           <Route index element={<Navigate to="employees" replace />} />
           <Route path="employees" element={<EmployeesPage />} />
+          <Route path="timesheets/:employeeId/week" element={<WeeklyGridPage />} />
+          <Route path="timesheets/grid" element={<MultiEmployeeGridPage />} />
           <Route path="timesheets" element={<TimesheetsReviewPage />} />
           <Route path="corrections" element={<CorrectionsPage />} />
           <Route path="reports" element={<ReportsPage />} />

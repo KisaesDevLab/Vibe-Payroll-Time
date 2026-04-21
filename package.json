@@ -26,6 +26,7 @@
     "test": "npm run test --workspaces --if-present",
     "migrate": "npm run migrate --workspace=backend",
     "migrate:make": "npm run migrate:make --workspace=backend --",
+    "seed:demo": "npm run seed:run --workspace=backend",
     "prepare": "husky || true"
   },
   "devDependencies": {

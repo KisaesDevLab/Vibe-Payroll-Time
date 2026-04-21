@@ -9,7 +9,7 @@ import type {
   UpdateEmployeeRequest,
 } from '@vibept/shared';
 import { useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
 import { FormField } from '../components/FormField';
@@ -108,6 +108,8 @@ export function EmployeesPage() {
         </div>
       )}
 
+      <AccessLinksCard />
+
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -153,13 +155,7 @@ export function EmployeesPage() {
                   <td className="px-4 py-3 text-slate-700">{e.employeeNumber ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{e.email ?? '—'}</td>
                   <td className="px-4 py-3">
-                    {e.hasPin ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                        set
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">none</span>
-                    )}
+                    <PinCell employee={e} />
                   </td>
                   <td className="px-4 py-3">
                     <BadgeStatusPill state={badge} />
@@ -472,6 +468,8 @@ function EmployeeDetailDrawer({
   onBadgeIssued: (issued: IssueBadgeResponse) => void;
 }) {
   const [patch, setPatch] = useState<UpdateEmployeeRequest>({});
+  const [setPinOpen, setSetPinOpen] = useState(false);
+  const navigate = useNavigate();
 
   const update = useMutation({
     mutationFn: () => employeesApi.update(companyId, employee.id, patch),
@@ -507,6 +505,19 @@ function EmployeeDetailDrawer({
       title={`${employee.firstName} ${employee.lastName}`}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => navigate(`/companies/${companyId}/timesheets/${employee.id}/week`)}
+          >
+            Weekly grid
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setSetPinOpen(true)}
+            disabled={employee.status !== 'active'}
+          >
+            Set PIN…
+          </Button>
           <Button
             variant="secondary"
             loading={regenerate.isPending}
@@ -585,6 +596,14 @@ function EmployeeDetailDrawer({
           );
         })()}
       </div>
+      {setPinOpen && (
+        <SetPinModal
+          companyId={companyId}
+          employee={employee}
+          onClose={() => setSetPinOpen(false)}
+          onSaved={onChanged}
+        />
+      )}
     </Drawer>
   );
 }
@@ -781,5 +800,163 @@ function IssuedBadgeModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// --------------------------- PIN cell + modal ---------------------------
+
+function PinCell({ employee }: { employee: Employee }) {
+  const [copied, setCopied] = useState(false);
+  const pin = employee.pin;
+
+  if (!employee.hasPin) {
+    return <span className="text-xs text-slate-400">none</span>;
+  }
+  if (!pin) {
+    // Employee has a hashed PIN from before pin_encrypted was added —
+    // we can't display it. Tell the admin what to do.
+    return (
+      <span
+        className="cursor-help text-xs text-slate-500 underline decoration-dotted"
+        title="This PIN was set before the encrypt-at-rest upgrade. Open the employee and regenerate or set manually to make it visible."
+      >
+        set (legacy)
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(pin).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          },
+          () => undefined,
+        );
+      }}
+      className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-sm tracking-widest text-slate-900 hover:bg-slate-100"
+      title="Click to copy"
+    >
+      {pin}
+      {copied && <span className="ml-2 text-[10px] text-emerald-700">✓ copied</span>}
+    </button>
+  );
+}
+
+function SetPinModal({
+  companyId,
+  employee,
+  onClose,
+  onSaved,
+}: {
+  companyId: number;
+  employee: Employee;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [pin, setPin] = useState('');
+  const save = useMutation({
+    mutationFn: () => employeesApi.setPin(companyId, employee.id, pin),
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
+  });
+  const digitsOk = /^\d{4,6}$/.test(pin);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Set PIN for ${employee.firstName} ${employee.lastName}`}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={!digitsOk} loading={save.isPending} onClick={() => save.mutate()}>
+            Save PIN
+          </Button>
+        </div>
+      }
+    >
+      <p className="text-sm text-slate-600">
+        4–6 digits. Weak patterns (<code>1234</code>, <code>1111</code>, etc.) are rejected — the
+        server uses the same rules as the auto-generator.
+      </p>
+      <input
+        type="text"
+        inputMode="numeric"
+        maxLength={6}
+        autoFocus
+        className="mt-4 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-center font-mono text-2xl tracking-widest shadow-sm"
+        value={pin}
+        onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+      />
+      {save.isError && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {save.error instanceof ApiError ? save.error.message : 'Failed to set PIN.'}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ------------------------- Access URLs card -----------------------------
+
+/**
+ * Surfaces the two URLs an operator hands out to their team:
+ *   - Employee login (personal-device PWA)
+ *   - Kiosk pairing (shared-device kiosk, starts the pairing flow)
+ *
+ * Derived from window.location so whatever hostname the admin is using
+ * right now (appliance LAN IP, cloudflare tunnel URL, custom domain) is
+ * what gets shown — no env var needed.
+ */
+function AccessLinksCard() {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const loginUrl = `${origin}/login`;
+  const kioskUrl = `${origin}/kiosk/pair`;
+  return (
+    <section className="mb-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-slate-900">Share these links with your team</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Employees open the login URL on their phone; a dedicated kiosk tablet uses the pairing URL.
+      </p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <CopyableUrl label="Employee login" url={loginUrl} />
+        <CopyableUrl label="Kiosk pairing" url={kioskUrl} />
+      </div>
+    </section>
+  );
+}
+
+function CopyableUrl({ label, url }: { label: string; url: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex flex-1 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-widest text-slate-500">{label}</p>
+        <p className="truncate font-mono text-xs text-slate-800">{url}</p>
+      </div>
+      <button
+        type="button"
+        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+        onClick={() => {
+          navigator.clipboard.writeText(url).then(
+            () => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            },
+            () => undefined,
+          );
+        }}
+      >
+        {copied ? '✓ Copied' : 'Copy'}
+      </button>
+    </div>
   );
 }

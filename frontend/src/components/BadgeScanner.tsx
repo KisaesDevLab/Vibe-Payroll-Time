@@ -43,10 +43,45 @@ export function BadgeScanner({
   const [state, setState] = useState<CameraState>('initializing');
   const [errorText, setErrorText] = useState<string | null>(null);
 
+  // Keep onDecode reachable from the zxing callback without being a dep on
+  // the start/stop effects — otherwise every parent render (which typically
+  // produces a new callback identity) thrashes the camera init cycle.
+  const onDecodeRef = useRef(onDecode);
+  onDecodeRef.current = onDecode;
+
+  const stopScanner = useCallback(() => {
+    try {
+      controlsRef.current?.stop();
+    } catch {
+      // zxing occasionally throws on stop() if the underlying track already
+      // ended; safe to ignore.
+    }
+    controlsRef.current = null;
+    // Belt-and-suspenders: stop every MediaStreamTrack on the video element.
+    // zxing's controls.stop() *should* release the camera, but HMR module
+    // swaps and component unmount-while-starting race conditions have left
+    // tracks alive in practice — the OS then holds the webcam locked until
+    // the whole browser process exits ("Timeout starting video source").
+    const stream = videoRef.current?.srcObject as MediaStream | null;
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        try {
+          track.stop();
+        } catch {
+          // ignore — track might already be in an ended state
+        }
+      }
+      if (videoRef.current) videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const startingRef = useRef(false);
   const startScanner = useCallback(async () => {
     if (controlsRef.current) return;
+    if (startingRef.current) return;
     if (!videoRef.current) return;
 
+    startingRef.current = true;
     setState('initializing');
     setErrorText(null);
 
@@ -60,7 +95,7 @@ export function BadgeScanner({
         videoRef.current,
         (result, err) => {
           if (result) {
-            onDecode(result.getText());
+            onDecodeRef.current(result.getText());
           }
           // NotFoundException is the normal "nothing in frame yet" path;
           // ignore it, let zxing keep polling.
@@ -69,6 +104,17 @@ export function BadgeScanner({
           }
         },
       );
+      // If stopScanner ran while we were awaiting (unmount, HMR, paused
+      // flip), discard the controls we just got — otherwise we leak a live
+      // MediaStream that zombifies the webcam.
+      if (!videoRef.current) {
+        try {
+          controls.stop();
+        } catch {
+          // ignore
+        }
+        return;
+      }
       controlsRef.current = controls;
       setState('ready');
     } catch (err) {
@@ -84,34 +130,26 @@ export function BadgeScanner({
         setState('error');
         setErrorText(msg);
       }
+    } finally {
+      startingRef.current = false;
     }
-  }, [onDecode]);
-
-  const stopScanner = useCallback(() => {
-    try {
-      controlsRef.current?.stop();
-    } catch {
-      // zxing occasionally throws on stop() if the underlying track already
-      // ended; safe to ignore.
-    }
-    controlsRef.current = null;
   }, []);
 
+  // Mount once, tear down on unmount. Start/stop based on `paused` is handled
+  // in the effect below; this one owns the camera's lifecycle.
   useEffect(() => {
-    void startScanner();
+    if (!paused) void startScanner();
     return stopScanner;
-  }, [startScanner, stopScanner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (paused) {
       stopScanner();
-    } else if (!controlsRef.current && state === 'ready') {
+    } else if (!controlsRef.current) {
       void startScanner();
     }
-    // We intentionally restart only when coming OUT of paused; the
-    // initial mount handles the first start.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paused]);
+  }, [paused, startScanner, stopScanner]);
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-4">

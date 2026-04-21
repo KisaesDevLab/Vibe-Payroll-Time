@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeEntry } from '@vibept/shared';
 import { useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { DeleteEntryConfirm } from '../components/DeleteEntryConfirm';
 import { EntryFormModal, type EntryFormValues } from '../components/EntryFormModal';
@@ -19,6 +19,7 @@ import type { CompanyContext } from './CompanyLayout';
 export function TimesheetsReviewPage() {
   const { companyId } = useOutletContext<CompanyContext>();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const roster = useQuery({
     queryKey: ['employees', companyId, ''],
@@ -185,7 +186,20 @@ export function TimesheetsReviewPage() {
         )}
         {sheet.data && (
           <>
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/companies/${companyId}/timesheets/grid`)}
+              >
+                All-employee grid
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/companies/${companyId}/timesheets/${effectiveId}/week`)}
+                disabled={effectiveId == null}
+              >
+                Weekly grid
+              </Button>
               {!sheet.data.isApproved && (
                 <Button variant="secondary" onClick={() => setAddOpen(true)}>
                   Add entry

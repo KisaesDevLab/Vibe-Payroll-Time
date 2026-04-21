@@ -93,6 +93,83 @@ timesheetsRouter.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Weekly grid (single employee)
+// ---------------------------------------------------------------------------
+
+const weeklyGridQuerySchema = z.object({
+  companyId: z.coerce.number().int().positive(),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+timesheetsRouter.get('/:employeeId/weekly-grid', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const employeeId = z.coerce.number().int().positive().parse(req.params.employeeId);
+    const q = weeklyGridQuerySchema.parse(req.query);
+
+    const role = await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, q.companyId);
+    if (role === 'employee' && req.user.roleGlobal !== 'super_admin') {
+      const ownEmployee = await db('employees')
+        .where({ company_id: q.companyId, user_id: req.user.id })
+        .first<{ id: number }>();
+      if (!ownEmployee || ownEmployee.id !== employeeId) {
+        return next(Forbidden("Cannot read another employee's grid"));
+      }
+    }
+
+    const { getWeeklyGrid } = await import('../../services/grids.js');
+    const result = await getWeeklyGrid({
+      companyId: q.companyId,
+      employeeId,
+      weekStart: q.weekStart,
+      actorUserId: req.user.id,
+    });
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Multi-employee grid
+// ---------------------------------------------------------------------------
+
+const multiGridQuerySchema = z.object({
+  companyId: z.coerce.number().int().positive(),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  employeeIds: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v
+        ? v
+            .split(',')
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isFinite(n) && n > 0)
+        : undefined,
+    ),
+});
+
+timesheetsRouter.get('/weekly-grid', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const q = multiGridQuerySchema.parse(req.query);
+    await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, q.companyId, 'supervisor');
+
+    const { getMultiEmployeeGrid } = await import('../../services/grids.js');
+    const result = await getMultiEmployeeGrid({
+      companyId: q.companyId,
+      weekStart: q.weekStart,
+      ...(q.employeeIds ? { employeeIds: q.employeeIds } : {}),
+      actorUserId: req.user.id,
+    });
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** Employee's own current pay period — convenience shortcut. */
 timesheetsRouter.get('/current', requireAuth, async (req, res, next) => {
   try {

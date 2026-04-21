@@ -1,31 +1,55 @@
 import crypto from 'node:crypto';
 import type { AuthResponse, SetupInitialRequest } from '@vibept/shared';
+import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { Conflict } from '../http/errors.js';
 import { recordAuthEvent } from './auth-events.js';
 import { buildAuthUser } from './auth.js';
 import { hashPassword } from './passwords.js';
 import { issueAccessToken, issueRefreshToken } from './tokens.js';
-import { countSuperAdmins, type UserRow } from './users.js';
+import { anySuperAdminHasExisted, type UserRow } from './users.js';
 
 interface RequestContext {
   ip?: string | null;
   userAgent?: string | null;
 }
 
+/**
+ * Setup is considered complete when EITHER
+ *   - `appliance_settings.installation_id` has been stamped (it is
+ *     written as part of runInitialSetup and never reverted), OR
+ *   - any SuperAdmin row has ever existed — including disabled ones.
+ *
+ * Both signals are checked so that mutating one out of band (a user
+ * cleanup script that nulls `installation_id`, or an ops procedure
+ * that disables the only SuperAdmin) does not reopen the setup wizard
+ * to anyone on the network. See docs/security.md.
+ */
+async function isSetupComplete(q: Knex | Knex.Transaction = db): Promise<boolean> {
+  const settings = await q('appliance_settings')
+    .where({ id: 1 })
+    .first<{ installation_id: string | null }>();
+  const installationSet =
+    !!settings?.installation_id && settings.installation_id !== 'pending-setup';
+  if (installationSet) return true;
+  return await anySuperAdminHasExisted(q as Knex.Transaction);
+}
+
 export async function getSetupStatus(): Promise<{
   setupRequired: boolean;
   installationId: string | null;
 }> {
-  const superAdmins = await countSuperAdmins();
   const settings = await db('appliance_settings')
     .where({ id: 1 })
-    .first<{ installation_id: string }>();
-
+    .first<{ installation_id: string | null }>();
+  const installationId =
+    settings?.installation_id && settings.installation_id !== 'pending-setup'
+      ? settings.installation_id
+      : null;
+  const complete = !!installationId || (await anySuperAdminHasExisted());
   return {
-    setupRequired: superAdmins === 0,
-    installationId:
-      settings?.installation_id === 'pending-setup' ? null : (settings?.installation_id ?? null),
+    setupRequired: !complete,
+    installationId,
   };
 }
 
@@ -42,18 +66,31 @@ export async function runInitialSetup(
   ctx: RequestContext,
 ): Promise<AuthResponse> {
   return db.transaction(async (trx) => {
-    const existing = await countSuperAdmins(trx);
-    if (existing > 0) {
+    // Gate on the strongest definition of "setup complete" — installation_id
+    // stamped OR any super_admin row (active or disabled) has ever existed.
+    // Using countSuperAdmins (which excludes disabled) would let a cleanup
+    // script that disables the one SuperAdmin reopen this endpoint to
+    // anyone on the network.
+    if (await isSetupComplete(trx)) {
       throw Conflict('Appliance is already set up');
     }
 
-    // Appliance settings: stamp a permanent installation_id.
+    // Appliance settings: stamp a permanent installation_id. The WHERE
+    // clause includes the `pending-setup` sentinel so even if two
+    // concurrent requests slip past the isSetupComplete gate, only the
+    // first one actually writes the row and the second silently no-ops
+    // (and then fails on the unique email below anyway).
     const installationId = crypto.randomUUID();
-    await trx('appliance_settings').where({ id: 1 }).update({
-      installation_id: installationId,
-      timezone_default: body.appliance.timezone,
-      updated_at: trx.fn.now(),
-    });
+    const updated = await trx('appliance_settings')
+      .where({ id: 1, installation_id: 'pending-setup' })
+      .update({
+        installation_id: installationId,
+        timezone_default: body.appliance.timezone,
+        updated_at: trx.fn.now(),
+      });
+    if (updated === 0) {
+      throw Conflict('Appliance is already set up');
+    }
 
     // Create the SuperAdmin.
     const passwordHash = await hashPassword(body.admin.password);

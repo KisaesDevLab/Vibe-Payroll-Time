@@ -13,10 +13,24 @@ export const employeeSchema = z.object({
   hiredAt: z.string().nullable(),
   terminatedAt: z.string().datetime().nullable(),
   hasPin: z.boolean(),
+  /** Decrypted PIN, populated only when the caller is a company admin
+   *  or supervisor (or a global super admin) AND the employee has a
+   *  pin_encrypted value stored. Null otherwise — this includes:
+   *    - employees whose PIN was set before the encrypt-at-rest migration
+   *    - reads by lower-privilege users
+   *    - reads where the HTTP layer didn't opt in with includePin=true. */
+  pin: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
 export type Employee = z.infer<typeof employeeSchema>;
+
+/** Admin manually sets an employee's PIN (as opposed to auto-generating).
+ *  Same shape rules as the generator — 4–6 digits, not a weak pattern. */
+export const setEmployeePinRequestSchema = z.object({
+  pin: z.string().regex(/^\d+$/, 'PIN must be digits only').min(4).max(6),
+});
+export type SetEmployeePinRequest = z.infer<typeof setEmployeePinRequestSchema>;
 
 export const createEmployeeRequestSchema = z.object({
   firstName: z.string().min(1).max(100),

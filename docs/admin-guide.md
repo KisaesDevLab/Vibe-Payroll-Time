@@ -117,3 +117,91 @@ writes an audit row.
 The Badge panel shows the last 10 events per employee (issue / revoke /
 successful scans / failed scans with reason). Useful for tracking a lost
 badge or catching shared-badge abuse.
+
+## Manual time-entry grids
+
+Two surfaces for managers who need to enter or fix time without the
+punch clock:
+
+### Weekly grid (single employee)
+
+From an employee row on **Employees**, click **Weekly grid**, or deep-link
+to `/companies/:companyId/timesheets/:employeeId/week?start=YYYY-MM-DD`.
+
+Jobs are rows, the seven days are columns. Click any cell to add a manual
+entry, override an existing punch, or edit a prior manual. Every manual
+entry carries a required reason that shows up in the audit trail and,
+depending on your company settings, in payroll exports.
+
+Punches are never deleted. A manual override marks overlapping punches as
+superseded in the DB; delete the manual entry and the punch returns.
+
+### Multi-employee grid
+
+Toggle to **Grid view** on the Timesheets review screen, or visit
+`/companies/:companyId/timesheets/grid?week=YYYY-MM-DD` directly. All
+active employees × 7 days. Click an employee row to open their weekly
+grid. Red dots = exceptions (open entries, auto-closed, etc.); amber
+dots = days with manual entries. Filter chips at the top restrict the
+table to specific subsets.
+
+### Company policy for employee-originated manual entries
+
+**Company settings → Manual entries** controls whether employees can
+create manual entries on their own behalf:
+
+- **Allowed** (default) — employees can add any manual entry to an
+  unapproved period.
+- **Override only** — employees may only adjust time on days they
+  already punched; pure allocations (no punch on the day/job) are
+  blocked. Supervisors/admins are not restricted.
+- **Disabled** — only supervisors and admins can create manual entries.
+
+Approved periods are always locked for employees regardless of mode. A
+supervisor can still post a manual entry after approval — the audit row
+makes the post-approval edit visible.
+
+## Time format preference
+
+**User menu → Preferences → Time format.** Either decimal (5.80) or HH:MM
+(5:48). The value is remembered per user. Companies set a default for
+their members under **Company settings → Display**; users may override.
+The format toggle only affects how hours render — storage is always
+exact seconds, so switching formats never touches data.
+
+## Demo company
+
+Every appliance ships with a seed for **Acme Plumbing Co** — one internal
+company, six employees with working PINs, three job codes, and ~14 days
+of realistic time entries (open shifts, auto-closed shifts, mixed
+sources, edited entries). Useful for exploring the UI before onboarding
+real people.
+
+### Loading the demo
+
+At install time, the installer asks you. For an existing appliance:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend \
+  npm run seed:run --workspace=backend
+```
+
+For a dev environment:
+
+```bash
+npm run seed:demo
+```
+
+The seed is idempotent — it deletes and recreates its own company on each
+run, so any edits you made inside the demo are lost.
+
+### Seed PINs
+
+Alice `100623` · Bob `204816` · Carol `307291` · David `401375` ·
+Eva `508264` · Frank `603571`.
+
+### Boot-time flag
+
+`SEED_DEMO_ON_BOOT=true` in `.env` re-seeds on every backend restart.
+Handy for a demo VM that should always present fresh data; leave **off**
+on any appliance where the demo's edits matter.

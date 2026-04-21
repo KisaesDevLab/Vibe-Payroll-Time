@@ -1,4 +1,10 @@
-import { updateApplianceSettingsRequestSchema, uploadLicenseRequestSchema } from '@vibept/shared';
+import {
+  testEmailRequestSchema,
+  testSmsRequestSchema,
+  updateApplianceSettingsRequestSchema,
+  updateTunnelRequestSchema,
+  uploadLicenseRequestSchema,
+} from '@vibept/shared';
 import { Router } from 'express';
 import { db } from '../../db/knex.js';
 import { env } from '../../config/env.js';
@@ -229,6 +235,69 @@ adminRouter.patch('/settings', requireAuth, requireSuperAdmin, async (req, res, 
     const data = await updateApplianceSettings(body);
     res.json({ data });
   } catch (err) {
+    next(err);
+  }
+});
+
+// ---- Diagnostic test sends (SuperAdmin only) ----
+// Use the appliance-level fallback credentials directly so operators can
+// verify their creds work before wiring them into any per-company flow.
+adminRouter.post('/test-email', requireAuth, requireSuperAdmin, async (req, res, next) => {
+  try {
+    const body = testEmailRequestSchema.parse(req.body);
+    const { sendTestEmail } = await import('../../services/notifications/test-send.js');
+    const result = await sendTestEmail(body.to);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post('/test-sms', requireAuth, requireSuperAdmin, async (req, res, next) => {
+  try {
+    const body = testSmsRequestSchema.parse(req.body);
+    const { sendTestSms } = await import('../../services/notifications/test-send.js');
+    const result = await sendTestSms(body.to);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- Cloudflare Tunnel management (SuperAdmin only) ----
+// Writes a request file to the shared update-control volume; a systemd
+// path unit on the host picks it up and invokes tunnel-from-request.sh,
+// which edits .env and restarts the cloudflared container under the
+// `cloudflare` compose profile.
+adminRouter.get('/tunnel', requireAuth, requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const { getTunnelStatus, reconcileFromStatusFile } =
+      await import('../../services/tunnel-manager.js');
+    // Cheap reconciliation so the DB `last_applied_at` tracks the host
+    // script's most recent successful apply.
+    await reconcileFromStatusFile().catch(() => undefined);
+    const status = await getTunnelStatus();
+    res.json({ data: status });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.patch('/tunnel', requireAuth, requireSuperAdmin, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const body = updateTunnelRequestSchema.parse(req.body);
+    const { requestTunnelChange } = await import('../../services/tunnel-manager.js');
+    const status = await requestTunnelChange({
+      ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+      ...(body.token !== undefined ? { token: body.token } : {}),
+      actor: { userId: req.user.id, email: req.user.email },
+    });
+    res.status(202).json({ data: status });
+  } catch (err) {
+    if ((err as { code?: string }).code === 'updater_not_wired') {
+      return next(new HttpError(503, 'updater_not_wired', (err as Error).message));
+    }
     next(err);
   }
 });

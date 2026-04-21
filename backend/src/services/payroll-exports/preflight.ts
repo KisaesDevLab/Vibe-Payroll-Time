@@ -46,6 +46,10 @@ export async function runPreflight(
   const entries = await db<TimeEntryRow>('time_entries')
     .where('company_id', companyId)
     .whereNull('deleted_at')
+    // Manual overrides supersede punches; only the active row counts
+    // toward the export. The audit trail still has both, and delete of
+    // the manual entry restores the punch — see Phase 6.5.
+    .whereNull('superseded_by_entry_id')
     .where(function () {
       this.whereNull('ended_at').orWhere('ended_at', '>', periodStart);
     })
@@ -187,6 +191,7 @@ export async function collectEmployeeSummaries(
   const rows = await db<TimeEntryRow>('time_entries')
     .where('company_id', companyId)
     .whereNull('deleted_at')
+    .whereNull('superseded_by_entry_id')
     .where(function () {
       this.whereNull('ended_at').orWhere('ended_at', '>', periodStart);
     })
@@ -232,6 +237,15 @@ export async function collectEmployeeSummaries(
       periodEnd,
     });
 
+    let manualSeconds = 0;
+    const manualReasons = new Set<string>();
+    for (const r of empRows) {
+      if (r.source !== 'web_manual') continue;
+      const dur = r.duration_seconds == null ? 0 : Number(r.duration_seconds);
+      manualSeconds += dur;
+      if (r.entry_reason) manualReasons.add(r.entry_reason);
+    }
+
     out.push({
       employeeId: emp.id,
       employeeNumber: emp.employee_number,
@@ -247,6 +261,8 @@ export async function collectEmployeeSummaries(
         jobCode: j.jobId != null ? (jobCode.get(j.jobId) ?? null) : null,
         workSeconds: j.workSeconds,
       })),
+      manualSeconds,
+      overrideReasons: Array.from(manualReasons),
     });
   }
 

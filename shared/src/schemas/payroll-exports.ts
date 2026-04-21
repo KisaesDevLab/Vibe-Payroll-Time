@@ -62,6 +62,10 @@ export const runExportRequestSchema = z.object({
   /** `generic_csv` only: which columns to include, in order. Ignored
    *  for the three vendor formats. */
   genericColumns: z.array(z.string().min(1).max(64)).optional(),
+  /** `generic_csv` only: how hour columns render. Vendor formats (Payroll
+   *  Relief / Gusto / QBO) stay decimal regardless because those
+   *  targets only ingest decimal natively. Defaults to 'decimal'. */
+  genericTimeFormat: z.enum(['decimal', 'hhmm']).optional(),
 });
 export type RunExportRequest = z.infer<typeof runExportRequestSchema>;
 
@@ -100,5 +104,12 @@ export const GENERIC_COLUMN_KEYS = [
   'job_breakdown_json',
   'period_start',
   'period_end',
+  // Phase 6.5 manual-entry columns — how much of this employee's work
+  // came from a supervisor-entered manual override rather than a
+  // punch, plus the reasons attached. Kept optional so existing
+  // templates are unaffected.
+  'manual_hours',
+  'source',
+  'override_reasons',
 ] as const;
 export type GenericColumnKey = (typeof GENERIC_COLUMN_KEYS)[number];

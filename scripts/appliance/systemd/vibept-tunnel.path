@@ -1,0 +1,14 @@
+[Unit]
+Description=Vibe Payroll Time — watch for Cloudflare Tunnel change requests
+Documentation=https://github.com/KisaesDevLab/Vibe-Payroll-Time
+After=vibept.service
+
+[Path]
+# Fire vibept-tunnel.service when the SuperAdmin UI drops a request file.
+# PathChanged (not PathExists) catches repeat triggers after the service
+# removes the file at the end of each run.
+PathChanged=/opt/vibept/update-control/tunnel-request.json
+Unit=vibept-tunnel.service
+
+[Install]
+WantedBy=multi-user.target

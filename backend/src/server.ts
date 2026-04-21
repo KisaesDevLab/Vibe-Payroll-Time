@@ -2,6 +2,7 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { closeDb } from './db/knex.js';
 import { runMigrations } from './db/migrate.js';
+import { runDemoSeed } from './db/seed-demo.js';
 import { waitForDb } from './db/wait.js';
 import { createApp } from './http/app.js';
 import { scheduleAutoClockout } from './services/auto-clockout.js';
@@ -20,6 +21,24 @@ async function main() {
     } catch (err) {
       logger.error({ err }, 'migration failure');
       throw err;
+    }
+  }
+
+  if (env.SEED_DEMO_ON_BOOT) {
+    // The seed needs SECRETS_ENCRYPTION_KEY to produce PINs that the
+    // backend can decrypt/fingerprint at runtime. If the operator set
+    // SEED_DEMO_ON_BOOT but forgot to set the key, we surface that
+    // loudly rather than silently skipping.
+    if (!env.SECRETS_ENCRYPTION_KEY) {
+      logger.error('SEED_DEMO_ON_BOOT=true but SECRETS_ENCRYPTION_KEY is unset — refusing to seed');
+    } else {
+      logger.info('running demo seed');
+      try {
+        await runDemoSeed();
+      } catch (err) {
+        logger.error({ err }, 'demo seed failure');
+        // Don't crash the appliance over a seed error — log and continue.
+      }
     }
   }
 

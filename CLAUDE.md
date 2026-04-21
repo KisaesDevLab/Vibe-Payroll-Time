@@ -47,6 +47,7 @@ Identical to Vibe Trial Balance / Vibe MyBooks conventions unless noted.
 | Deployment    | Docker Compose, distributed as appliance for GMKtec NucBox M6 (Ubuntu Server 24.04 LTS)                                                 |
 | QR decoding   | `@zxing/library` + `@zxing/browser` on the tablet; `qrcode` npm package server-side for generation                                      |
 | PDF / print   | Print-based HTML with `@media print` — no puppeteer / headless chromium (same discipline as Phase 13 PDF exports)                       |
+| Time format   | `shared/time-format/` — pure-function parser + formatter (decimal / HH:MM / labeled). Same module used by frontend and backend.         |
 
 ---
 
@@ -125,6 +126,12 @@ time_entry (
 Mid-shift job switch: close current `work` entry (ended_at = now), open new `work` entry with new `job_id` (started_at = now), same `shift_id`. A "shift" is reconstructable as all entries sharing a `shift_id`.
 
 Only **one open entry** per employee may exist at any time — enforced with a partial unique index.
+
+Manual entries use `source = web_manual` and carry an `entry_reason`. A manual entry may supersede one or more punch entries for the same (employee, day, job); superseded entries remain in the DB with their `superseded_by_entry_id` set, never deleted. The "active" view of a timesheet is entries where `superseded_by_entry_id IS NULL`. Deleting a manual entry restores its superseded punches in the same transaction.
+
+### Time format is always a display concern
+
+Storage is `BIGINT seconds`, always. No cell in the UI, no column in a report, and no input field ever stores formatted time strings. The `shared/time-format/` module parses input strings to seconds and formats seconds to strings; frontend and backend import the same module so their validation agrees. User preference (`decimal | hhmm`) falls back to company default; both are display settings that never touch entry data.
 
 ### Time math is always derived, never stored
 
@@ -242,6 +249,11 @@ docker compose -f docker-compose.prod.yml build
 - **Don't skip the `badge_version` check.** Reissuing a badge must invalidate every prior physical badge immediately, not on next verification. `verifyBadge` compares the parsed version to `employees.badge_version` after the HMAC check.
 - **Don't request camera permission outside of kiosk pairing.** A personal-device PWA should never ask for camera — badges are kiosk-only for v1.
 - **Don't forget the audit event on scan failures.** Silent failures are how shared-badge abuse goes undetected; every bad scan — bad HMAC, cross-company, revoked, version mismatch, rate-limited — logs to `badge_events` with its reason.
+- **Don't parse time-format strings with regex in route handlers.** Every route that accepts an hours field runs the input through `shared/time-format/parseHours` and stores the returned seconds. Never ad-hoc.
+- **Don't round seconds to minutes on storage.** Storage is always exact seconds; only display rounds (to whole minutes for HH:MM, to configurable precision for decimal).
+- **Don't silently normalize ambiguous input.** `"5 48"` (whitespace-separated numbers) is ambiguous and must return an error. Guessing is how manual entries become wage-and-hour claims.
+- **Don't hard-delete a manual entry.** Soft-delete via `deleted_at`; restoration of superseded punches must happen in the same transaction so a crash between steps can't leave the punch dangling.
+- **Don't let a grid re-render without reading the user's current format preference.** Format is resolved server-side on every grid-payload response (`timeFormat` field) so client and server always agree.
 
 ---
 

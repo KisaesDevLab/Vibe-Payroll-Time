@@ -33,6 +33,15 @@ interface ApplianceSettingsRow {
   ai_base_url: string | null;
   retention_days: number | null;
   log_level: string | null;
+  // SMS — appliance-wide fallback for companies that haven't set their
+  // own provider. See services/notifications/service.ts:resolveSmsConfig.
+  sms_provider: 'twilio' | 'textlinksms' | null;
+  twilio_account_sid: string | null;
+  twilio_auth_token_encrypted: string | null;
+  twilio_from_number: string | null;
+  textlinksms_api_key_encrypted: string | null;
+  textlinksms_from_number: string | null;
+  textlinksms_base_url: string | null;
 }
 
 async function loadRow(): Promise<ApplianceSettingsRow> {
@@ -59,6 +68,45 @@ export interface ResolvedEmailit {
   fromEmail: string | null;
   fromName: string;
   apiBaseUrl: string;
+}
+
+/** Appliance-wide SMS — one of twilio/textlinksms, or null if neither
+ *  is fully configured. Consumed by notifications/service.ts to resolve
+ *  the effective provider for a given company. */
+export interface ResolvedSmsProvider {
+  provider: 'twilio' | 'textlinksms' | null;
+  twilio: { accountSid: string; authToken: string; fromNumber: string } | null;
+  textlinksms: { apiKey: string; fromNumber: string; baseUrl: string | null } | null;
+}
+
+export async function getResolvedSmsProvider(): Promise<ResolvedSmsProvider> {
+  const row = await loadRow();
+  let twilio: ResolvedSmsProvider['twilio'] = null;
+  if (row.twilio_account_sid && row.twilio_auth_token_encrypted && row.twilio_from_number) {
+    twilio = {
+      accountSid: row.twilio_account_sid,
+      authToken: decryptSecret(row.twilio_auth_token_encrypted),
+      fromNumber: row.twilio_from_number,
+    };
+  }
+  let textlinksms: ResolvedSmsProvider['textlinksms'] = null;
+  if (row.textlinksms_api_key_encrypted && row.textlinksms_from_number) {
+    textlinksms = {
+      apiKey: decryptSecret(row.textlinksms_api_key_encrypted),
+      fromNumber: row.textlinksms_from_number,
+      baseUrl: row.textlinksms_base_url ?? null,
+    };
+  }
+  // If the operator picked a provider but didn't finish filling creds,
+  // we still expose the picked provider so resolveSmsConfig can fall
+  // back to company creds. If they didn't pick anything, infer from
+  // whichever provider has complete creds.
+  let provider = row.sms_provider;
+  if (!provider) {
+    if (twilio) provider = 'twilio';
+    else if (textlinksms) provider = 'textlinksms';
+  }
+  return { provider, twilio, textlinksms };
 }
 
 export async function getResolvedEmailit(): Promise<ResolvedEmailit> {
@@ -144,6 +192,19 @@ export async function getApplianceSettingsForAdmin(): Promise<ApplianceSettings>
       apiBaseUrl: emailitApiBase.value,
       apiBaseUrlSource: emailitApiBase.source,
     },
+    sms: {
+      provider: row.sms_provider,
+      twilio: {
+        accountSid: row.twilio_account_sid,
+        authTokenHasSecret: !!row.twilio_auth_token_encrypted,
+        fromNumber: row.twilio_from_number,
+      },
+      textlinksms: {
+        apiKeyHasSecret: !!row.textlinksms_api_key_encrypted,
+        fromNumber: row.textlinksms_from_number,
+        baseUrl: row.textlinksms_base_url,
+      },
+    },
     ai: {
       provider: (aiProvider.value ?? 'anthropic') as ResolvedAI['provider'],
       providerSource: aiProvider.source,
@@ -190,6 +251,27 @@ export async function updateApplianceSettings(
     }
     if (a.model !== undefined) updates.ai_model = a.model;
     if (a.baseUrl !== undefined) updates.ai_base_url = a.baseUrl;
+  }
+  if (patch.sms) {
+    const s = patch.sms;
+    if (s.provider !== undefined) updates.sms_provider = s.provider;
+    if (s.twilio) {
+      if (s.twilio.accountSid !== undefined) updates.twilio_account_sid = s.twilio.accountSid;
+      if (s.twilio.authToken !== undefined) {
+        updates.twilio_auth_token_encrypted =
+          s.twilio.authToken === null ? null : encryptSecret(s.twilio.authToken);
+      }
+      if (s.twilio.fromNumber !== undefined) updates.twilio_from_number = s.twilio.fromNumber;
+    }
+    if (s.textlinksms) {
+      if (s.textlinksms.apiKey !== undefined) {
+        updates.textlinksms_api_key_encrypted =
+          s.textlinksms.apiKey === null ? null : encryptSecret(s.textlinksms.apiKey);
+      }
+      if (s.textlinksms.fromNumber !== undefined)
+        updates.textlinksms_from_number = s.textlinksms.fromNumber;
+      if (s.textlinksms.baseUrl !== undefined) updates.textlinksms_base_url = s.textlinksms.baseUrl;
+    }
   }
   if (patch.retentionDays !== undefined) updates.retention_days = patch.retentionDays;
   if (patch.logLevel !== undefined) updates.log_level = patch.logLevel;

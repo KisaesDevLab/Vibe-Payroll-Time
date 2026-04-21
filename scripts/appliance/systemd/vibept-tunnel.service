@@ -1,0 +1,18 @@
+[Unit]
+Description=Vibe Payroll Time — apply SuperAdmin Cloudflare Tunnel changes
+Documentation=https://github.com/KisaesDevLab/Vibe-Payroll-Time
+After=vibept.service network-online.target
+
+[Service]
+Type=oneshot
+# tunnel-from-request.sh edits /opt/vibept/.env and runs `docker compose`
+# against the cloudflare profile, both of which need root.
+User=root
+WorkingDirectory=/opt/vibept
+ExecStart=/bin/bash /opt/vibept/scripts/appliance/tunnel-from-request.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=120
+
+[Install]
+# Triggered exclusively via vibept-tunnel.path.

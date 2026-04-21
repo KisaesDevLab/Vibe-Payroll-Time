@@ -1,0 +1,113 @@
+import { logger } from '../../config/logger.js';
+import { getResolvedEmailit, getResolvedSmsProvider } from '../appliance-settings.js';
+import { EmailDeliveryError, sendViaEmailIt } from './emailit-client.js';
+import { sendViaTextLinkSms } from './textlinksms-client.js';
+import { SmsDeliveryError, sendViaTwilio } from './twilio-client.js';
+
+/**
+ * SuperAdmin-facing diagnostic sends. These exist so an operator can
+ * confirm their appliance-level provider credentials work without
+ * triggering the full notify() pipeline (which expects a recipient
+ * context that may not exist yet during setup).
+ *
+ * Always uses appliance-level creds — not per-company — because the
+ * whole point is to verify the fallback pair is correct.
+ */
+
+export interface TestSendResult {
+  ok: boolean;
+  providerMessageId: string | null;
+  /** Human-readable error on failure; null on success. */
+  error: string | null;
+  /** Provider name actually used, so the UI can render "sent via twilio". */
+  provider: 'emailit' | 'twilio' | 'textlinksms' | null;
+}
+
+export async function sendTestEmail(to: string): Promise<TestSendResult> {
+  if (!to.trim()) return fail('Recipient email is required', null);
+
+  const config = await getResolvedEmailit();
+  if (!config.apiKey || !config.fromEmail) {
+    return fail(
+      'Appliance-level EmailIt is not fully configured (need API key + from address)',
+      'emailit',
+    );
+  }
+
+  try {
+    const res = await sendViaEmailIt(
+      {
+        apiKey: config.apiKey,
+        fromEmail: config.fromEmail,
+        fromName: config.fromName,
+        baseUrl: config.apiBaseUrl,
+      },
+      {
+        to,
+        subject: 'Vibe Payroll Time — test email',
+        text:
+          'This is a diagnostic email from your Vibe Payroll Time appliance.\n' +
+          'Receiving it confirms the configured EmailIt credentials work.',
+        html:
+          '<p>This is a diagnostic email from your <b>Vibe Payroll Time</b> appliance.</p>' +
+          '<p>Receiving it confirms the configured EmailIt credentials work.</p>',
+      },
+    );
+    return {
+      ok: true,
+      providerMessageId: res.messageId,
+      error: null,
+      provider: 'emailit',
+    };
+  } catch (err) {
+    const msg = err instanceof EmailDeliveryError ? err.message : (err as Error).message;
+    logger.warn({ err, to }, 'test email send failed');
+    return fail(msg, 'emailit');
+  }
+}
+
+export async function sendTestSms(to: string): Promise<TestSendResult> {
+  if (!to.trim()) return fail('Recipient phone number is required', null);
+
+  const resolved = await getResolvedSmsProvider();
+  if (!resolved.provider) {
+    return fail('No appliance-level SMS provider selected', null);
+  }
+
+  const body =
+    'Vibe Payroll Time — test SMS. Receiving this confirms your appliance SMS credentials work.';
+
+  try {
+    if (resolved.provider === 'twilio') {
+      if (!resolved.twilio) {
+        return fail('Twilio selected but credentials are incomplete', 'twilio');
+      }
+      const res = await sendViaTwilio(resolved.twilio, { to, body });
+      return {
+        ok: true,
+        providerMessageId: res.messageId,
+        error: null,
+        provider: 'twilio',
+      };
+    }
+    // textlinksms
+    if (!resolved.textlinksms) {
+      return fail('TextLinkSMS selected but credentials are incomplete', 'textlinksms');
+    }
+    const res = await sendViaTextLinkSms(resolved.textlinksms, { to, body });
+    return {
+      ok: true,
+      providerMessageId: res.messageId,
+      error: null,
+      provider: 'textlinksms',
+    };
+  } catch (err) {
+    const msg = err instanceof SmsDeliveryError ? err.message : (err as Error).message;
+    logger.warn({ err, to, provider: resolved.provider }, 'test sms send failed');
+    return fail(msg, resolved.provider);
+  }
+}
+
+function fail(error: string, provider: TestSendResult['provider']): TestSendResult {
+  return { ok: false, providerMessageId: null, error, provider };
+}

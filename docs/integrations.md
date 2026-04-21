@@ -70,3 +70,26 @@ need a license and the admin never sees a banner for them.
   auth-based only)
 - **Vibe Trial Balance / Vibe MyBooks GL sync** — they share a stack but not
   data; this is by design
+
+## Generic CSV — manual-entry columns and time format
+
+The generic CSV exporter has three columns for manual-entry reporting:
+
+- `manual_hours` — seconds from `web_manual` entries during the period,
+  rendered in whichever time format the exporter is configured for.
+- `source` — `punched`, `web_manual`, `punched+manual`, or blank when
+  the employee had zero time in the period.
+- `override_reasons` — distinct reasons attached to the employee's
+  manual entries, joined with `·` (middle dot).
+
+These are optional — templates that don't include them get the same
+CSV as before.
+
+### Time format (generic only)
+
+The run-export request accepts `genericTimeFormat: 'decimal' | 'hhmm'`.
+Decimal is default (native for every major payroll vendor); HH:MM is
+available when the receiving spreadsheet expects it. Note that
+`payroll_relief`, `gusto`, and `qbo_payroll` targets always emit
+decimal — their parsers don't accept HH:MM and the `genericTimeFormat`
+flag is ignored for those formats.

@@ -78,9 +78,15 @@ function badgeClass(action: EntryAuditRow['action']): string {
     case 'unapprove':
       return 'bg-slate-200 text-slate-800';
     case 'delete':
+    case 'manual_delete':
       return 'bg-red-100 text-red-800';
     case 'auto_close':
       return 'bg-purple-100 text-purple-800';
+    case 'manual_create':
+    case 'manual_update':
+    case 'manual_override':
+    case 'manual_revert':
+      return 'bg-orange-100 text-orange-800';
   }
 }
 

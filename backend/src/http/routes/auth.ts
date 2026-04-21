@@ -1,7 +1,18 @@
-import { loginRequestSchema, logoutRequestSchema, refreshRequestSchema } from '@vibept/shared';
+import {
+  loginRequestSchema,
+  logoutRequestSchema,
+  magicLinkConsumeRequestSchema,
+  magicLinkRequestSchema,
+  refreshRequestSchema,
+} from '@vibept/shared';
 import { Router } from 'express';
 import { recordAuthEvent } from '../../services/auth-events.js';
 import { buildAuthUser, loginWithPassword } from '../../services/auth.js';
+import {
+  consumeMagicLink,
+  getMagicLinkOptions,
+  requestMagicLink,
+} from '../../services/magic-links.js';
 import {
   issueAccessToken,
   revokeAllForUser,
@@ -78,6 +89,59 @@ authRouter.post('/logout', authRateLimiter, requireAuth, async (req, res, next) 
     });
 
     res.json({ data: { ok: true } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Magic link (passwordless) login
+// ---------------------------------------------------------------------------
+
+/** Public. LoginPage reads this before rendering so it can show/hide
+ *  the email + SMS buttons based on what the appliance has configured. */
+authRouter.get('/magic/options', async (_req, res, next) => {
+  try {
+    const data = await getMagicLinkOptions();
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Request a magic link. Rate-limited (both here at the HTTP layer and
+ *  again per-identifier inside the service). Always 204 on the happy
+ *  path — we never reveal whether the identifier matched. */
+authRouter.post('/magic/request', authRateLimiter, async (req, res, next) => {
+  try {
+    const body = magicLinkRequestSchema.parse(req.body);
+    const origin = `${req.protocol}://${req.get('host') ?? ''}`;
+    await requestMagicLink({
+      identifier: body.identifier,
+      channel: body.channel,
+      origin,
+      ip: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Consume a token. Called by the /auth/magic frontend page with the
+ *  ?token=... it pulled out of the URL. Returns the standard
+ *  AuthResponse — same shape as /auth/login — so the frontend can
+ *  store the session through the existing authStore. */
+authRouter.post('/magic/consume', authRateLimiter, async (req, res, next) => {
+  try {
+    const body = magicLinkConsumeRequestSchema.parse(req.body);
+    const session = await consumeMagicLink({
+      token: body.token,
+      ip: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    res.json({ data: session });
   } catch (err) {
     next(err);
   }
