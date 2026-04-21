@@ -1,3 +1,4 @@
+import { FREE_CLIENT_COMPANY_CAP } from '@vibept/shared';
 import cron from 'node-cron';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
@@ -25,8 +26,26 @@ export async function runLicenseHeartbeat(): Promise<number> {
   if (!token) return 0;
 
   try {
-    const companyCount = await db('companies')
+    // Bill only the client companies that fall OUTSIDE the free tier.
+    // The first FREE_CLIENT_COMPANY_CAP non-internal companies (ranked
+    // by created_at asc) are free — the portal shouldn't invoice for
+    // them, so we exclude them from the heartbeat's aggregate counts.
+    const freeIds = await db('companies')
       .whereNot('is_internal', true)
+      .whereNull('disabled_at')
+      .orderBy([
+        { column: 'created_at', order: 'asc' },
+        { column: 'id', order: 'asc' },
+      ])
+      .limit(FREE_CLIENT_COMPANY_CAP)
+      .pluck<number[]>('id');
+
+    const billableCompanies = db('companies')
+      .whereNot('is_internal', true)
+      .whereNotIn('id', freeIds.length > 0 ? freeIds : [0]);
+
+    const companyCount = await billableCompanies
+      .clone()
       .count<{ count: string }>({ count: '*' })
       .first();
 
@@ -34,6 +53,7 @@ export async function runLicenseHeartbeat(): Promise<number> {
       .join('companies', 'employees.company_id', 'companies.id')
       .where('employees.status', 'active')
       .whereNot('companies.is_internal', true)
+      .whereNotIn('companies.id', freeIds.length > 0 ? freeIds : [0])
       .whereNull('employees.terminated_at')
       .count<{ count: string }>({ count: '*' })
       .first();
@@ -45,6 +65,7 @@ export async function runLicenseHeartbeat(): Promise<number> {
         applianceId: env.APPLIANCE_ID,
         companyCount: Number(companyCount?.count ?? 0),
         employeeCount: Number(employeeCount?.count ?? 0),
+        freeTierCompanyCount: freeIds.length,
         license: token,
       }),
     });

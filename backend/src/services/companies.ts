@@ -166,6 +166,22 @@ export async function updateCompany(
   });
 }
 
+/**
+ * Mark a company active or inactive. Inactive companies keep every row
+ * (time entries, audit trail, payroll exports) — this is a soft-state
+ * flag, not a delete. Licensing ignores inactive companies in its
+ * aggregate counts, and the UI hides them from default views.
+ */
+export async function setCompanyActive(companyId: number, active: boolean): Promise<Company> {
+  await db('companies')
+    .where({ id: companyId })
+    .update({
+      disabled_at: active ? null : db.fn.now(),
+      updated_at: db.fn.now(),
+    });
+  return requireCompany(companyId);
+}
+
 export async function userCanAccessCompany(
   userId: number,
   companyId: number,

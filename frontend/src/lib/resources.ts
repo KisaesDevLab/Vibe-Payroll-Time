@@ -71,6 +71,11 @@ export const companies = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  setActive: (id: number, active: boolean) =>
+    apiFetch<Company>(`/companies/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ active }),
+    }),
 };
 
 // ---------------------------------------------------------------------------

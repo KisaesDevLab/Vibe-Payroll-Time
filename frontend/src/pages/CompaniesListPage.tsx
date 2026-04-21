@@ -11,10 +11,13 @@ import { companies as companiesApi, licensing } from '../lib/resources';
 
 const TZ_GUESS = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
 
+type StatusFilter = 'active' | 'inactive' | 'all';
+
 export function CompaniesListPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [form, setForm] = useState<CreateCompanyRequest>({
     name: '',
     slug: '',
@@ -34,9 +37,19 @@ export function CompaniesListPage() {
   const filtered = useMemo(() => {
     const rows = companies.data ?? [];
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((c) => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q));
-  }, [companies.data, search]);
+    return rows.filter((c) => {
+      if (statusFilter === 'active' && c.disabledAt) return false;
+      if (statusFilter === 'inactive' && !c.disabledAt) return false;
+      if (!q) return true;
+      return c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q);
+    });
+  }, [companies.data, search, statusFilter]);
+
+  const toggleActive = useMutation({
+    mutationFn: ({ id, active }: { id: number; active: boolean }) =>
+      companiesApi.setActive(id, active),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
+  });
 
   const create = useMutation({
     mutationFn: (body: CreateCompanyRequest) =>
@@ -75,7 +88,7 @@ export function CompaniesListPage() {
           <Button onClick={() => setShowCreate(true)}>New company</Button>
         </header>
 
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <input
             type="search"
             placeholder="Search by name or slug…"
@@ -83,11 +96,18 @@ export function CompaniesListPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          {search && (
-            <span className="text-xs text-slate-500">
-              {filtered.length} of {companies.data?.length ?? 0}
-            </span>
-          )}
+          <select
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          >
+            <option value="active">Active only</option>
+            <option value="inactive">Inactive only</option>
+            <option value="all">All (active + inactive)</option>
+          </select>
+          <span className="text-xs text-slate-500">
+            {filtered.length} of {companies.data?.length ?? 0}
+          </span>
         </div>
 
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -104,9 +124,16 @@ export function CompaniesListPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} className={c.disabledAt ? 'bg-slate-50/60' : undefined}>
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{c.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-900">{c.name}</span>
+                      {c.disabledAt && (
+                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium uppercase text-slate-700">
+                          Inactive
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-slate-500">{c.slug}</div>
                   </td>
                   <td className="px-4 py-3">
@@ -140,12 +167,33 @@ export function CompaniesListPage() {
                     {c.employeeCount ?? 0}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      to={`/companies/${c.id}/employees`}
-                      className="text-sm font-medium text-slate-900 hover:underline"
-                    >
-                      Manage →
-                    </Link>
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !c.disabledAt; // next = active?
+                          // If currently active, next is false (deactivate).
+                          // Flipping: currently disabled → active; currently
+                          // active → inactive.
+                          const activate = !!c.disabledAt;
+                          const msg = activate
+                            ? `Reactivate "${c.name}"? Employees will be able to punch again.`
+                            : `Mark "${c.name}" inactive? Data is preserved and can be exported; it will be hidden from default views.`;
+                          if (confirm(msg)) toggleActive.mutate({ id: c.id, active: activate });
+                          void next;
+                        }}
+                        disabled={toggleActive.isPending}
+                        className="text-xs text-slate-600 hover:underline disabled:opacity-50"
+                      >
+                        {c.disabledAt ? 'Reactivate' : 'Deactivate'}
+                      </button>
+                      <Link
+                        to={`/companies/${c.id}/employees`}
+                        className="text-sm font-medium text-slate-900 hover:underline"
+                      >
+                        Manage →
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -29,6 +29,18 @@ export const LICENSE_GRACE_DAYS = 60;
 /** Trial duration for first client-portal company. */
 export const LICENSE_TRIAL_DAYS = 14;
 
+/**
+ * Appliance-wide free tier. Up to this many client (non-internal)
+ * companies run for free — ranked by created_at ascending so a firm
+ * can't cycle through deletes to stay under the cap. Companies beyond
+ * this cap fall through to the appliance-wide license state
+ * (trial/licensed/grace/expired).
+ *
+ * Remote access (personal-device PWA from anywhere) is feature-complete
+ * regardless of tier — it ships enabled for every company.
+ */
+export const FREE_CLIENT_COMPANY_CAP = 5;
+
 /** FLSA weekly overtime threshold in hours. */
 export const FLSA_OT_THRESHOLD_HOURS = 40;
 

@@ -12,13 +12,18 @@ export function DashboardPage() {
     queryFn: companiesApi.list,
   });
   const [search, setSearch] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
   const filtered = useMemo(() => {
     const rows = companies.data ?? [];
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((c) => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q));
-  }, [companies.data, search]);
+    return rows.filter((c) => {
+      if (!showInactive && c.disabledAt) return false;
+      if (!q) return true;
+      return c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q);
+    });
+  }, [companies.data, search, showInactive]);
   const hasAny = (companies.data?.length ?? 0) > 0;
+  const inactiveCount = (companies.data ?? []).filter((c) => c.disabledAt).length;
 
   return (
     <>
@@ -43,7 +48,7 @@ export function DashboardPage() {
         )}
 
         {hasAny && (
-          <div className="mb-4 flex items-center gap-3">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
             <input
               type="search"
               placeholder="Search companies…"
@@ -51,6 +56,17 @@ export function DashboardPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {inactiveCount > 0 && (
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={showInactive}
+                  onChange={(e) => setShowInactive(e.target.checked)}
+                />
+                Show inactive ({inactiveCount})
+              </label>
+            )}
             {search && (
               <span className="text-xs text-slate-500">
                 {filtered.length} of {companies.data?.length ?? 0}
@@ -70,11 +86,18 @@ export function DashboardPage() {
                   <h2 className="text-base font-semibold text-slate-900">{c.name}</h2>
                   <p className="mt-0.5 text-xs text-slate-500">{c.slug}</p>
                 </div>
-                {c.isInternal && (
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                    Internal
-                  </span>
-                )}
+                <div className="flex flex-col items-end gap-1">
+                  {c.isInternal && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      Internal
+                    </span>
+                  )}
+                  {c.disabledAt && (
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium uppercase text-slate-700">
+                      Inactive
+                    </span>
+                  )}
+                </div>
               </div>
               <dl className="grid grid-cols-2 gap-y-1 text-xs text-slate-600">
                 <dt>Pay period</dt>

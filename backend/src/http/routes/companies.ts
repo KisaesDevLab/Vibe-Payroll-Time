@@ -27,6 +27,7 @@ import {
   createCompany,
   listCompanies,
   requireCompany,
+  setCompanyActive,
   updateCompany,
   userCanAccessCompany,
 } from '../../services/companies.js';
@@ -127,6 +128,25 @@ companiesRouter.patch(
     try {
       const body = updateCompanyRequestSchema.parse(req.body);
       const company = await updateCompany(companyIdFromParams(req), body);
+      res.json({ data: company });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// SuperAdmin-only active/inactive toggle. "Inactive" is a soft flag that
+// hides the company from default views and excludes it from license
+// counts — data is preserved for audit / export.
+const companyStatusBodySchema = z.object({ active: z.boolean() });
+companiesRouter.post(
+  '/:companyId/status',
+  requireAuth,
+  requireSuperAdmin,
+  async (req, res, next) => {
+    try {
+      const { active } = companyStatusBodySchema.parse(req.body);
+      const company = await setCompanyActive(companyIdFromParams(req), active);
       res.json({ data: company });
     } catch (err) {
       next(err);

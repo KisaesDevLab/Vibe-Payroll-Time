@@ -42,16 +42,27 @@ export function TimesheetView({
 }) {
   const [auditEntryId, setAuditEntryId] = useState<number | null>(null);
 
+  // Bucket entries by their authoritative day-id assignment from the
+  // backend. The summary's day.entryIds list is computed in the
+  // COMPANY'S timezone, so it matches data.days[].date; doing the
+  // bucketing client-side with `toISOString().slice(0,10)` assigns
+  // entries to the UTC day, which silently mis-buckets everything near
+  // midnight UTC (entries then disappear from the table while still
+  // contributing to the totals).
   const entriesByDay = useMemo(() => {
+    const byId = new Map<number, TimeEntry>();
+    for (const e of data.entries) byId.set(e.id, e);
     const map = new Map<string, TimeEntry[]>();
-    for (const e of data.entries) {
-      const day = new Date(e.startedAt).toISOString().slice(0, 10);
-      const arr = map.get(day) ?? [];
-      arr.push(e);
-      map.set(day, arr);
+    for (const day of data.days) {
+      const arr: TimeEntry[] = [];
+      for (const id of day.entryIds) {
+        const e = byId.get(id);
+        if (e) arr.push(e);
+      }
+      map.set(day.date, arr);
     }
     return map;
-  }, [data.entries]);
+  }, [data.entries, data.days]);
 
   return (
     <div className="flex flex-col gap-6">

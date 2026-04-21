@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { env } from '../../config/env.js';
 import { db } from '../../db/knex.js';
 import { HttpError } from '../errors.js';
-import { getApplianceLicenseStatus } from '../../services/licensing/state.js';
+import { getApplianceLicenseStatus, isFreeTierClient } from '../../services/licensing/state.js';
 
 /**
  * License-enforcement gate. Applied to mutating endpoints that should be
@@ -30,14 +30,17 @@ export function enforceLicense(
     try {
       if (!env.LICENSING_ENFORCED) return next();
 
-      // Internal companies always bypass. We still check the appliance
-      // state for everyone else.
+      // Internal companies always bypass. Free-tier client companies
+      // (the first FREE_CLIENT_COMPANY_CAP non-internal companies, ranked
+      // by created_at) also bypass. Everyone else checks the appliance
+      // state.
       const companyId = companyIdFrom(req);
       if (Number.isFinite(companyId) && companyId) {
         const company = await db('companies')
           .where({ id: companyId })
-          .first<{ is_internal: boolean }>();
+          .first<{ is_internal: boolean; created_at: Date }>();
         if (company?.is_internal) return next();
+        if (company && (await isFreeTierClient(companyId, company))) return next();
       }
 
       const status = await getApplianceLicenseStatus();

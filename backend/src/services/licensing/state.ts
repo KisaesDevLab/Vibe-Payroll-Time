@@ -1,5 +1,5 @@
 import type { LicenseClaims, LicenseState, LicenseStatus } from '@vibept/shared';
-import { LICENSE_GRACE_DAYS, LICENSE_TRIAL_DAYS } from '@vibept/shared';
+import { FREE_CLIENT_COMPANY_CAP, LICENSE_GRACE_DAYS, LICENSE_TRIAL_DAYS } from '@vibept/shared';
 import { env } from '../../config/env.js';
 import { db } from '../../db/knex.js';
 import { NotFound } from '../../http/errors.js';
@@ -111,17 +111,22 @@ export async function getApplianceLicenseStatus(): Promise<LicenseStatus> {
 }
 
 /**
- * Company-scoped resolver — kept for backward compatibility with the
- * existing `GET /companies/:id/license` endpoint. Internal companies
- * are always `internal_free`; everyone else mirrors the appliance.
+ * Company-scoped resolver. Returns `internal_free` for:
+ *   - Any internal firm company (always free, unconditionally)
+ *   - The first FREE_CLIENT_COMPANY_CAP non-internal companies on the
+ *     appliance, ranked by created_at ascending (a firm can include
+ *     up to 5 client companies in the free tier)
+ *
+ * Everything else mirrors the appliance-wide license state.
  */
 export async function getLicenseStatusForCompany(companyId: number): Promise<LicenseStatus> {
   const company = await db('companies').where({ id: companyId }).first<{
     is_internal: boolean;
+    created_at: Date;
   }>();
   if (!company) throw NotFound('Company not found');
 
-  if (company.is_internal) {
+  if (company.is_internal || (await isFreeTierClient(companyId, company))) {
     const row = await loadApplianceRow();
     return {
       state: 'internal_free',
@@ -134,6 +139,33 @@ export async function getLicenseStatusForCompany(companyId: number): Promise<Lic
   }
 
   return getApplianceLicenseStatus();
+}
+
+/**
+ * True iff `company` is one of the first FREE_CLIENT_COMPANY_CAP
+ * non-internal companies on the appliance (ranked by created_at asc,
+ * ties broken by id asc). Exposed so the license middleware and the
+ * heartbeat share the same semantics.
+ */
+export async function isFreeTierClient(
+  companyId: number,
+  company: { is_internal: boolean; created_at: Date },
+): Promise<boolean> {
+  if (company.is_internal) return false;
+
+  const earlierCount = await db('companies')
+    .whereNot('is_internal', true)
+    .whereNull('disabled_at') // retired clients shouldn't occupy a free slot
+    .where(function () {
+      this.where('created_at', '<', company.created_at).orWhere(function () {
+        this.where('created_at', '=', company.created_at).andWhere('id', '<', companyId);
+      });
+    })
+    .count<{ count: string }>({ count: '*' })
+    .first();
+
+  const rank = 1 + Number(earlierCount?.count ?? 0);
+  return rank <= FREE_CLIENT_COMPANY_CAP;
 }
 
 /**
