@@ -71,7 +71,7 @@ const envSchema = z.object({
   EMAILIT_FROM_EMAIL: optionalEnvString().pipe(z.string().email().optional()),
   EMAILIT_FROM_NAME: z.string().default('Vibe Payroll Time'),
   /** Override if EmailIt ever publishes a different base URL. */
-  EMAILIT_API_BASE_URL: z.string().default('https://api.emailit.com/v1'),
+  EMAILIT_API_BASE_URL: z.string().default('https://api.emailit.com/v2'),
 
   /** Disables outbound email + SMS entirely (useful for dev + test).
    *  Log rows are still written with a 'disabled' status so the admin

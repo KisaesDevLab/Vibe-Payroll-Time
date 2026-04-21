@@ -1,6 +1,7 @@
 import { logger } from '../../config/logger.js';
 import { getResolvedEmailit, getResolvedSmsProvider } from '../appliance-settings.js';
 import { EmailDeliveryError, sendViaEmailIt } from './emailit-client.js';
+import { normalizeToE164 } from './phone-verification.js';
 import { sendViaTextLinkSms } from './textlinksms-client.js';
 import { SmsDeliveryError, sendViaTwilio } from './twilio-client.js';
 
@@ -69,6 +70,17 @@ export async function sendTestEmail(to: string): Promise<TestSendResult> {
 export async function sendTestSms(to: string): Promise<TestSendResult> {
   if (!to.trim()) return fail('Recipient phone number is required', null);
 
+  // Normalize to E.164 up-front so "5551234567" routes the same as
+  // "+15551234567" — avoids the silent-non-delivery pattern where
+  // TextLinkSMS accepts the API call but the paired Android can't
+  // dial a number without a country code.
+  let normalized: string;
+  try {
+    normalized = normalizeToE164(to);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : 'Invalid phone', null);
+  }
+
   const resolved = await getResolvedSmsProvider();
   if (!resolved.provider) {
     return fail('No appliance-level SMS provider selected', null);
@@ -82,7 +94,7 @@ export async function sendTestSms(to: string): Promise<TestSendResult> {
       if (!resolved.twilio) {
         return fail('Twilio selected but credentials are incomplete', 'twilio');
       }
-      const res = await sendViaTwilio(resolved.twilio, { to, body });
+      const res = await sendViaTwilio(resolved.twilio, { to: normalized, body });
       return {
         ok: true,
         providerMessageId: res.messageId,
@@ -94,7 +106,7 @@ export async function sendTestSms(to: string): Promise<TestSendResult> {
     if (!resolved.textlinksms) {
       return fail('TextLinkSMS selected but credentials are incomplete', 'textlinksms');
     }
-    const res = await sendViaTextLinkSms(resolved.textlinksms, { to, body });
+    const res = await sendViaTextLinkSms(resolved.textlinksms, { to: normalized, body });
     return {
       ok: true,
       providerMessageId: res.messageId,

@@ -10,6 +10,13 @@ export const setupInitialRequestSchema = z.object({
   admin: z.object({
     email: z.string().email().max(254),
     password: z.string().min(12).max(256),
+    /** Optional — lets the SuperAdmin receive appliance-wide SMS
+     *  notifications later. Null/omitted = email-only account. */
+    phone: z
+      .string()
+      .regex(/^\+?[0-9][0-9\s()\-.]{5,}$/, 'phone must be digits; prefix with + for E.164')
+      .max(32)
+      .optional(),
   }),
   company: z.object({
     name: z.string().min(1).max(200),

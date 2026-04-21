@@ -201,6 +201,7 @@ async function api(
 
 describe.skipIf(!dbReachable)('badges API (route-level security)', () => {
   beforeAll(async () => {
+    await (await import('./__helpers__/assert-test-db.js')).assertPointedAtTestDb();
     await runMigrations();
     const app = createApp();
     await new Promise<void>((resolve) => {

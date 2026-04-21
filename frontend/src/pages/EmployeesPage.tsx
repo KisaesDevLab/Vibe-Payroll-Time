@@ -908,27 +908,23 @@ function SetPinModal({
 // ------------------------- Access URLs card -----------------------------
 
 /**
- * Surfaces the two URLs an operator hands out to their team:
- *   - Employee login (personal-device PWA)
- *   - Kiosk pairing (shared-device kiosk, starts the pairing flow)
- *
- * Derived from window.location so whatever hostname the admin is using
- * right now (appliance LAN IP, cloudflare tunnel URL, custom domain) is
- * what gets shown — no env var needed.
+ * Surfaces the employee-facing login URL — the one employees open on
+ * their personal phone for the PWA. The kiosk pairing URL used to
+ * live here too but was moved to the Kiosks tab where it belongs
+ * alongside the paired-devices list.
  */
 function AccessLinksCard() {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const loginUrl = `${origin}/login`;
-  const kioskUrl = `${origin}/kiosk/pair`;
   return (
     <section className="mb-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-slate-900">Share these links with your team</h2>
+      <h2 className="text-sm font-semibold text-slate-900">Employee login link</h2>
       <p className="mt-1 text-xs text-slate-500">
-        Employees open the login URL on their phone; a dedicated kiosk tablet uses the pairing URL.
+        Share this URL — employees open it on their phone to sign in and punch. The kiosk pairing
+        URL lives on the Kiosks tab.
       </p>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+      <div className="mt-3">
         <CopyableUrl label="Employee login" url={loginUrl} />
-        <CopyableUrl label="Kiosk pairing" url={kioskUrl} />
       </div>
     </section>
   );

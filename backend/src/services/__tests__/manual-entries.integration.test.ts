@@ -111,6 +111,7 @@ async function seed() {
 
 describe.skipIf(!dbReachable)('manual-entries service (DB-backed)', () => {
   beforeAll(async () => {
+    await (await import('./__helpers__/assert-test-db.js')).assertPointedAtTestDb();
     await runMigrations();
   });
 

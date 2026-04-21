@@ -1,7 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TopBar } from '../components/TopBar';
 import { UpdateCard } from '../components/UpdateCard';
+import { authStore } from '../lib/auth-store';
 import { admin } from '../lib/resources';
 
 /**
@@ -100,12 +102,7 @@ export function ApplianceHealthPage() {
                       <td className="py-2 text-slate-700">{c.licenseState.replace('_', ' ')}</td>
                       <td className="py-2 text-right font-mono">{c.employeeCount}</td>
                       <td className="py-2 text-right">
-                        <a
-                          href={admin.exportCompanyUrl(c.id)}
-                          className="text-sm font-medium text-slate-900 hover:underline"
-                        >
-                          ZIP →
-                        </a>
+                        <ExportZipButton companyId={c.id} companySlug={c.slug} />
                       </td>
                     </tr>
                   ))}
@@ -147,6 +144,50 @@ function Card({ label, children }: { label: string; children: React.ReactNode })
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs uppercase tracking-widest text-slate-500">{label}</p>
       <div className="mt-2 text-sm">{children}</div>
+    </div>
+  );
+}
+
+function ExportZipButton({ companyId, companySlug }: { companyId: number; companySlug: string }) {
+  // Bearer-header fetch → Blob → trigger <a download>. The endpoint
+  // requires requireAuth, so a plain <a href> would 401 silently.
+  const [err, setErr] = useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: async () => {
+      const session = authStore.get();
+      if (!session) throw new Error('Not signed in');
+      const url = admin.exportCompanyUrl(companyId);
+      const res = await fetch(url, {
+        headers: { authorization: `Bearer ${session.accessToken}` },
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}${text ? ` — ${text.slice(0, 200)}` : ''}`);
+      }
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `vibept-${companySlug}-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    },
+    onError: (e) => setErr(e instanceof Error ? e.message : 'Export failed'),
+    onSuccess: () => setErr(null),
+  });
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        className="text-sm font-medium text-slate-900 hover:underline disabled:opacity-60"
+        onClick={() => run.mutate()}
+        disabled={run.isPending}
+      >
+        {run.isPending ? 'Preparing…' : 'ZIP →'}
+      </button>
+      {err && <span className="text-xs text-red-700">{err}</span>}
     </div>
   );
 }

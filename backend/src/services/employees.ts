@@ -10,6 +10,7 @@ import { db } from '../db/knex.js';
 import { pinFingerprint } from './crypto.js';
 import { decryptSecret, encryptSecret } from './crypto.js';
 import { BadRequest, Conflict, NotFound } from '../http/errors.js';
+import { normalizeToE164 } from './notifications/phone-verification.js';
 import { hashPin } from './passwords.js';
 import { generatePinMaterial, validatePinShape } from './pin-generator.js';
 
@@ -176,7 +177,19 @@ export async function updateEmployee(
     if (patch.lastName !== undefined) updates.last_name = patch.lastName;
     if (patch.employeeNumber !== undefined) updates.employee_number = patch.employeeNumber;
     if (patch.email !== undefined) updates.email = patch.email;
-    if (patch.phone !== undefined) updates.phone = patch.phone;
+    if (patch.phone !== undefined) {
+      // Canonicalize on write so all downstream SMS paths can assume
+      // E.164. Raw 10-digit strings get dropped by TextLinkSMS's
+      // paired Android without the country prefix.
+      const normalized = patch.phone === null ? null : normalizeToE164(patch.phone);
+      updates.phone = normalized;
+      // Changing the phone number invalidates any prior verification —
+      // otherwise an admin edit bypasses the SMS opt-in's ownership
+      // proof. Unchanged values (same string) keep the verification.
+      if ((normalized ?? null) !== (existing.phone ?? null)) {
+        updates.phone_verified_at = null;
+      }
+    }
     if (patch.hiredAt !== undefined) updates.hired_at = patch.hiredAt;
     if (patch.status !== undefined) {
       updates.status = patch.status;

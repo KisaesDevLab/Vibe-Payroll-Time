@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { AuthResponse } from '@vibept/shared';
+import { useApplianceName } from '../hooks/useApplianceName';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
 
@@ -17,6 +18,7 @@ import { authStore } from '../lib/auth-store';
 export function MagicLinkConsumePage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const applianceName = useApplianceName();
   const token = params.get('token');
   const [state, setState] = useState<'consuming' | 'failed'>('consuming');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export function MagicLinkConsumePage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-12">
       <header className="text-center">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Vibe Payroll Time</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{applianceName}</h1>
       </header>
       <div className="rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
         {state === 'consuming' ? (

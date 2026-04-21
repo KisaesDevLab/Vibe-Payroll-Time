@@ -4,6 +4,7 @@ import { OfflineBanner } from './components/OfflineBanner';
 import { SupportChatWidget } from './components/SupportChatWidget';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
+import { AllUsersPage } from './pages/AllUsersPage';
 import { ApplianceHealthPage } from './pages/ApplianceHealthPage';
 import { ApplianceSettingsPage } from './pages/ApplianceSettingsPage';
 import { CompaniesListPage } from './pages/CompaniesListPage';
@@ -172,6 +173,14 @@ export function App() {
           element={
             <RequireSuperAdmin>
               <ApplianceSettingsPage />
+            </RequireSuperAdmin>
+          }
+        />
+        <Route
+          path="/appliance/users"
+          element={
+            <RequireSuperAdmin>
+              <AllUsersPage />
             </RequireSuperAdmin>
           }
         />

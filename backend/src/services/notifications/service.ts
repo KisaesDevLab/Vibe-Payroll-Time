@@ -44,6 +44,12 @@ export type Recipient =
       id: number;
       email: string;
       /** Users always receive admin emails — no opt-out UI. */
+      /** Optional user-level (appliance-wide) phone + verification.
+       *  Populated by magic-link-by-SMS when the user has verified a
+       *  number at /preferences. Absent/null = this user has no
+       *  appliance-wide phone and can't receive SMS notifications. */
+      phone?: string | null;
+      phoneVerified?: boolean;
     };
 
 export interface NotifyInput {
@@ -104,6 +110,23 @@ async function resolveEmailConfig(companyId: number): Promise<EmailItConfig | nu
     };
   }
 
+  return null;
+}
+
+/**
+ * Appliance-level SMS resolver (no company context). Used by
+ * user-scoped recipients — SuperAdmin magic-links, appliance-wide
+ * notifications — where routing through a per-company provider would
+ * be incorrect.
+ */
+async function resolveApplianceSmsConfig(): Promise<SmsConfig | null> {
+  const appliance = await getResolvedSmsProvider();
+  if (appliance.provider === 'twilio' && appliance.twilio) {
+    return { provider: 'twilio', ...appliance.twilio };
+  }
+  if (appliance.provider === 'textlinksms' && appliance.textlinksms) {
+    return { provider: 'textlinksms', ...appliance.textlinksms };
+  }
   return null;
 }
 
@@ -247,16 +270,30 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
   }
 
   // ---------- SMS ----------
-  if (desired.has('sms') && input.recipient.kind === 'employee') {
+  if (desired.has('sms')) {
     const r = input.recipient;
-    const phone = r.phone;
-    if (!phone || !r.smsOptIn) {
+    // Gate logic is kind-dependent:
+    //   - employee: phone + smsOptIn + phoneVerified, use company creds
+    //   - user (SuperAdmin etc.): phone + phoneVerified, use appliance
+    //     creds. No opt-in toggle — users who set and verify a phone
+    //     at /preferences are explicitly opted in.
+    const phone = r.phone ?? null;
+    const phoneVerified = r.phoneVerified ?? false;
+    const smsOptIn = r.kind === 'employee' ? r.smsOptIn : true;
+
+    if (!phone) {
       result.sms = {
         status: 'skipped',
         providerMessageId: null,
-        error: !phone ? 'no phone on file' : 'employee opted out of sms',
+        error: 'no phone on file',
       };
-    } else if (!r.phoneVerified) {
+    } else if (!smsOptIn) {
+      result.sms = {
+        status: 'skipped',
+        providerMessageId: null,
+        error: 'recipient opted out of sms',
+      };
+    } else if (!phoneVerified) {
       result.sms = {
         status: 'skipped',
         providerMessageId: null,
@@ -284,12 +321,32 @@ export async function notify(input: NotifyInput): Promise<NotifyResult> {
   return result;
 }
 
+/**
+ * Types the user is actively waiting on in the UI (forgotten password,
+ * magic-link login, phone verification). The NOTIFICATIONS_DISABLED
+ * flag is intended for suppressing *automated* notifications (cron
+ * sweeps, event-driven reminders) in dev or during incidents — not
+ * for silently swallowing sends the user just clicked a button to
+ * trigger. Returning `status: disabled` in those cases looks like a
+ * bug to the user.
+ */
+const INTERACTIVE_NOTIFICATION_TYPES = new Set<NotificationType>([
+  'magic_link',
+  'password_reset',
+  'phone_verification',
+]);
+
+function isDisabledForType(type: NotificationType): boolean {
+  if (!env.NOTIFICATIONS_DISABLED) return false;
+  return !INTERACTIVE_NOTIFICATION_TYPES.has(type);
+}
+
 async function sendEmail(
   input: NotifyInput,
   to: string,
   payload: EmailPayload,
 ): Promise<LogOutcome> {
-  if (env.NOTIFICATIONS_DISABLED) {
+  if (isDisabledForType(input.type)) {
     return { status: 'disabled', providerMessageId: null, error: null };
   }
   const config = await resolveEmailConfig(input.companyId);
@@ -311,15 +368,25 @@ async function sendEmail(
 }
 
 async function sendSms(input: NotifyInput, to: string, payload: SmsPayload): Promise<LogOutcome> {
-  if (env.NOTIFICATIONS_DISABLED) {
+  if (isDisabledForType(input.type)) {
     return { status: 'disabled', providerMessageId: null, error: null };
   }
-  const config = await resolveSmsConfig(input.companyId);
+  // User-level recipients (SuperAdmin magic-link, admin notifications)
+  // are appliance-scoped — they don't belong to any particular company,
+  // so a company-specific provider config shouldn't route their SMS.
+  // Bypass the per-company resolver and go straight to the appliance.
+  const config =
+    input.recipient.kind === 'user'
+      ? await resolveApplianceSmsConfig()
+      : await resolveSmsConfig(input.companyId);
   if (!config) {
     return {
       status: 'skipped',
       providerMessageId: null,
-      error: 'No SMS provider configured for company or appliance',
+      error:
+        input.recipient.kind === 'user'
+          ? 'No appliance-level SMS provider configured'
+          : 'No SMS provider configured for company or appliance',
     };
   }
   try {

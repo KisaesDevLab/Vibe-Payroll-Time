@@ -2,14 +2,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeEntry, TimeFormat, WeeklyGridCell } from '@vibept/shared';
 import { formatHours } from '@vibept/shared';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { CellEditPopover } from '../components/CellEditPopover';
 import { FormatToggle } from '../components/FormatToggle';
 import { HoursCell } from '../components/HoursCell';
 import { TopBar } from '../components/TopBar';
+import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
-import { grids, manualEntries, timesheets, userPreferences } from '../lib/resources';
+import {
+  employees as employeesApi,
+  grids,
+  manualEntries,
+  timesheets,
+  userPreferences,
+} from '../lib/resources';
 
 const UNDO_WINDOW_MS = 60_000;
 
@@ -23,9 +30,26 @@ const UNDO_WINDOW_MS = 60_000;
  */
 export function WeeklyGridPage(): JSX.Element {
   const params = useParams<{ companyId: string; employeeId: string }>();
+  const navigate = useNavigate();
+  const session = useSession();
   const [search, setSearch] = useSearchParams();
   const companyId = Number(params.companyId);
   const employeeId = Number(params.employeeId);
+
+  // Managers and admins get an employee picker so they can page through
+  // the roster without bouncing to the TimesheetsReviewPage. An employee
+  // viewing their own grid just sees a static name.
+  const membership = session?.user.memberships.find((m) => m.companyId === companyId);
+  const isManager =
+    session?.user.roleGlobal === 'super_admin' ||
+    membership?.role === 'company_admin' ||
+    membership?.role === 'supervisor';
+  const rosterQ = useQuery({
+    queryKey: ['roster', companyId],
+    queryFn: () => employeesApi.list(companyId),
+    enabled: isManager,
+    staleTime: 60_000,
+  });
   const today = new Date();
   const dow = today.getDay(); // 0=Sun
   const defaultWeekStart = (() => {
@@ -309,9 +333,47 @@ export function WeeklyGridPage(): JSX.Element {
       <main className="mx-auto max-w-7xl px-6 py-8">
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-              {grid.employee.firstName} {grid.employee.lastName} · Weekly grid
-            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              {isManager && (rosterQ.data?.length ?? 0) > 0 ? (
+                <>
+                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                    Weekly grid ·
+                  </h1>
+                  <select
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-lg shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    value={employeeId}
+                    onChange={(e) => {
+                      const nextId = Number(e.target.value);
+                      navigate(
+                        `/companies/${companyId}/timesheets/${nextId}/week?start=${grid.week.start}`,
+                      );
+                    }}
+                  >
+                    {rosterQ
+                      .data!.slice()
+                      .sort((a, b) => {
+                        // Active first, then by last name. Keeps a picker useful
+                        // when terminated employees are still in the list for
+                        // historical grids.
+                        if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
+                        return `${a.lastName} ${a.firstName}`.localeCompare(
+                          `${b.lastName} ${b.firstName}`,
+                        );
+                      })
+                      .map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.lastName}, {e.firstName}
+                          {e.status !== 'active' ? ` (${e.status})` : ''}
+                        </option>
+                      ))}
+                  </select>
+                </>
+              ) : (
+                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                  {grid.employee.firstName} {grid.employee.lastName} · Weekly grid
+                </h1>
+              )}
+            </div>
             <p className="mt-1 text-sm text-slate-600">
               Week of <span className="font-mono">{grid.week.start}</span> —{' '}
               <span className="font-mono">{grid.week.end}</span> ·{' '}

@@ -1,13 +1,20 @@
 import {
+  changePasswordRequestSchema,
   loginRequestSchema,
   logoutRequestSchema,
   magicLinkConsumeRequestSchema,
   magicLinkRequestSchema,
   refreshRequestSchema,
+  setPasswordAfterMagicLinkRequestSchema,
 } from '@vibept/shared';
 import { Router } from 'express';
 import { recordAuthEvent } from '../../services/auth-events.js';
-import { buildAuthUser, loginWithPassword } from '../../services/auth.js';
+import {
+  buildAuthUser,
+  changePassword,
+  loginWithPassword,
+  setPasswordAfterMagicLink,
+} from '../../services/auth.js';
 import {
   consumeMagicLink,
   getMagicLinkOptions,
@@ -115,7 +122,19 @@ authRouter.get('/magic/options', async (_req, res, next) => {
 authRouter.post('/magic/request', authRateLimiter, async (req, res, next) => {
   try {
     const body = magicLinkRequestSchema.parse(req.body);
-    const origin = `${req.protocol}://${req.get('host') ?? ''}`;
+    // Prefer the client-supplied origin (window.location.origin) when
+    // it's on the CORS allowlist — otherwise the magic link points at
+    // the backend (4000) instead of the frontend (5180) in dev, or at
+    // an internal Caddy host in prod. An attacker can't redirect the
+    // link by supplying a bogus origin because we verify against the
+    // CORS_ORIGIN env whitelist.
+    const { env } = await import('../../config/env.js');
+    const allowed = new Set(env.CORS_ORIGIN.split(',').map((o) => o.trim()));
+    const hostOrigin = `${req.protocol}://${req.get('host') ?? ''}`;
+    const origin =
+      body.origin && allowed.has(body.origin.replace(/\/+$/, ''))
+        ? body.origin.replace(/\/+$/, '')
+        : hostOrigin;
     await requestMagicLink({
       identifier: body.identifier,
       channel: body.channel,
@@ -153,6 +172,51 @@ authRouter.get('/me', requireAuth, async (req, res, next) => {
     const user = await findUserById(req.user.id);
     if (!user) return next(NotFound('User not found'));
     res.json({ data: await buildAuthUser(user) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Change password for the signed-in user. Rate-limited like the rest
+// of the /auth/* endpoints so a compromised access token can't brute
+// the current password by spamming this endpoint.
+authRouter.post('/change-password', authRateLimiter, requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(NotFound('No user in context'));
+    const body = changePasswordRequestSchema.parse(req.body);
+    await changePassword(req.user.id, body.currentPassword, body.newPassword, {
+      ip: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Set a new password without requiring the current one. Only allowed
+// when the calling session was minted via magic-link — the magic-link
+// was the ownership proof within the last 15 minutes. A password-only
+// session that tried this would be trivially takeover-able by anyone
+// with a stolen access token.
+authRouter.post('/set-password', authRateLimiter, requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(NotFound('No user in context'));
+    if (req.user.authMethod !== 'magic_link') {
+      return next(
+        new (await import('../errors.js')).HttpError(
+          403,
+          'wrong_auth_method',
+          'Set-password without current-password requires a magic-link session. Sign out and click "Email me a login link" instead.',
+        ),
+      );
+    }
+    const body = setPasswordAfterMagicLinkRequestSchema.parse(req.body);
+    await setPasswordAfterMagicLink(req.user.id, body.newPassword, {
+      ip: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

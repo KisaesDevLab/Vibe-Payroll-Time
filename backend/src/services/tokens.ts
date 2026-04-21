@@ -10,27 +10,37 @@ import { env } from '../config/env.js';
 import { db } from '../db/knex.js';
 import { Unauthorized } from '../http/errors.js';
 
+export type AuthMethod = 'password' | 'magic_link';
+
 export interface AccessTokenClaims {
   sub: string;
   email: string;
   roleGlobal: 'super_admin' | 'none';
+  /** Which factor minted this session. Consumed by the "set new
+   *  password without knowing the old one" flow: only magic-link
+   *  sessions are allowed to skip the current-password check. */
+  authMethod?: AuthMethod;
   /** Issued at (seconds). */
   iat?: number;
   /** Expiry (seconds). */
   exp?: number;
 }
 
-export function issueAccessToken(user: {
-  id: number;
-  email: string;
-  roleGlobal: 'super_admin' | 'none';
-}): { token: string; expiresAt: Date } {
+export function issueAccessToken(
+  user: {
+    id: number;
+    email: string;
+    roleGlobal: 'super_admin' | 'none';
+  },
+  opts: { authMethod?: AuthMethod } = {},
+): { token: string; expiresAt: Date } {
   const expiresIn = ACCESS_TOKEN_TTL_SECONDS;
   const token = jwt.sign(
     {
       sub: String(user.id),
       email: user.email,
       roleGlobal: user.roleGlobal,
+      authMethod: opts.authMethod ?? 'password',
     } satisfies AccessTokenClaims,
     env.JWT_SECRET,
     { algorithm: 'HS256', expiresIn },

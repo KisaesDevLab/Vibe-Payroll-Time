@@ -94,6 +94,27 @@ export function MyPunchPage() {
           </section>
         )}
 
+        {companyId != null && current.error instanceof ApiError && current.error.status === 403 && (
+          <section className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-medium">Not an employee at this company.</p>
+            <p className="mt-1">
+              You're a member (admin / supervisor) but don't have an active employee record here, so
+              there's nothing to clock into. If you also need to track your own hours, ask an admin
+              to create an employee record for you at this company.
+            </p>
+          </section>
+        )}
+
+        {companyId != null &&
+          current.error &&
+          !(current.error instanceof ApiError && current.error.status === 403) && (
+            <section className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {current.error instanceof Error
+                ? current.error.message
+                : 'Could not load punch state.'}
+            </section>
+          )}
+
         {memberships.length > 1 && (
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700">Company</span>

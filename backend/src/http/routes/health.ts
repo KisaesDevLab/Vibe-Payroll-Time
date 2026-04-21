@@ -59,3 +59,18 @@ versionRouter.get('/', (_req, res) => {
     },
   });
 });
+
+// Public appliance metadata — no auth. Used by the login page and
+// magic-link consume page so they render the operator's custom brand
+// name before anyone authenticates.
+export const applianceInfoRouter: Router = Router();
+
+applianceInfoRouter.get('/', async (_req, res, next) => {
+  try {
+    const { getResolvedDisplayName } = await import('../../services/appliance-settings.js');
+    const displayName = await getResolvedDisplayName();
+    res.json({ data: { displayName } });
+  } catch (err) {
+    next(err);
+  }
+});

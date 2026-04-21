@@ -92,13 +92,24 @@ export async function runInitialSetup(
       throw Conflict('Appliance is already set up');
     }
 
-    // Create the SuperAdmin.
+    // Create the SuperAdmin. Phone gets canonicalized to E.164 at the
+    // boundary so downstream SMS sends don't silently drop messages
+    // (TextLinkSMS's paired Android can't route bare 10-digit numbers).
     const passwordHash = await hashPassword(body.admin.password);
+    const { normalizeToE164 } = await import('./notifications/phone-verification.js');
+    const phone =
+      body.admin.phone && body.admin.phone.trim() ? normalizeToE164(body.admin.phone.trim()) : null;
     const [userRow] = await trx('users')
       .insert({
         email: body.admin.email,
         password_hash: passwordHash,
         role_global: 'super_admin',
+        // Unverified by default — the SuperAdmin can verify via the
+        // phone-verification flow once they're signed in. Storing the
+        // raw number is what the operator typed; we never mark it
+        // verified without the 6-digit-code round-trip.
+        phone,
+        phone_verified_at: null,
       })
       .returning<UserRow[]>('*');
 

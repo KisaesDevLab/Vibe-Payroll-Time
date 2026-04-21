@@ -88,8 +88,25 @@ function hashToken(token: string): string {
  * should NEVER expose whether the identifier existed.
  */
 export async function requestMagicLink(input: RequestMagicLinkInput): Promise<void> {
-  const identifier = input.identifier.trim().toLowerCase();
-  if (!identifier) return;
+  if (!input.identifier.trim()) return;
+
+  // Canonicalize the identifier so the lookup, the rate-limit key, and
+  // the audit row all agree — regardless of how the operator typed it
+  // at the login page. For email: lowercase. For phone: E.164.
+  let identifier: string;
+  if (input.channel === 'email') {
+    identifier = input.identifier.trim().toLowerCase();
+  } else {
+    const { normalizeToE164 } = await import('./notifications/phone-verification.js');
+    try {
+      identifier = normalizeToE164(input.identifier);
+    } catch {
+      // Un-coercible input (too short, letters, etc.) — no-op to
+      // preserve the "never reveal whether the identifier exists"
+      // posture.
+      return;
+    }
+  }
 
   try {
     // Find the user for this identifier.
@@ -101,13 +118,28 @@ export async function requestMagicLink(input: RequestMagicLinkInput): Promise<vo
           .whereNull('disabled_at')
           .first()) ?? null;
     } else {
-      const row = await db('users')
-        .join('employees', 'employees.user_id', 'users.id')
-        .where('employees.phone', input.identifier.trim())
-        .whereNull('users.disabled_at')
-        .where('employees.status', 'active')
-        .first<UserRow>('users.*');
-      user = row ?? null;
+      // Look in two places: the user's own appliance-wide phone (set
+      // at /preferences, used by SuperAdmins) and the employee phone
+      // (per-company, set by admins or the per-company verification
+      // flow). Either one must be verified to prevent a typo on an
+      // unverified number from hijacking future magic-link requests.
+      const byUserPhone = await db<UserRow>('users')
+        .where('phone', identifier)
+        .whereNotNull('phone_verified_at')
+        .whereNull('disabled_at')
+        .first();
+      if (byUserPhone) {
+        user = byUserPhone;
+      } else {
+        const row = await db('users')
+          .join('employees', 'employees.user_id', 'users.id')
+          .where('employees.phone', identifier)
+          .whereNotNull('employees.phone_verified_at')
+          .whereNull('users.disabled_at')
+          .where('employees.status', 'active')
+          .first<UserRow>('users.*');
+        user = row ?? null;
+      }
     }
     if (!user) return;
 
@@ -173,7 +205,16 @@ export async function requestMagicLink(input: RequestMagicLinkInput): Promise<vo
     await notify({
       companyId,
       type: 'magic_link',
-      recipient: { kind: 'user', id: user.id, email: user.email },
+      recipient: {
+        kind: 'user',
+        id: user.id,
+        email: user.email,
+        // Expose the user-level phone + verification flag so the SMS
+        // branch of notify() can route the magic link for SuperAdmins
+        // who only have a user-level phone (no employee record).
+        phone: user.phone,
+        phoneVerified: !!user.phone_verified_at,
+      },
       channels: [input.channel],
       vars: {
         firstName: user.email.split('@')[0] ?? '',
@@ -217,11 +258,17 @@ export async function consumeMagicLink(input: ConsumeMagicLinkInput): Promise<Au
     const user = await findUserById(row.user_id);
     if (!user) throw Unauthorized('Invalid or expired login link');
 
-    const access = issueAccessToken({
-      id: user.id,
-      email: user.email,
-      roleGlobal: user.role_global,
-    });
+    const access = issueAccessToken(
+      {
+        id: user.id,
+        email: user.email,
+        roleGlobal: user.role_global,
+      },
+      // Tag so the /auth/set-password endpoint knows this session was
+      // bootstrapped via magic-link ownership proof and can accept a
+      // new password without requiring the old one.
+      { authMethod: 'magic_link' },
+    );
     const refresh = await issueRefreshToken(
       { userId: user.id, ip: input.ip, userAgent: input.userAgent },
       trx,

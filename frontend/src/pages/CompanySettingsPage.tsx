@@ -12,6 +12,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
+import { TimezoneOptions } from '../components/TimezoneOptions';
 import { ApiError } from '../lib/api';
 import { ai, companies as companiesApi, companySettings as settingsApi } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
@@ -184,11 +185,20 @@ function GeneralSection({
         defaultValue={company.slug}
         onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
       />
-      <FormField
-        label="Timezone"
-        defaultValue={company.timezone}
-        onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
-      />
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">Timezone</span>
+        <select
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 shadow-sm"
+          defaultValue={company.timezone}
+          onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
+        >
+          <TimezoneOptions current={company.timezone} />
+        </select>
+        <span className="text-xs text-slate-500">
+          Drives daily boundaries, week-start math, and pay-period calculations for every employee
+          at this company.
+        </span>
+      </label>
       <div className="grid grid-cols-2 gap-4">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-slate-700">Week starts on</span>

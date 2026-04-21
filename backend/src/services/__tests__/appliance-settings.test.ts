@@ -58,7 +58,7 @@ describe.skipIf(!dbReachable)('appliance-settings service', () => {
     expect(resolved.apiKey).toBeNull();
     // EMAILIT_FROM_NAME has a default in env.ts.
     expect(resolved.fromName).toBe('Vibe Payroll Time');
-    expect(resolved.apiBaseUrl).toBe('https://api.emailit.com/v1');
+    expect(resolved.apiBaseUrl).toBe('https://api.emailit.com/v2');
   });
 
   it('getResolvedEmailit prefers DB values over env', async () => {

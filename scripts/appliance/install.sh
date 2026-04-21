@@ -276,8 +276,11 @@ prompt_seed_demo() {
     true|1|yes) CHOSEN_SEED_DEMO="true"; return ;;
     false|0|no) CHOSEN_SEED_DEMO="false"; return ;;
   esac
+  # Unattended runs (no TTY) default to loading the demo — every fresh
+  # appliance should ship with a sample the operator can click through.
+  # Set SEED_DEMO=false explicitly to opt out.
   if ! is_interactive; then
-    CHOSEN_SEED_DEMO="false"
+    CHOSEN_SEED_DEMO="true"
     return
   fi
   echo
@@ -289,11 +292,12 @@ Load the built-in demo company?
   shifts, an admin-created entry, a mix of kiosk / web / mobile punches).
   Lets you click around the UI before onboarding real people.
 
-  Safe to say yes on a fresh appliance or a demo VM. Say no on a production
-  appliance — the seed resets its own company on every run.
+  Recommended on every fresh appliance so new operators have a working
+  sample to explore. Safe to leave in place — it stays confined to its
+  own company and does not touch the firm you set up in the wizard.
 
 EOF
-  if yn "Seed the demo company?" n; then
+  if yn "Seed the demo company?" y; then
     CHOSEN_SEED_DEMO="true"
   else
     CHOSEN_SEED_DEMO="false"

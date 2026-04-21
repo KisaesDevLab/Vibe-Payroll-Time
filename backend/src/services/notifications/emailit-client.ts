@@ -1,18 +1,28 @@
 /**
  * Thin HTTP client for EmailIt.com's transactional email API.
  *
- * The actual EmailIt API surface is documented at
- * https://emailit.com/docs — this module treats the endpoint as a
- * standard "POST JSON with a bearer key, receive a message id" shape,
- * which matches every transactional email provider on the market.
- * If the live API differs, only `buildRequest` needs adjusting.
+ * Spec per https://emailit.com/docs/api-reference/emails/send/ (verified live):
+ *   POST https://api.emailit.com/v2/emails
+ *   Authorization: Bearer <api_key>
+ *   Content-Type: application/json
+ *   Body:     { from: "Name <email>" | "email",
+ *               to: string | string[],
+ *               subject, html, text, reply_to? }
+ *   Success:  HTTP 200/201 + { id, message_id, ... }
+ *   Failure:  HTTP 4xx/5xx + { error, validation_errors? | details? }
+ *
+ * Notes that earlier versions of this module got wrong (fixed below):
+ *   - URL was /v1/ — the live API is /v2/.
+ *   - `from` used a {email, name} object — the API wants a string,
+ *     either bare "email" or RFC 5322 "Name <email>".
+ *   - `to` used [{email}] — the API wants a string or array of strings.
  */
 import { logger } from '../../config/logger.js';
 
 // Hardcoded default — callers (service.ts) normally supply baseUrl from
 // the DB-backed appliance-settings resolver. This constant only matters
 // if a caller forgets to pass one.
-const DEFAULT_EMAILIT_BASE_URL = 'https://api.emailit.com/v1';
+const DEFAULT_EMAILIT_BASE_URL = 'https://api.emailit.com/v2';
 
 export interface EmailItConfig {
   apiKey: string;
@@ -50,6 +60,14 @@ function buildRequest(
   payload: EmailPayload,
 ): { url: string; init: RequestInit } {
   const base = (config.baseUrl ?? DEFAULT_EMAILIT_BASE_URL).replace(/\/+$/, '');
+  // Compose the RFC 5322-style From header value the API expects. When a
+  // display name is present we emit "Name <email>"; otherwise just the
+  // bare email. Quoting the name defensively because a bare comma or
+  // angle-bracket in the name would malform the header and the API
+  // would reject the send.
+  const fromHeader = config.fromName
+    ? `"${config.fromName.replace(/"/g, '\\"')}" <${config.fromEmail}>`
+    : config.fromEmail;
   return {
     url: `${base}/emails`,
     init: {
@@ -60,8 +78,8 @@ function buildRequest(
         accept: 'application/json',
       },
       body: JSON.stringify({
-        from: { email: config.fromEmail, name: config.fromName },
-        to: [{ email: payload.to }],
+        from: fromHeader,
+        to: payload.to,
         ...(config.replyTo ? { reply_to: config.replyTo } : {}),
         subject: payload.subject,
         html: payload.html,

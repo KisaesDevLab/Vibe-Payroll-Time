@@ -1,13 +1,17 @@
 import type { CompanyRole } from '@vibept/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { db } from '../../db/knex.js';
-import { verifyAccessToken } from '../../services/tokens.js';
+import { verifyAccessToken, type AuthMethod } from '../../services/tokens.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 
 export interface AuthenticatedUser {
   id: number;
   email: string;
   roleGlobal: 'super_admin' | 'none';
+  /** How this session was minted — `password` for the default login
+   *  flow, `magic_link` for passwordless sign-ins. Read by endpoints
+   *  that tighten or loosen requirements based on factor strength. */
+  authMethod: AuthMethod;
 }
 
 declare module 'express-serve-static-core' {
@@ -32,6 +36,10 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
     id: Number(claims.sub),
     email: claims.email,
     roleGlobal: claims.roleGlobal,
+    // Old tokens (pre-authMethod) default to 'password' so existing
+    // sessions don't silently gain the magic-link set-password
+    // privilege during a rolling upgrade.
+    authMethod: claims.authMethod ?? 'password',
   };
   next();
 }

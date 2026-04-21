@@ -69,6 +69,7 @@ async function seed() {
 }
 
 beforeAll(async () => {
+  await (await import('./__helpers__/assert-test-db.js')).assertPointedAtTestDb();
   if (!dbReachable) return;
   await runMigrations();
 });
@@ -227,13 +228,17 @@ describe.skipIf(!dbReachable)('magic-links service', () => {
   });
 
   it('requestMagicLink via SMS finds a user through employees.phone', async () => {
-    // Create an employee with phone + user_id link.
+    // Create an employee with phone + user_id link. The phone has
+    // to be verified — the SMS lookup now requires phone_verified_at
+    // IS NOT NULL so an unverified number can't hijack future
+    // magic-link requests.
     await db('employees').insert({
       company_id: companyId,
       user_id: userId,
       first_name: 'Admin',
       last_name: 'User',
       phone: '+15555550199',
+      phone_verified_at: new Date(),
       status: 'active',
     });
 

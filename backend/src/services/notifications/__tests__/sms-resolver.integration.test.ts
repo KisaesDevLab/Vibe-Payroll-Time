@@ -46,6 +46,7 @@ async function wipe() {
 }
 
 beforeAll(async () => {
+  await (await import('../../__tests__/__helpers__/assert-test-db.js')).assertPointedAtTestDb();
   if (!dbReachable) return;
   await runMigrations();
 });

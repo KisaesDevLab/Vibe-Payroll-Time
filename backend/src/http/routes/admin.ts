@@ -1,4 +1,5 @@
 import {
+  bulkMembershipsRequestSchema,
   testEmailRequestSchema,
   testSmsRequestSchema,
   updateApplianceSettingsRequestSchema,
@@ -259,6 +260,52 @@ adminRouter.post('/test-sms', requireAuth, requireSuperAdmin, async (req, res, n
     const { sendTestSms } = await import('../../services/notifications/test-send.js');
     const result = await sendTestSms(body.to);
     res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- Cross-company users view (SuperAdmin only) ----
+adminRouter.get('/users', requireAuth, requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const { listAdminUsers } = await import('../../services/admin-users.js');
+    const data = await listAdminUsers();
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Bulk-reconcile one user's memberships. Body is the desired set;
+// server diffs and applies. Atomic transaction so the user can't
+// end up half-migrated if the network drops mid-call.
+adminRouter.post(
+  '/users/:userId/memberships',
+  requireAuth,
+  requireSuperAdmin,
+  async (req, res, next) => {
+    try {
+      const userId = Number(req.params.userId);
+      if (!Number.isFinite(userId) || userId <= 0) return next(NotFound('Bad userId'));
+      const body = bulkMembershipsRequestSchema.parse(req.body);
+      const { reconcileMemberships } = await import('../../services/admin-users.js');
+      const result = await reconcileMemberships(userId, body);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---- Seed the Acme Plumbing demo company (SuperAdmin only) ----
+// Idempotent: the seed deletes and recreates its own company on every
+// run, so clicking twice doesn't duplicate data. Never touches users
+// or the firm company the operator created at setup.
+adminRouter.post('/seed-demo', requireAuth, requireSuperAdmin, async (_req, res, next) => {
+  try {
+    const { runDemoSeed } = await import('../../db/seed-demo.js');
+    await runDemoSeed();
+    res.json({ data: { ok: true } });
   } catch (err) {
     next(err);
   }

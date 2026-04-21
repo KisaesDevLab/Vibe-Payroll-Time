@@ -109,6 +109,7 @@ function ctx() {
 
 describe.skipIf(!dbReachable)('punch service (DB-backed)', () => {
   beforeAll(async () => {
+    await (await import('./__helpers__/assert-test-db.js')).assertPointedAtTestDb();
     await runMigrations();
   });
 

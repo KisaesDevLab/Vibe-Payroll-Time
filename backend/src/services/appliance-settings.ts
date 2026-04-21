@@ -23,6 +23,7 @@ const ROW_ID = 1;
 
 interface ApplianceSettingsRow {
   id: number;
+  display_name: string | null;
   emailit_api_key_encrypted: string | null;
   emailit_from_email: string | null;
   emailit_from_name: string | null;
@@ -154,6 +155,15 @@ export async function getResolvedLogLevel(): Promise<string> {
   return row.log_level ?? env.LOG_LEVEL;
 }
 
+/** Product default if no custom brand name is set. */
+export const DEFAULT_APPLIANCE_NAME = 'Vibe Payroll Time';
+
+/** Public — safe to return without auth. Used by the login page. */
+export async function getResolvedDisplayName(): Promise<string> {
+  const row = await loadRow();
+  return row.display_name ?? DEFAULT_APPLIANCE_NAME;
+}
+
 // ---------- admin read/write ----------
 
 /** Full read for the SuperAdmin settings UI. Never returns plaintext. */
@@ -182,6 +192,7 @@ export async function getApplianceSettingsForAdmin(): Promise<ApplianceSettings>
   const logLevel = pick(row.log_level, env.LOG_LEVEL);
 
   return {
+    displayName: row.display_name,
     emailit: {
       apiKeyHasSecret: emailitApiKey.value !== null,
       apiKeySource: emailitApiKey.source,
@@ -233,6 +244,14 @@ export async function updateApplianceSettings(
   patch: UpdateApplianceSettingsRequest,
 ): Promise<ApplianceSettings> {
   const updates: Partial<ApplianceSettingsRow> = {};
+
+  if (patch.displayName !== undefined) {
+    // Reject blank strings at the service layer so the admin UI can't
+    // accidentally set an empty label — schema rejects `""` already
+    // via `.min(1)`, but callers can pass null (explicit clear) or a
+    // trimmed string.
+    updates.display_name = patch.displayName === null ? null : patch.displayName.trim() || null;
+  }
 
   if (patch.emailit) {
     const e = patch.emailit;

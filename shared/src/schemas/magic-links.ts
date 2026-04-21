@@ -14,10 +14,19 @@ export type MagicLinkOptionsResponse = z.infer<typeof magicLinkOptionsResponseSc
 
 /** Request a link. `identifier` is an email for channel=email, phone
  *  for channel=sms. Server returns 204 regardless of whether a user
- *  matches — no enumeration leaks. */
+ *  matches — no enumeration leaks.
+ *
+ *  `origin` (optional) is the frontend's own origin (`window.location.origin`).
+ *  When present the server uses it to build the magic-link URL so the
+ *  link points at the frontend, not the backend — matters when the
+ *  two are on different ports (dev) or hostnames (reverse-proxy
+ *  edge cases). Always validated against a whitelist derived from
+ *  `CORS_ORIGIN` to prevent an attacker from minting a token with a
+ *  malicious callback domain. */
 export const magicLinkRequestSchema = z.object({
   identifier: z.string().min(3).max(254),
   channel: z.enum(['email', 'sms']),
+  origin: z.string().url().max(512).optional(),
 });
 export type MagicLinkRequest = z.infer<typeof magicLinkRequestSchema>;
 

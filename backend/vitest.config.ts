@@ -32,6 +32,19 @@ export default defineConfig({
       POSTGRES_USER: process.env.POSTGRES_USER ?? 'vibept',
       POSTGRES_PASSWORD: process.env.POSTGRES_PASSWORD ?? 'vibept_dev',
       POSTGRES_DB: process.env.POSTGRES_DB_TEST ?? 'vibept_test',
+      // CRITICAL: knex.ts prefers DATABASE_URL when set. `.env` carries
+      // a connection string pointing at `vibept` (dev) that would
+      // otherwise override our `_test` default above and let
+      // integration tests TRUNCATE dev data. Build a test-scoped URL
+      // explicitly. assert-test-db.ts is the runtime guard if anyone
+      // still manages to bypass this.
+      DATABASE_URL:
+        process.env.DATABASE_URL_TEST ??
+        `postgres://${process.env.POSTGRES_USER ?? 'vibept'}:${
+          process.env.POSTGRES_PASSWORD ?? 'vibept_dev'
+        }@${process.env.POSTGRES_HOST ?? 'localhost'}:${
+          process.env.POSTGRES_PORT ?? '5432'
+        }/${process.env.POSTGRES_DB_TEST ?? 'vibept_test'}`,
     },
   },
 });

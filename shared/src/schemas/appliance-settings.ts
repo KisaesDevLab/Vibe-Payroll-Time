@@ -25,6 +25,9 @@ export type ApplianceSettingsSource = z.infer<typeof sourceSchema>;
 
 /** GET /admin/settings response shape. */
 export const applianceSettingsSchema = z.object({
+  /** Custom brand name shown in the TopBar / login page. Null means
+   *  fall back to the product default ("Vibe Payroll Time"). */
+  displayName: z.string().max(80).nullable(),
   emailit: z.object({
     apiKeyHasSecret: z.boolean(),
     apiKeySource: sourceSchema,
@@ -78,6 +81,9 @@ export type ApplianceSettings = z.infer<typeof applianceSettingsSchema>;
  * fallback).
  */
 export const updateApplianceSettingsRequestSchema = z.object({
+  /** Custom display name. `null` clears and reverts to the product
+   *  default. Trimmed empty string is rejected — send null instead. */
+  displayName: z.union([z.string().min(1).max(80), z.null()]).optional(),
   emailit: z
     .object({
       apiKey: z.union([z.string().min(1).max(512), z.null()]).optional(),
@@ -144,6 +150,16 @@ export const testSendResponseSchema = z.object({
 export type TestSendResponse = z.infer<typeof testSendResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// Public appliance info — no auth required (used by login page + magic-link
+// consume page before anyone's authenticated)
+// ---------------------------------------------------------------------------
+
+export const applianceInfoSchema = z.object({
+  displayName: z.string(),
+});
+export type ApplianceInfoResponse = z.infer<typeof applianceInfoSchema>;
+
+// ---------------------------------------------------------------------------
 // Cloudflare Tunnel — SuperAdmin-managed ingress sidecar
 // ---------------------------------------------------------------------------
 
@@ -172,6 +188,11 @@ export const tunnelStatusSchema = z.object({
    *  PATCH returns 503. Lets the UI show "install the systemd units"
    *  instead of a generic error. */
   updaterWired: z.boolean(),
+  /** True when the backend is running in development mode. The host
+   *  systemd applier doesn't exist in dev, so requests queue forever.
+   *  UI uses this to render a "dev mode" banner instead of the
+   *  permanent "Waiting for host…" spinner. */
+  devMode: z.boolean(),
 });
 export type TunnelStatusResponse = z.infer<typeof tunnelStatusSchema>;
 

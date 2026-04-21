@@ -8,6 +8,7 @@ import type {
 } from '@vibept/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Button } from '../components/Button';
 import { TopBar } from '../components/TopBar';
 import { admin } from '../lib/resources';
 import { ApiError } from '../lib/api';
@@ -33,6 +34,8 @@ type SecretState =
   | { mode: 'clear' }; // PATCH sends null
 
 interface FormState {
+  displayName: string | null;
+  displayNameDirty: boolean;
   emailit: {
     apiKey: SecretState;
     fromEmail: string | null;
@@ -73,6 +76,8 @@ interface FormState {
 
 function initialForm(s: ApplianceSettings): FormState {
   return {
+    displayName: s.displayName,
+    displayNameDirty: false,
     emailit: {
       apiKey: { mode: 'unchanged' },
       fromEmail: s.emailit.fromEmail,
@@ -114,6 +119,11 @@ function initialForm(s: ApplianceSettings): FormState {
 
 function toPatch(f: FormState): UpdateApplianceSettingsRequest {
   const patch: UpdateApplianceSettingsRequest = {};
+
+  if (f.displayNameDirty) {
+    const trimmed = f.displayName?.trim();
+    patch.displayName = trimmed ? trimmed : null;
+  }
 
   const e: UpdateApplianceSettingsRequest['emailit'] = {};
   if (f.emailit.apiKey.mode === 'new') e.apiKey = f.emailit.apiKey.value;
@@ -164,6 +174,7 @@ function toPatch(f: FormState): UpdateApplianceSettingsRequest {
 
 function isDirty(f: FormState): boolean {
   return (
+    f.displayNameDirty ||
     f.emailit.apiKey.mode !== 'unchanged' ||
     f.emailit.fromEmailDirty ||
     f.emailit.fromNameDirty ||
@@ -243,11 +254,13 @@ export function ApplianceSettingsPage() {
               if (dirty) save.mutate(patch);
             }}
           >
+            <BrandingSection form={form} setForm={setForm} />
             <EmailItSection data={data} form={form} setForm={setForm} />
             <SmsSection data={data} form={form} setForm={setForm} />
             <AISection data={data} form={form} setForm={setForm} />
             <RetentionSection data={data} form={form} setForm={setForm} />
             <LogLevelSection data={data} form={form} setForm={setForm} />
+            <DemoSeedSection />
             <TunnelSection />
             <LicenseSection />
 
@@ -422,7 +435,7 @@ function EmailItSection({ data, form, setForm }: SectionProps) {
       >
         <input
           className={textInputClass()}
-          placeholder="https://api.emailit.com/v1"
+          placeholder="https://api.emailit.com/v2"
           value={form.emailit.apiBaseUrl ?? ''}
           onChange={(e) =>
             setForm(
@@ -656,11 +669,11 @@ function SmsSection({ data, form, setForm }: SectionProps) {
           </Field>
           <Field
             label="API base URL"
-            hint="Override only if TextLinkSMS publishes a different endpoint."
+            hint="Leave blank for the default (https://textlinksms.com). Override only for a self-hosted fork."
           >
             <input
               className={textInputClass()}
-              placeholder="https://app.textlinksms.com/api/v1"
+              placeholder="https://textlinksms.com"
               value={form.sms.textlinkBaseUrl ?? ''}
               onChange={(e) =>
                 setForm(
@@ -949,6 +962,91 @@ function SecretField({
   );
 }
 
+// ---------------------- Branding section ----------------------
+
+function BrandingSection({
+  form,
+  setForm,
+}: {
+  form: FormState;
+  setForm: (fn: (f: FormState | null) => FormState | null) => void;
+}) {
+  return (
+    <Card
+      title="Brand name"
+      description="Shown in the top-left of every page and on the login screen. Leave blank to use the product default."
+    >
+      <Field
+        label="Display name"
+        source={form.displayName ? 'db' : 'unset'}
+        hint="Up to 80 characters."
+      >
+        <input
+          className={textInputClass()}
+          placeholder="Vibe Payroll Time"
+          maxLength={80}
+          value={form.displayName ?? ''}
+          onChange={(e) =>
+            setForm(
+              (f) =>
+                f && {
+                  ...f,
+                  displayName: e.target.value || null,
+                  displayNameDirty: true,
+                },
+            )
+          }
+        />
+      </Field>
+    </Card>
+  );
+}
+
+// ---------------------- Demo-seed section ----------------------
+
+function DemoSeedSection() {
+  const run = useMutation({
+    mutationFn: () => admin.seedDemo(),
+  });
+  return (
+    <Card
+      title="Demo company"
+      description="Load or reload the Acme Plumbing demo (6 employees, 3 jobs, ~14 days of entries) — idempotent. Useful for showing the app to someone before real people are onboarded. Never touches users or your firm company."
+    >
+      <div className="flex flex-col gap-2">
+        <div>
+          <Button
+            onClick={() => {
+              if (
+                run.data ||
+                window.confirm(
+                  'Reload the Acme Plumbing demo? Existing demo data will be wiped and recreated.',
+                )
+              ) {
+                run.mutate();
+              }
+            }}
+            loading={run.isPending}
+          >
+            {run.data ? 'Reload demo' : 'Seed demo company'}
+          </Button>
+        </div>
+        {run.data && !run.isPending && (
+          <p className="text-xs text-emerald-700">
+            Demo company created. Seed PINs: Alice 100623 · Bob 204816 · Carol 307291 · David 401375
+            · Eva 508264 · Frank 603571.
+          </p>
+        )}
+        {run.error && (
+          <p className="text-xs text-red-700">
+            {run.error instanceof ApiError ? run.error.message : 'Seed failed.'}
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // ---------------------- Cloudflare Tunnel section ----------------------
 
 function TunnelSection() {
@@ -989,7 +1087,14 @@ function TunnelSection() {
           {error instanceof ApiError ? error.message : 'Failed to load tunnel status.'}
         </p>
       )}
-      {data && !data.updaterWired && (
+      {data && data.devMode && (
+        <p className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+          <b>Dev mode.</b> The backend writes request files but no host-side systemd unit is
+          watching — tunnel changes won't actually restart any container here. Test this flow on a
+          real appliance install.
+        </p>
+      )}
+      {data && !data.devMode && !data.updaterWired && (
         <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           The host-side systemd units (<code>vibept-tunnel.path</code> /{' '}
           <code>vibept-tunnel.service</code>) aren't installed. Re-run{' '}

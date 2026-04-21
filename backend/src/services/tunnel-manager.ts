@@ -95,6 +95,7 @@ export async function getTunnelStatus(): Promise<TunnelStatusResponse> {
     lastError: row.cloudflare_tunnel_last_error,
     applyState: readApplyState(),
     updaterWired: updaterWired(),
+    devMode: process.env.NODE_ENV === 'development',
   };
 }
 

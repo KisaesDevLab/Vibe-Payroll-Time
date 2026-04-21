@@ -121,6 +121,7 @@ async function seed() {
 
 describe.skipIf(!dbReachable)('badges service (DB-backed)', () => {
   beforeAll(async () => {
+    await (await import('./__helpers__/assert-test-db.js')).assertPointedAtTestDb();
     await runMigrations();
   });
 

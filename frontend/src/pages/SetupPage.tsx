@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
+import { TimezoneOptions } from '../components/TimezoneOptions';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
 
@@ -92,12 +93,20 @@ export function SetupPage() {
 
       {step === 0 && (
         <section className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <FormField
-            label="Appliance default timezone"
-            hint="Used as the default for new companies created on this appliance."
-            value={form.appliance.timezone}
-            onChange={(e) => setForm((f) => ({ ...f, appliance: { timezone: e.target.value } }))}
-          />
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-700">Appliance default timezone</span>
+            <select
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 shadow-sm"
+              value={form.appliance.timezone}
+              onChange={(e) => setForm((f) => ({ ...f, appliance: { timezone: e.target.value } }))}
+            >
+              <TimezoneOptions current={form.appliance.timezone} />
+            </select>
+            <span className="text-xs text-slate-500">
+              Default for new companies created on this appliance. Each company can override its own
+              timezone later.
+            </span>
+          </label>
           <div className="flex justify-end">
             <Button disabled={!canContinueStep0} onClick={() => setStep(1)}>
               Continue
@@ -139,6 +148,23 @@ export function SetupPage() {
                 : undefined
             }
           />
+          <FormField
+            label="Phone number (optional)"
+            type="tel"
+            autoComplete="tel"
+            placeholder="+15555550123"
+            hint="E.164 format. Used later for appliance-wide SMS notifications. You can verify it after signing in."
+            value={form.admin.phone ?? ''}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                admin: {
+                  ...f.admin,
+                  phone: e.target.value || undefined,
+                },
+              }))
+            }
+          />
           <div className="flex justify-between">
             <Button variant="ghost" onClick={() => setStep(0)}>
               Back
@@ -171,16 +197,21 @@ export function SetupPage() {
               }))
             }
           />
-          <FormField
-            label="Timezone"
-            value={form.company.timezone}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                company: { ...f.company, timezone: e.target.value },
-              }))
-            }
-          />
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-700">Timezone</span>
+            <select
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 shadow-sm"
+              value={form.company.timezone}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  company: { ...f.company, timezone: e.target.value },
+                }))
+              }
+            >
+              <TimezoneOptions current={form.company.timezone} />
+            </select>
+          </label>
           <div className="grid grid-cols-2 gap-4">
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium text-slate-700">Week starts on</span>

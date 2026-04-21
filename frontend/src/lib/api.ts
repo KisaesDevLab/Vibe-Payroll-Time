@@ -43,6 +43,14 @@ async function rawFetch<T>(path: string, opts: ApiFetchOptions = {}): Promise<T>
     credentials: 'include',
   });
 
+  // 204 No Content is the idiomatic success response for delete /
+  // confirm / etc. — body is empty by spec, which previously caused
+  // this helper to mis-classify it as an error. Short-circuit: any
+  // 2xx with no body is a void success.
+  if (res.ok && (res.status === 204 || res.headers.get('content-length') === '0')) {
+    return undefined as T;
+  }
+
   const body = (await res.json().catch(() => null)) as EnvelopeOk<T> | EnvelopeErr | null;
 
   if (!res.ok || !body || 'error' in body) {

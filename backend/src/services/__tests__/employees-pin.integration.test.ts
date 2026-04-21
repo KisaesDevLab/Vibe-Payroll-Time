@@ -49,6 +49,7 @@ async function seed() {
 }
 
 beforeAll(async () => {
+  await (await import('./__helpers__/assert-test-db.js')).assertPointedAtTestDb();
   if (!dbReachable) return;
   await runMigrations();
 });

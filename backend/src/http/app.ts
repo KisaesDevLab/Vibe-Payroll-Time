@@ -10,7 +10,7 @@ import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { authRouter } from './routes/auth.js';
 import { companiesRouter } from './routes/companies.js';
-import { healthRouter, versionRouter } from './routes/health.js';
+import { applianceInfoRouter, healthRouter, versionRouter } from './routes/health.js';
 import { kioskRouter } from './routes/kiosk.js';
 import { licensingRouter } from './routes/licensing.js';
 import { manualEntriesRouter } from './routes/manual-entries.js';
@@ -18,6 +18,7 @@ import { notificationsAdminRouter, notificationsRouter } from './routes/notifica
 import { payrollExportsRouter } from './routes/payroll-exports.js';
 import { preferencesRouter } from './routes/preferences.js';
 import { punchRouter } from './routes/punch.js';
+import { userPhoneRouter } from './routes/user-phone.js';
 import { reportsRouter } from './routes/reports.js';
 import { setupRouter } from './routes/setup.js';
 import { correctionsRouter, timesheetsRouter } from './routes/timesheets.js';
@@ -54,6 +55,7 @@ export function createApp(): Express {
 
   app.use(`${API_PREFIX}/health`, healthRouter);
   app.use(`${API_PREFIX}/version`, versionRouter);
+  app.use(`${API_PREFIX}/appliance/info`, applianceInfoRouter);
   app.use(`${API_PREFIX}/setup`, setupRouter);
   app.use(`${API_PREFIX}/auth`, authRouter);
   app.use(`${API_PREFIX}/companies`, companiesRouter);
@@ -68,6 +70,7 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/timesheets`, timesheetsRouter);
   app.use(`${API_PREFIX}/manual-entries`, manualEntriesRouter);
   app.use(`${API_PREFIX}/me/preferences`, preferencesRouter);
+  app.use(`${API_PREFIX}/me/phone`, userPhoneRouter);
   app.use(`${API_PREFIX}/notifications`, notificationsRouter);
   app.use(`${API_PREFIX}/admin`, adminRouter);
 

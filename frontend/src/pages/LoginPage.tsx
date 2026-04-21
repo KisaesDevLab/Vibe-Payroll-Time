@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
+import { useApplianceName } from '../hooks/useApplianceName';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
 
@@ -26,6 +27,7 @@ type MagicChannel = 'email' | 'sms';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const applianceName = useApplianceName();
   const [form, setForm] = useState<LoginRequest>({
     email: '',
     password: '',
@@ -73,7 +75,7 @@ export function LoginPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-12">
       <header className="text-center">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Vibe Payroll Time</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{applianceName}</h1>
         <p className="mt-1 text-sm text-slate-600">Sign in to continue</p>
       </header>
 
@@ -83,7 +85,15 @@ export function LoginPage() {
           identifier={magicIdentifier}
           onIdentifierChange={setMagicIdentifier}
           onSubmit={() =>
-            requestMagic.mutate({ channel: magicChannel, identifier: magicIdentifier })
+            requestMagic.mutate({
+              channel: magicChannel,
+              identifier: magicIdentifier,
+              // Tell the backend where we live so the link URL points
+              // at the frontend, not the backend API host. Ignored
+              // server-side when not on the CORS allowlist, so it
+              // can't be abused to redirect the link.
+              origin: window.location.origin,
+            })
           }
           onBack={() => {
             setMagicChannel(null);

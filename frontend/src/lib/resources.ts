@@ -1,14 +1,17 @@
 import type {
   ApprovePeriodRequest,
   ApprovePeriodResponse,
+  ConfirmUserPhoneRequest,
   CopyLastWeekRequest,
   CopyLastWeekResponse,
   CreateManualEntryRequest,
   DeleteManualEntryRequest,
   ManualEntryResponse,
   MultiEmployeeGridResponse,
+  SetUserPhoneRequest,
   UpdateManualEntryRequest,
   UpdatePreferencesRequest,
+  UserPhoneStateResponse,
   UserPreferencesResponse,
   WeeklyGridResponse,
   BadgeEvent,
@@ -58,7 +61,10 @@ import type {
   UpdateCompanySettingsRequest,
   UpdateEmployeePreferencesRequest,
   UpdateEmployeeRequest,
+  AdminUsersResponse,
   ApplianceSettings,
+  BulkMembershipsRequest,
+  BulkMembershipsResponse,
   TestEmailRequest,
   TestSendResponse,
   TestSmsRequest,
@@ -557,6 +563,13 @@ export const admin = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  seedDemo: () => apiFetch<{ ok: true }>('/admin/seed-demo', { method: 'POST' }),
+  listUsers: () => apiFetch<AdminUsersResponse>('/admin/users'),
+  setMemberships: (userId: number, body: BulkMembershipsRequest) =>
+    apiFetch<BulkMembershipsResponse>(`/admin/users/${userId}/memberships`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   tunnel: () => apiFetch<TunnelStatusResponse>('/admin/tunnel'),
   updateTunnel: (body: UpdateTunnelRequest) =>
     apiFetch<TunnelStatusResponse>('/admin/tunnel', {
@@ -610,6 +623,19 @@ export const userPreferences = {
   update: (body: UpdatePreferencesRequest) =>
     apiFetch<UserPreferencesResponse>('/me/preferences', {
       method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+};
+
+export const userPhone = {
+  get: () => apiFetch<UserPhoneStateResponse>('/me/phone'),
+  set: (body: SetUserPhoneRequest) =>
+    apiFetch<void>('/me/phone', { method: 'POST', body: JSON.stringify(body) }),
+  requestCode: () =>
+    apiFetch<{ expiresAt: string }>('/me/phone/verify-request', { method: 'POST' }),
+  confirm: (body: ConfirmUserPhoneRequest) =>
+    apiFetch<void>('/me/phone/verify-confirm', {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
 };
