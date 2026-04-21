@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 import { fileURLToPath } from 'node:url';
 import { logger } from '../config/logger.js';
 import { db } from './knex.js';

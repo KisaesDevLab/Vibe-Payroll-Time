@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 import type { LicenseClaims, LicenseState, LicenseStatus } from '@vibept/shared';
 import { FREE_CLIENT_COMPANY_CAP, LICENSE_GRACE_DAYS, LICENSE_TRIAL_DAYS } from '@vibept/shared';
 import { env } from '../../config/env.js';

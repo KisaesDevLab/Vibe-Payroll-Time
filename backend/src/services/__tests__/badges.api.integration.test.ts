@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * End-to-end API security tests for Phase 4.5 badges. Spins up the real
  * Express app on an ephemeral port and drives it via fetch, exercising

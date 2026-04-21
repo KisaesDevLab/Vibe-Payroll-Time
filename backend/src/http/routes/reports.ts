@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 import { Router } from 'express';
 import { collect, streamCsv } from '../../services/reports/csv-stream.js';
 import { getReport, listReports } from '../../services/reports/index.js';

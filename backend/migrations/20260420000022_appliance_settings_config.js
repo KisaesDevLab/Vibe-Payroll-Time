@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Promote operator-facing appliance config out of .env and into the
  * singleton `appliance_settings` row so a SuperAdmin can edit it from

@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 import type { ReportDefinition } from '@vibept/shared';
 import { auditTrailReport } from './audit-trail.js';
 import { hoursByJobReport } from './hours-by-job.js';

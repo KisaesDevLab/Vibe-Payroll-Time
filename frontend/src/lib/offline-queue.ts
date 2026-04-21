@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Offline punch queue. Backed by IndexedDB so queued punches survive page
  * reloads, tab closes, and even device restarts. Phase 5 scope:

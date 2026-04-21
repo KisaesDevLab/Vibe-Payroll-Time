@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * `notifications_log` — append-only record of every notification the
  * appliance attempts to send, whether email or SMS, whether from a

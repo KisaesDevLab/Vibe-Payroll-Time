@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Build-time identifiers. In production Docker builds, these are overridden
  * via env vars baked in by the CI pipeline (GIT_SHA, BUILD_DATE). In dev,

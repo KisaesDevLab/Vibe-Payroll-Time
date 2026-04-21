@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * `jobs` — per-company catalogue of job / project / customer codes that
  * employees can associate with work entries. Not tied to accounting; a job

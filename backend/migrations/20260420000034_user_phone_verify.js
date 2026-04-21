@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * User-level phone verification state. Same shape as
  * `phone_verifications` (per-employee) but co-located on `users`

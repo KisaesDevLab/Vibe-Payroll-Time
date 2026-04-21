@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Tablet-local kiosk device token. Persisted in localStorage so a
  * relaunch of the PWA doesn't require re-pairing. This is separate from

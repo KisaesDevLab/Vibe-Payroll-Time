@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Employees. A `user_id` is nullable because kiosk-only employees don't need
  * a user account — they punch in at a shared tablet using their PIN.

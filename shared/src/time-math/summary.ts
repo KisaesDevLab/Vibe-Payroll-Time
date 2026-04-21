@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 import { FLSA_OT_THRESHOLD_HOURS } from '../constants.js';
 import type { RoundingMode } from '../enums.js';
 import { roundedDurationSeconds } from './rounding.js';

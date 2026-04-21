@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * `company_memberships` links users to companies with a role. One user may
  * belong to many companies (e.g., a CPA firm supervisor who's also an admin

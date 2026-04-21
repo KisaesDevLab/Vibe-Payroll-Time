@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Minimal RFC-4180 CSV writer for payroll exports. Same shape as the
  * reports streaming CSV helper, but builds a full string in memory

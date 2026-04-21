@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Store employee PINs encrypted-at-rest alongside the bcrypt hash +
  * HMAC fingerprint, so company admins can view the PIN they need to

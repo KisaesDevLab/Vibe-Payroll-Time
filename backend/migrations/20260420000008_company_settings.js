@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * `company_settings` — one row per company. Created alongside the company
  * row in a transaction; callers can assume a row exists for every non-deleted

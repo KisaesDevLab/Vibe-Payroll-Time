@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Tests the SMS provider resolution path end-to-end:
  *   - appliance-level Twilio acts as a fallback for companies that

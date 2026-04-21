@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Badge-service integration tests. Skipped when Postgres isn't reachable,
  * same convention as the punch integration tests.

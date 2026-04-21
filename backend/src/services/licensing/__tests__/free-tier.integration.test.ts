@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Free-tier licensing rule: the first FREE_CLIENT_COMPANY_CAP
  * non-internal companies on the appliance resolve to `internal_free`,

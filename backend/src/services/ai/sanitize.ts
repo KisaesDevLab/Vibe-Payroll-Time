@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Prompt-injection hardening. Applied to every user-provided string
  * before it reaches the LLM. The goal isn't to block a determined

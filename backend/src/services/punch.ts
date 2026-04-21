@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 import type { PunchSource, TimeEntry } from '@vibept/shared';
 import { OFFLINE_PUNCH_MAX_AGE_SECONDS } from '@vibept/shared';
 import type { Knex } from 'knex';

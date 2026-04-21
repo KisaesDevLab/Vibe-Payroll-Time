@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Replace the SMTP columns on `company_settings` with EmailIt.com
  * fields. Vibe PT uses EmailIt as its transactional email transport

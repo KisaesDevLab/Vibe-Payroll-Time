@@ -1,3 +1,6 @@
+// Copyright 2026 Kisaes LLC
+// Licensed under the PolyForm Internal Use License 1.0.0.
+// You may not distribute this software. See LICENSE for terms.
 /**
  * Add `pin_fingerprint` — a deterministic HMAC-SHA256 of the PIN keyed by
  * a value derived from SECRETS_ENCRYPTION_KEY (see services/crypto.ts).
