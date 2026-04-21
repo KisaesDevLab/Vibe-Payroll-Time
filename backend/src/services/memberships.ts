@@ -81,6 +81,18 @@ export async function inviteMembership(
       .returning<Array<MembershipRow>>('*');
     if (!inserted) throw new Error('failed to create membership');
 
+    // Backfill any employees rows with a matching email that predate
+    // this user account — the original symptom was "admin added a
+    // person as a team member AND as an employee with the same email,
+    // and the employee can't punch in" because the employee row was
+    // created with `user_id = NULL`. Link them here so the inverse
+    // create-order (employee first, then team member) also works.
+    await trx('employees')
+      .whereRaw('LOWER(email) = LOWER(?)', [user.email])
+      .whereNull('user_id')
+      .where('status', 'active')
+      .update({ user_id: user.id, updated_at: trx.fn.now() });
+
     return rowToMembership({ ...inserted, email: user.email });
   });
 }

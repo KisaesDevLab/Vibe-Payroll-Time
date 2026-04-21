@@ -117,6 +117,29 @@ async function ensureEmployeeNumberUnique(
   if (clash) throw Conflict(`Employee number "${employeeNumber}" is already in use`);
 }
 
+/**
+ * Resolve the `users.id` of the (non-disabled) user whose email matches
+ * the given string, case-insensitively. Used to auto-link a newly
+ * created or edited `employees` row to an existing user account so
+ * personal-device punch + timesheet access just works the moment an
+ * admin types in the email of someone who was previously invited as a
+ * team member (or vice versa).
+ *
+ * Without this link, `resolveEmployeeForUser` can't find the employee
+ * row by `user_id` and every /punch/* call returns 403.
+ */
+async function findUserIdByEmail(
+  trx: Knex.Transaction,
+  email: string | null | undefined,
+): Promise<number | null> {
+  if (!email) return null;
+  const row = await trx('users')
+    .whereRaw('LOWER(email) = LOWER(?)', [email])
+    .whereNull('disabled_at')
+    .first<{ id: number }>();
+  return row?.id ?? null;
+}
+
 export async function createEmployee(
   companyId: number,
   body: CreateEmployeeRequest,
@@ -125,6 +148,8 @@ export async function createEmployee(
     if (body.employeeNumber) {
       await ensureEmployeeNumberUnique(trx, companyId, body.employeeNumber);
     }
+
+    const linkedUserId = await findUserIdByEmail(trx, body.email);
 
     const insertRow: Partial<EmployeeRow> = {
       company_id: companyId,
@@ -135,6 +160,10 @@ export async function createEmployee(
       phone: body.phone ?? null,
       hired_at: body.hiredAt ?? null,
       status: 'active',
+      // Auto-link when email matches an existing user. The row stays
+      // kiosk-only (user_id null) if there's no match — that's the
+      // intended path for shared-device-only employees.
+      user_id: linkedUserId,
     };
 
     let plaintextPin: string | undefined;
@@ -179,7 +208,16 @@ export async function updateEmployee(
     if (patch.firstName !== undefined) updates.first_name = patch.firstName;
     if (patch.lastName !== undefined) updates.last_name = patch.lastName;
     if (patch.employeeNumber !== undefined) updates.employee_number = patch.employeeNumber;
-    if (patch.email !== undefined) updates.email = patch.email;
+    if (patch.email !== undefined) {
+      updates.email = patch.email;
+      // Re-resolve the user_id link whenever the email changes: clear
+      // when the email is cleared, re-attach to the user whose email
+      // now matches, or null out when no user has that email. Without
+      // this, an employee whose email is corrected by the admin would
+      // stay linked to the old user (or stay unlinked despite a
+      // matching user existing).
+      updates.user_id = patch.email === null ? null : await findUserIdByEmail(trx, patch.email);
+    }
     if (patch.phone !== undefined) {
       // Canonicalize on write so all downstream SMS paths can assume
       // E.164. Raw 10-digit strings get dropped by TextLinkSMS's
