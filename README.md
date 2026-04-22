@@ -39,6 +39,26 @@ Full list of env-var overrides lives in the header comments of
 [`scripts/appliance/install.sh`](./scripts/appliance/install.sh) and
 [`scripts/appliance/update.sh`](./scripts/appliance/update.sh).
 
+### Container images
+
+Pre-built images are published to the GitHub Container Registry on every
+successful CI run against `main` and every `v*` release tag:
+
+- `ghcr.io/kisaesdevlab/vibept-backend`
+- `ghcr.io/kisaesdevlab/vibept-frontend`
+
+Tags:
+
+- `:latest` — most recent release tag
+- `:X.Y.Z` / `:X.Y` / `:X` — semver tags on `v*` releases
+- `:main` — rolling tip of `main`
+- `:sha-<short>` — exact commit, pinnable from `IMAGE_TAG=sha-abc1234` in
+  `.env`
+
+`docker-compose.prod.yml` already references these paths and falls back to a
+local `docker build` if the image isn't pre-pulled, so the installer works on
+an air-gapped box too.
+
 ## Quick start (dev)
 
 ```bash
