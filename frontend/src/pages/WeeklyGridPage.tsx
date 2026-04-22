@@ -6,6 +6,7 @@ import type { TimeEntry, TimeFormat, WeeklyGridCell } from '@vibept/shared';
 import { formatHours } from '@vibept/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AddJobPicker } from '../components/AddJobPicker';
 import { Button } from '../components/Button';
 import { CellEditPopover } from '../components/CellEditPopover';
 import { FormatToggle } from '../components/FormatToggle';
@@ -77,6 +78,33 @@ export function WeeklyGridPage(): JSX.Element {
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [lastSaveFailed, setLastSaveFailed] = useState(false);
   const [tickTock, setTickTock] = useState(0);
+
+  // Job-row filtering. At a company with 30+ active jobs the default
+  // "render every job as a row" makes the grid a long, sparse,
+  // mostly-empty table that's hostile on mobile and not great on
+  // desktop. Default to showing only jobs with activity this week
+  // (plus session-pinned ones), with a one-tap chip to see the full
+  // list for the admin who wants it. Persisted per device, per
+  // company — it's a display habit, not a business rule.
+  const jobFilterStorageKey = `vibept.weeklyGrid.jobFilter.${companyId}`;
+  const [jobFilter, setJobFilter] = useState<'active' | 'all'>(() => {
+    if (typeof window === 'undefined') return 'active';
+    const stored = window.localStorage.getItem(jobFilterStorageKey);
+    return stored === 'all' ? 'all' : 'active';
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(jobFilterStorageKey, jobFilter);
+  }, [jobFilter, jobFilterStorageKey]);
+  const [jobSearch, setJobSearch] = useState('');
+  // Session-only pin set. When the user clicks "+ Add job" and picks
+  // a job that had no hours this week yet, we add it here so the row
+  // stays visible even before they save. If they do save, the job's
+  // entry in grid.jobTotals will be > 0 on the next refetch and the
+  // active-this-week rule picks it up naturally; pin becomes
+  // redundant and cheap to drop on component unmount.
+  const [pinnedJobIds, setPinnedJobIds] = useState<Set<number>>(new Set());
+  const [addJobOpen, setAddJobOpen] = useState(false);
   const [undo, setUndo] = useState<
     | { kind: 'created'; entryId: number; companyId: number; at: number }
     | {
@@ -328,7 +356,23 @@ export function WeeklyGridPage(): JSX.Element {
     isToday: d.date === new Date().toISOString().slice(0, 10),
   }));
 
-  const jobRows = [...grid.jobs, { id: null, code: '—', name: 'No job', archivedAt: null }];
+  // Row-visibility rule. Backend returns every active job; this is
+  // where the client culls them down. `No job` (jobId = null) row
+  // is unconditional — it carries ungeared manual entries and is
+  // the fallback for "I worked something, not sure which job yet."
+  const jobTotalsById = new Map(grid.jobTotals.map((t) => [t.jobId, t.seconds]));
+  const searchLower = jobSearch.trim().toLowerCase();
+  const baseSet =
+    jobFilter === 'all'
+      ? grid.jobs
+      : grid.jobs.filter((j) => (jobTotalsById.get(j.id) ?? 0) > 0 || pinnedJobIds.has(j.id));
+  const visibleJobs = searchLower
+    ? baseSet.filter(
+        (j) =>
+          j.code.toLowerCase().includes(searchLower) || j.name.toLowerCase().includes(searchLower),
+      )
+    : baseSet;
+  const jobRows = [...visibleJobs, { id: null, code: '—', name: 'No job', archivedAt: null }];
 
   return (
     <>
@@ -432,6 +476,64 @@ export function WeeklyGridPage(): JSX.Element {
           </div>
         )}
 
+        {/* Filter row — trims the job-row list on a by-default basis
+            for companies with many jobs. See comments on jobFilter /
+            pinnedJobIds state near the top of this component. Wraps
+            on mobile via flex-wrap. */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div
+            role="tablist"
+            aria-label="Job row visibility"
+            className="inline-flex rounded-md border border-slate-300 bg-white text-sm shadow-sm"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={jobFilter === 'active'}
+              onClick={() => setJobFilter('active')}
+              className={
+                'rounded-l-md px-3 py-2 font-medium transition ' +
+                (jobFilter === 'active'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-700 hover:bg-slate-50')
+              }
+            >
+              Active this week
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={jobFilter === 'all'}
+              onClick={() => setJobFilter('all')}
+              className={
+                'rounded-r-md border-l border-slate-300 px-3 py-2 font-medium transition ' +
+                (jobFilter === 'all'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-700 hover:bg-slate-50')
+              }
+            >
+              All jobs
+            </button>
+          </div>
+          <input
+            type="search"
+            placeholder="Filter jobs…"
+            aria-label="Filter visible jobs"
+            className="w-64 max-w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            value={jobSearch}
+            onChange={(e) => setJobSearch(e.target.value)}
+          />
+          {jobFilter === 'active' && (
+            <Button variant="secondary" onClick={() => setAddJobOpen(true)}>
+              + Add job
+            </Button>
+          )}
+          <span className="ml-auto text-xs text-slate-500">
+            {visibleJobs.length} of {grid.jobs.length} job
+            {grid.jobs.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full border-separate border-spacing-0">
             <thead>
@@ -470,6 +572,36 @@ export function WeeklyGridPage(): JSX.Element {
               </tr>
             </thead>
             <tbody>
+              {jobFilter === 'active' && visibleJobs.length === 0 && (
+                // jobRows still carries the "No job" row below this, so
+                // the week scaffolding (day header, daily totals) still
+                // shows. This banner just replaces the lonely absence
+                // of real-job rows with a usable call to action.
+                <tr>
+                  <td
+                    colSpan={dayHeaders.length + 2}
+                    className="border-b border-slate-100 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600"
+                  >
+                    No jobs have hours this week yet. Tap{' '}
+                    <button
+                      type="button"
+                      onClick={() => setAddJobOpen(true)}
+                      className="font-semibold text-slate-900 underline decoration-slate-400 underline-offset-2 hover:decoration-slate-700"
+                    >
+                      + Add job
+                    </button>{' '}
+                    to log time on a job, or switch to{' '}
+                    <button
+                      type="button"
+                      onClick={() => setJobFilter('all')}
+                      className="font-semibold text-slate-900 underline decoration-slate-400 underline-offset-2 hover:decoration-slate-700"
+                    >
+                      All jobs
+                    </button>{' '}
+                    to see the full list.
+                  </td>
+                </tr>
+              )}
               {jobRows.map((job) => {
                 const jobTotal = grid.jobTotals.find((t) => t.jobId === job.id)?.seconds ?? 0;
                 return (
@@ -605,6 +737,44 @@ export function WeeklyGridPage(): JSX.Element {
           errorText={errorText}
         />
       )}
+
+      <AddJobPicker
+        open={addJobOpen}
+        jobs={grid.jobs}
+        // Exclude every job already showing as a row — the user already
+        // has a cell for them. Pinned jobs are part of visibleJobs too.
+        excludedIds={new Set(visibleJobs.map((j) => j.id))}
+        onPick={(jobId) => {
+          setAddJobOpen(false);
+          setPinnedJobIds((prev) => {
+            const next = new Set(prev);
+            next.add(jobId);
+            return next;
+          });
+          const picked = grid.jobs.find((j) => j.id === jobId);
+          if (!picked) return;
+          // Open the edit popover on the best default day: today if
+          // it's inside the visible week, otherwise the first day of
+          // the week. Same state shape the cell-click handler uses,
+          // so CellEditPopover opens with no special branching.
+          const todayIso = new Date().toISOString().slice(0, 10);
+          const defaultDate = grid.days.some((d) => d.date === todayIso)
+            ? todayIso
+            : (grid.days[0]?.date ?? weekStart);
+          setErrorText(null);
+          setEditing({
+            jobId: picked.id,
+            date: defaultDate,
+            jobLabel: picked.code + ' · ' + picked.name,
+            mode: 'add',
+            initialSeconds: null,
+            initialReason: '',
+            manualEntryId: null,
+            originalPunchText: null,
+          });
+        }}
+        onClose={() => setAddJobOpen(false)}
+      />
     </>
   );
 }
