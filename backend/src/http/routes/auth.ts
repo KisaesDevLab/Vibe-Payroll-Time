@@ -29,7 +29,7 @@ import {
   revokeRefreshToken,
   rotateRefreshToken,
 } from '../../services/tokens.js';
-import { findUserById } from '../../services/users.js';
+import { findUserById, healEmployeeLinksForUser } from '../../services/users.js';
 import { NotFound } from '../errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { authRateLimiter } from '../middleware/rate-limit.js';
@@ -55,6 +55,15 @@ authRouter.post('/refresh', authRateLimiter, async (req, res, next) => {
 
     const user = await findUserById(rotated.userId);
     if (!user) throw NotFound('User no longer exists');
+
+    // Self-heal link between this user and any employees rows with a
+    // matching email but no user_id. Same helper as /auth/login and
+    // /auth/magic/consume — runs BEFORE buildAuthUser so the
+    // refreshed memberships payload reflects a newly-linked row on
+    // this very refresh. A client that logged in before the link was
+    // established no longer needs an explicit sign-out → sign-in to
+    // pick up the fix; the next 15-minute refresh tick heals them.
+    await healEmployeeLinksForUser(user.id, user.email);
 
     const access = issueAccessToken({
       id: user.id,

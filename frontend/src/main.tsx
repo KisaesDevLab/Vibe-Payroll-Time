@@ -8,12 +8,20 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { startSkewLoop } from './lib/clock-skew';
 import { startQueueFlusher } from './lib/offline-queue';
+import { refreshSessionUser } from './lib/refresh-session-user';
 import { registerServiceWorker } from './lib/sw';
 import './index.css';
 
 registerServiceWorker();
 startSkewLoop();
 startQueueFlusher();
+// Refresh the cached `session.user` (memberships, isEmployee, etc.)
+// from /auth/me on every app boot so a tab that logged in before a
+// server-side link change (employees.user_id backfill, role edit,
+// membership added) self-corrects on the next page load without
+// requiring the user to sign out. Fire-and-forget — failures fall
+// back to the cached session.
+void refreshSessionUser();
 
 const queryClient = new QueryClient({
   defaultOptions: {
