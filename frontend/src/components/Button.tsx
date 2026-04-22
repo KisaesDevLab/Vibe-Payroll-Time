@@ -30,7 +30,10 @@ export function Button({
       {...rest}
       disabled={disabled || loading}
       className={
-        'inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium shadow-sm ' +
+        // min-h-11 (44px) meets iOS / Android / WCAG 2.5.5 tap-target
+        // guidance without making desktop buttons look chunky — the
+        // default text-sm still centers comfortably inside 44px.
+        'inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-medium shadow-sm ' +
         'transition focus:outline-none focus:ring-2 focus:ring-offset-1 ' +
         variants[variant] +
         ' ' +

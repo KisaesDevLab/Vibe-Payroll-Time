@@ -8,6 +8,20 @@ body,
   height: 100%;
 }
 
+/* iOS Safari auto-zooms into any focused input/select/textarea whose
+   computed font-size is less than 16px. Tailwind's default text-sm
+   (14px) triggers this on every FormField, producing a disorienting
+   zoom + layout shift every time an employee taps a field on their
+   phone. Force 16px below the `sm` breakpoint so tapping a field
+   keeps the page calm. Unchanged on desktop. */
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* Print styles: strip the chrome so the browser's "Save as PDF" dialog
    produces a clean one-shot of the report or timesheet currently on
    screen. Elements that should never print get .no-print. */

@@ -40,13 +40,16 @@ export function CompanyTabs({ companyId }: { companyId: number }) {
 
   return (
     <nav className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-7xl gap-1 px-6">
+      {/* overflow-x-auto + whitespace-nowrap so admin tabs (11 when
+          every role is active) scroll horizontally on narrow screens
+          instead of wrapping or being clipped off the right edge. */}
+      <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
         {tabs.map((t) => (
           <NavLink
             key={t.to}
             to={t.to}
             className={({ isActive }) =>
-              'border-b-2 px-4 py-3 text-sm font-medium transition ' +
+              'shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition sm:px-4 ' +
               (isActive
                 ? 'border-slate-900 text-slate-900'
                 : 'border-transparent text-slate-500 hover:text-slate-800')
