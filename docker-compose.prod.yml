@@ -119,9 +119,11 @@ services:
   # --------------------------------------------------------------------------
   # Cloudflare Tunnel sidecar (profile: cloudflare)
   #
-  # Provision a tunnel at https://one.dash.cloudflare.com, paste the generated
-  # token into CLOUDFLARE_TUNNEL_TOKEN, and configure the tunnel to route to
-  # `http://caddy:8080`. No ports are exposed on the host.
+  # Provision a tunnel at https://dash.cloudflare.com → Networks → Connectors →
+  # Cloudflare Tunnels, paste the generated token into CLOUDFLARE_TUNNEL_TOKEN,
+  # and add a Public Hostname that routes to `http://caddy:8080`. No ports are
+  # exposed on the host.
+  # Docs: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/
   # --------------------------------------------------------------------------
   cloudflared:
     image: cloudflare/cloudflared:latest

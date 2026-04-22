@@ -1134,7 +1134,7 @@ function TunnelSection() {
           <Field
             label="Tunnel token"
             source={data.hasToken ? 'db' : 'unset'}
-            hint="Create or refresh the tunnel at one.dash.cloudflare.com → Networks → Tunnels → Overview. Paste the token once — we never echo it back."
+            hint="Create or refresh the tunnel at dash.cloudflare.com → Networks → Connectors → Cloudflare Tunnels. Paste the token once — we never echo it back."
           >
             <div className="flex flex-col gap-2">
               <div className="text-xs text-slate-500">
@@ -1212,11 +1212,11 @@ function TunnelSection() {
             Route mapping (hostname → <code>caddy:8080</code>) still happens at{' '}
             <a
               className="underline hover:text-slate-900"
-              href="https://one.dash.cloudflare.com"
+              href="https://dash.cloudflare.com/?to=/:account/zero-trust/networks/tunnels"
               target="_blank"
               rel="noopener noreferrer"
             >
-              one.dash.cloudflare.com
+              Cloudflare Dashboard → Networks → Connectors → Cloudflare Tunnels
             </a>
             . This page only controls whether the sidecar runs and which token it uses.
           </p>

@@ -250,9 +250,11 @@ prompt_cloudflare_config() {
   fi
   cat <<'EOF'
 
-Create a tunnel at https://one.dash.cloudflare.com
-→ Networks → Tunnels → "Create a tunnel" → pick "Cloudflared".
-Under "Public Hostname", forward to http://caddy:8080. Copy the token.
+Create a tunnel at https://dash.cloudflare.com (Zero Trust / Cloudflare One)
+→ Networks → Connectors → Cloudflare Tunnels → "Create a tunnel"
+→ pick "Cloudflared" → Next. Copy the token shown in the install command.
+Then add a Public Hostname that routes to http://caddy:8080.
+Docs: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/
 
 EOF
   CHOSEN_CF_TOKEN=$(ask_secret "Cloudflare Tunnel token")

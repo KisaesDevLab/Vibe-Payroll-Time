@@ -93,16 +93,27 @@ container is not healthy. Check `docker logs vibept-backend`.
 
 ### Cloudflare Tunnel
 
-1. In the Cloudflare Zero Trust dashboard → **Networks → Tunnels**, create a
-   tunnel named e.g. `vibept-$(hostname)`.
-2. Copy the tunnel **token** into `CLOUDFLARE_TUNNEL_TOKEN` in `/opt/vibept/.env`.
-3. In the tunnel's **Public Hostname** settings, create a route:
+1. In the Cloudflare dashboard (<https://dash.cloudflare.com>) → **Networks →
+   Connectors → Cloudflare Tunnels**, click **Create a tunnel**, choose
+   **Cloudflared** as the connector type, and name it e.g. `vibept-$(hostname)`.
+2. On the install step, copy the **token** from the generated `cloudflared ...
+   --token <TOKEN>` command into `CLOUDFLARE_TUNNEL_TOKEN` in
+   `/opt/vibept/.env`. You run the `cloudflared` process via the bundled
+   sidecar — don't install cloudflared on the host.
+3. In the tunnel's **Public Hostname** tab, create a route:
    - Subdomain + domain: your public hostname
    - Service: `http://caddy:8080`
 4. `sudo systemctl restart vibept`
 
 Cloudflare's edge terminates TLS and forwards to the sidecar over
 QUIC — you don't need to open 80/443 on the appliance.
+
+> The token is long-lived and grants control of the tunnel. It's stored
+> plaintext in `.env` (chmod 600) — if you rotate it, use the SuperAdmin
+> **Appliance Settings → Cloudflare Tunnel** card so the change is applied
+> without a manual restart.
+>
+> Cloudflare docs: <https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/>
 
 ### Tailscale Funnel
 
