@@ -10,6 +10,35 @@ Homebase — punch-in/out, timesheet approval, payroll export, nothing more.
 rate or wage data, native mobile apps, state-specific overtime rules, GL
 integration. See [`CLAUDE.md`](./CLAUDE.md) for the full scope.
 
+## Install or update in one line
+
+On a fresh Ubuntu Server 24.04 LTS box (e.g. a GMKtec NucBox M6) **or** an
+existing appliance — the same command does both:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KisaesDevLab/Vibe-Payroll-Time/main/scripts/get.sh | sudo bash
+```
+
+[`scripts/get.sh`](./scripts/get.sh) detects whether `/opt/vibept/.env`
+already exists and routes to the installer or the updater accordingly. On
+first run it walks you through the ingress choice (Cloudflare Tunnel /
+Tailscale Funnel / public + Caddy), stands up Docker + the stack, and leaves
+you at a first-run web wizard for the SuperAdmin. On subsequent runs it takes
+a `pg_dump` snapshot, `git pull`s, rebuilds, rolls over the stack, and
+auto-rolls-back on health-check failure (only when no migrations ran —
+otherwise it prints manual recovery steps).
+
+**Non-interactive install** (pre-answer the ingress prompts):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KisaesDevLab/Vibe-Payroll-Time/main/scripts/get.sh \
+  | PROFILE=cloudflare CLOUDFLARE_TUNNEL_TOKEN=xxx sudo -E bash
+```
+
+Full list of env-var overrides lives in the header comments of
+[`scripts/appliance/install.sh`](./scripts/appliance/install.sh) and
+[`scripts/appliance/update.sh`](./scripts/appliance/update.sh).
+
 ## Quick start (dev)
 
 ```bash
@@ -24,7 +53,7 @@ npm run dev
 ```
 
 Backend: <http://localhost:4000/api/v1/health> · Frontend:
-<http://localhost:5173>
+<http://localhost:5180>
 
 ## Documentation
 
