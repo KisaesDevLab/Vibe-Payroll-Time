@@ -92,12 +92,33 @@ function buildRequest(
   };
 }
 
+/** Hard ceiling on a single send. Above this we stop waiting and treat
+ *  the send as failed — better a logged failure the operator can retry
+ *  than a missed-punch cron tick that hangs forever on a stuck TLS
+ *  handshake to the EmailIt edge. 15 s comfortably covers their p99
+ *  while still letting the every-5-minutes cron fire on schedule. */
+const EMAILIT_TIMEOUT_MS = 15_000;
+
 export async function sendViaEmailIt(
   config: EmailItConfig,
   payload: EmailPayload,
 ): Promise<EmailSendResult> {
   const { url, init } = buildRequest(config, payload);
-  const res = await fetch(url, init);
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, signal: AbortSignal.timeout(EMAILIT_TIMEOUT_MS) });
+  } catch (err) {
+    const isTimeout = err instanceof DOMException && err.name === 'TimeoutError';
+    const msg = err instanceof Error ? err.message : 'network error';
+    logger.warn({ err, isTimeout }, 'EmailIt fetch failed');
+    throw new EmailDeliveryError(
+      isTimeout
+        ? `EmailIt timed out after ${EMAILIT_TIMEOUT_MS}ms`
+        : `EmailIt network error: ${msg}`,
+      0,
+      null,
+    );
+  }
   const bodyText = await res.text();
   let parsed: unknown = null;
   try {

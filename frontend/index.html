@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon.svg" />
+    <!-- Absolute href so Vite rewrites it to include the configured `base`
+         at build time: single-app stays `/manifest.webmanifest`, multi-app
+         (`base: /payroll/`) becomes `/payroll/manifest.webmanifest`. A
+         relative href here would resolve against the current document URL,
+         so a user landing on a deep SPA route (`/payroll/dashboard/x/y`)
+         would request `manifest.webmanifest` from the wrong directory and
+         either 404 or pick up index.html via the SPA fallback — breaking
+         PWA install on every non-root entry point. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />

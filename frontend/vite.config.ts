@@ -2,7 +2,88 @@
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+
+/**
+ * Emit `manifest.webmanifest` with `start_url` + `scope` resolved to the
+ * configured base path. Single-app builds get `/`; multi-app builds (the
+ * grouped overlay sets VITE_BASE_PATH=/payroll/) get `/payroll/`.
+ *
+ * Kept as a build-time emit instead of a static `public/` file because the
+ * base path is only known at build time.
+ */
+function manifestPlugin(basePath: string): Plugin {
+  const json = () =>
+    JSON.stringify(
+      {
+        name: 'Vibe Payroll Time',
+        short_name: 'Vibe PT',
+        description: 'Self-hosted time tracking',
+        start_url: basePath,
+        scope: basePath,
+        display: 'standalone',
+        orientation: 'any',
+        background_color: '#f8fafc',
+        theme_color: '#0f172a',
+        icons: [
+          {
+            src: `${basePath}icons/icon.svg`,
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any maskable',
+          },
+        ],
+      },
+      null,
+      2,
+    );
+
+  return {
+    name: 'vibe-pt-manifest',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url ?? '';
+        if (url === `${basePath}manifest.webmanifest` || url === '/manifest.webmanifest') {
+          res.setHeader('Content-Type', 'application/manifest+json');
+          res.end(json());
+          return;
+        }
+        next();
+      });
+    },
+    /**
+     * Vite's HTML asset rewriter handles `<link rel="icon">`, stylesheet,
+     * and script `src`/`href` attributes — but NOT `<link rel="manifest">`.
+     * Without this hook, a multi-app build (`base: /payroll/`) leaves the
+     * static `<link rel="manifest" href="/manifest.webmanifest">` from
+     * index.html untouched, the browser fetches `/manifest.webmanifest`
+     * (which doesn't exist under the prefix), and PWA install silently
+     * stops working. Rewrite the href to include the base path so it
+     * matches where `generateBundle` actually emits the file.
+     */
+    transformIndexHtml: {
+      order: 'pre' as const,
+      handler(html: string): string {
+        const target = `${basePath}manifest.webmanifest`;
+        // Match any `href` value ending in `manifest.webmanifest` —
+        // covers both the absolute `/manifest.webmanifest` and the
+        // relative `manifest.webmanifest` form so a future edit to
+        // index.html doesn't silently re-break this.
+        return html.replace(
+          /(<link\s+rel=["']manifest["'][^>]*\shref=)["'][^"']*manifest\.webmanifest["']/gi,
+          (_match, prefix: string) => `${prefix}"${target}"`,
+        );
+      },
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'manifest.webmanifest',
+        source: json(),
+      });
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
@@ -20,8 +101,26 @@ export default defineConfig(({ mode }) => {
   // try its OWN localhost, which has nothing listening.
   const devBackendOrigin = env.VITE_DEV_BACKEND_ORIGIN ?? 'http://localhost:4000';
 
+  // Single-app default `/`; multi-app deployment overlay sets `/payroll/`
+  // so all assets, the manifest scope, and the SPA router resolve under
+  // the shared Caddy ingress prefix. Normalize so a missing or extra
+  // trailing slash doesn't break manifest URLs (`${base}icons/icon.svg`)
+  // or the nginx SPA-fallback path.
+  //
+  // Prefer `process.env` over `loadEnv()` here: loadEnv only walks the
+  // `.env*` files in the project, NOT the parent shell. The frontend
+  // Dockerfile (and the grouped-overlay compose file) wires the value
+  // through `ARG → ENV` so it reaches `npm run build` as a process env
+  // var; without this fallback the multi-app build was silently emitting
+  // a single-app bundle with `base: /` and the Dockerfile's `mv dist/*
+  // dist-prefixed/payroll/*` step then created `/payroll/index.html`
+  // referencing `/assets/...` paths that 404'd at the SPA's actual URL.
+  const rawBase = process.env.VITE_BASE_PATH ?? env.VITE_BASE_PATH ?? '/';
+  const basePath = rawBase === '/' ? '/' : `${rawBase.replace(/\/+$/, '')}/`;
+
   return {
-    plugins: [react()],
+    base: basePath,
+    plugins: [react(), manifestPlugin(basePath)],
     server: {
       host: '0.0.0.0',
       // Vibe MyBooks owns 5173 on this workstation. 5180 is what the

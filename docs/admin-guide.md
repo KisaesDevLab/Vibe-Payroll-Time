@@ -182,7 +182,7 @@ real people.
 At install time, the installer asks you. For an existing appliance:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend \
+docker compose -f docker-compose.prod.yml exec api \
   npm run seed:run --workspace=backend
 ```
 

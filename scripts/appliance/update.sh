@@ -8,8 +8,10 @@
 #   1. Read PROFILE from /opt/vibept/.env (written by install.sh).
 #   2. Capture rollback state: git SHA, current image digests, migration count.
 #   3. Run scripts/appliance/backup.sh (pg_dump). Abort if it fails.
-#   4. git pull, docker compose build, docker compose up -d.
-#   5. Wait up to HEALTH_TIMEOUT_SECONDS for the backend to report healthy.
+#   4. git pull, docker compose pull, docker compose up -d.
+#      (Prod is image-pull only — no `build:` directives, so the new tag
+#       comes from GHCR and `up -d` recreates the api+web containers.)
+#   5. Wait up to HEALTH_TIMEOUT_SECONDS for the api to report healthy.
 #   6. On success: exit 0.
 #      On failure AND no migrations ran: auto-rollback to pre-update git SHA
 #        and pre-update image digests, then up -d again.
@@ -39,11 +41,11 @@ SKIP_BACKUP="${SKIP_BACKUP:-}"
 # Populated during the run.
 PROFILE="${PROFILE:-}"
 IMAGE_TAG="${IMAGE_TAG:-}"
-BACKEND_IMAGE=""
-FRONTEND_IMAGE=""
+API_IMAGE=""
+WEB_IMAGE=""
 PRE_SHA=""
-PRE_BACKEND_ID=""
-PRE_FRONTEND_ID=""
+PRE_API_ID=""
+PRE_WEB_ID=""
 PRE_MIGRATION_COUNT=""
 
 # ---------- output helpers ----------
@@ -113,8 +115,28 @@ resolve_image_tag() {
     IMAGE_TAG=$(env_value IMAGE_TAG)
   fi
   [[ -z $IMAGE_TAG ]] && IMAGE_TAG=latest
-  BACKEND_IMAGE="ghcr.io/kisaesdevlab/vibept-backend:$IMAGE_TAG"
-  FRONTEND_IMAGE="ghcr.io/kisaesdevlab/vibept-frontend:$IMAGE_TAG"
+  API_IMAGE="ghcr.io/kisaesdevlab/vibe-payroll-api:$IMAGE_TAG"
+  WEB_IMAGE="ghcr.io/kisaesdevlab/vibe-payroll-web:$IMAGE_TAG"
+}
+
+# Older .env files (pre-Caddyfile-split) lack CADDYFILE_PATH. Public-profile
+# customers used to manually uncomment a block in caddy/Caddyfile; that file
+# is now tunnel-only and a dedicated caddy/Caddyfile.public lives alongside.
+# Without this backfill, an existing public-profile install upgrading past
+# the split would `git pull` the tunnel-only Caddyfile and lose direct
+# public ingress until someone hand-edited .env. Run this once on update;
+# it's a no-op for tunnel profiles or any .env that already sets the var.
+backfill_caddyfile_path() {
+  local env_path="$INSTALL_DIR/.env"
+  [[ -f $env_path ]] || return 0
+  if grep -qE '^CADDYFILE_PATH=' "$env_path"; then
+    return 0
+  fi
+  if [[ "$PROFILE" == "public" ]]; then
+    log "backfilling CADDYFILE_PATH=./caddy/Caddyfile.public into $env_path"
+    printf '\n# Backfilled on %s by update.sh: route public-profile traffic\n# through the dedicated Caddyfile.public.\nCADDYFILE_PATH=./caddy/Caddyfile.public\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$env_path"
+  fi
 }
 
 # ---------- migration count (authoritative, via postgres directly) ----------
@@ -131,20 +153,20 @@ capture_rollback_state() {
   PRE_SHA=$(git -C "$INSTALL_DIR" rev-parse HEAD)
   log "pre-update git SHA: $PRE_SHA"
 
-  PRE_BACKEND_ID=$(docker image inspect --format '{{.Id}}'  "$BACKEND_IMAGE"  2>/dev/null || echo "")
-  PRE_FRONTEND_ID=$(docker image inspect --format '{{.Id}}' "$FRONTEND_IMAGE" 2>/dev/null || echo "")
+  PRE_API_ID=$(docker image inspect --format '{{.Id}}' "$API_IMAGE" 2>/dev/null || echo "")
+  PRE_WEB_ID=$(docker image inspect --format '{{.Id}}' "$WEB_IMAGE" 2>/dev/null || echo "")
 
   # Pin them under a stable rollback tag so nothing else can prune them
   # during the update window. Overwrites any previous rollback-previous tag.
-  if [[ -n $PRE_BACKEND_ID ]]; then
-    docker tag "$PRE_BACKEND_ID"  vibept-rollback-backend:previous  >/dev/null
+  if [[ -n $PRE_API_ID ]]; then
+    docker tag "$PRE_API_ID" vibept-rollback-api:previous >/dev/null
   else
-    warn "no current backend image found for $BACKEND_IMAGE (auto-rollback disabled)"
+    warn "no current api image found for $API_IMAGE (auto-rollback disabled)"
   fi
-  if [[ -n $PRE_FRONTEND_ID ]]; then
-    docker tag "$PRE_FRONTEND_ID" vibept-rollback-frontend:previous >/dev/null
+  if [[ -n $PRE_WEB_ID ]]; then
+    docker tag "$PRE_WEB_ID" vibept-rollback-web:previous >/dev/null
   else
-    warn "no current frontend image found for $FRONTEND_IMAGE (auto-rollback disabled)"
+    warn "no current web image found for $WEB_IMAGE (auto-rollback disabled)"
   fi
 
   PRE_MIGRATION_COUNT=$(migration_count || echo "")
@@ -195,23 +217,14 @@ fetch_source() {
   fi
 }
 
-# Build args baked into the image at build time and surfaced at
-# /api/v1/admin/health so the appliance dashboard can show "running v1.2.3".
-# `git describe --tags --always` gives us v1.2.3 on a tagged commit,
-# v1.2.3-5-gabc1234 five commits past, or the short SHA if untagged.
-compute_build_args() {
-  APP_VERSION=$(git -C "$INSTALL_DIR" describe --tags --always --dirty 2>/dev/null || echo "unknown")
-  GIT_SHA=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
-  BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  export APP_VERSION GIT_SHA BUILD_DATE
-  log "building version=$APP_VERSION sha=${GIT_SHA:0:7} date=$BUILD_DATE"
-}
-
-build_images() {
-  compute_build_args
-  log "rebuilding images"
-  if ! (cd "$INSTALL_DIR" && docker compose -f "$COMPOSE_FILE" --profile "$PROFILE" build); then
-    err "build failed — rolling back source checkout so git state matches running containers"
+# docker-compose.prod.yml is image-pull only — pull the new tag from GHCR
+# and let `up -d` recreate containers when the digest changes. Build args
+# do not apply on the appliance; CI bakes APP_VERSION / GIT_SHA / BUILD_DATE
+# into the published image at release time.
+pull_images() {
+  log "pulling images for profile '$PROFILE'"
+  if ! (cd "$INSTALL_DIR" && docker compose -f "$COMPOSE_FILE" --profile "$PROFILE" pull); then
+    err "image pull failed — rolling back source checkout so git state matches running containers"
     git -C "$INSTALL_DIR" reset --hard "$PRE_SHA"
     err "exit 1: previous containers are still running; no data affected"
     exit 1
@@ -227,12 +240,12 @@ bring_up() {
 wait_for_health() {
   local iters=$((HEALTH_TIMEOUT_SECONDS / 2))
   [[ $iters -lt 1 ]] && iters=1
-  log "waiting up to ${HEALTH_TIMEOUT_SECONDS}s for backend to report healthy"
+  log "waiting up to ${HEALTH_TIMEOUT_SECONDS}s for api to report healthy"
   local status
   for _ in $(seq 1 "$iters"); do
-    status=$(docker inspect --format '{{.State.Health.Status}}' vibept-backend 2>/dev/null || echo "absent")
+    status=$(docker inspect --format '{{.State.Health.Status}}' vibept-api 2>/dev/null || echo "absent")
     if [[ $status == healthy ]]; then
-      ok "backend healthy"
+      ok "api healthy"
       return 0
     fi
     sleep 2
@@ -242,7 +255,7 @@ wait_for_health() {
 
 # ---------- rollback ----------
 rollback() {
-  err "backend failed to become healthy within ${HEALTH_TIMEOUT_SECONDS}s"
+  err "api failed to become healthy within ${HEALTH_TIMEOUT_SECONDS}s"
   local post_count
   post_count=$(migration_count || echo "?")
   log "post-update migration count: $post_count (pre-update was $PRE_MIGRATION_COUNT)"
@@ -254,7 +267,7 @@ rollback() {
     err ""
     err "manual recovery options:"
     err "  A) FORWARD FIX — inspect the failure and push a fix"
-    err "       docker compose -f $COMPOSE_FILE --profile $PROFILE logs --tail=200 backend"
+    err "       docker compose -f $COMPOSE_FILE --profile $PROFILE logs --tail=200 api"
     err ""
     err "  B) RESTORE — roll the DB back to before this update, then revert code"
     err "       $INSTALL_DIR/scripts/appliance/restore.sh    # pick the most recent dump"
@@ -262,12 +275,12 @@ rollback() {
     err "       $INSTALL_DIR/scripts/appliance/update.sh     # rebuild & restart pre-update version"
     err ""
     err "  Previous image digests preserved as:"
-    err "       vibept-rollback-backend:previous  (was $BACKEND_IMAGE)"
-    err "       vibept-rollback-frontend:previous (was $FRONTEND_IMAGE)"
+    err "       vibept-rollback-api:previous  (was $API_IMAGE)"
+    err "       vibept-rollback-web:previous  (was $WEB_IMAGE)"
     exit 1
   fi
 
-  if [[ -z $PRE_BACKEND_ID && -z $PRE_FRONTEND_ID ]]; then
+  if [[ -z $PRE_API_ID && -z $PRE_WEB_ID ]]; then
     err "no pre-update image digests captured — cannot auto-rollback"
     err "  git -C $INSTALL_DIR reset --hard $PRE_SHA"
     err "  $INSTALL_DIR/scripts/appliance/update.sh"
@@ -276,11 +289,11 @@ rollback() {
 
   warn "no migrations ran — attempting automatic rollback"
   git -C "$INSTALL_DIR" reset --hard "$PRE_SHA"
-  if [[ -n $PRE_BACKEND_ID ]]; then
-    docker tag "$PRE_BACKEND_ID"  "$BACKEND_IMAGE"  >/dev/null
+  if [[ -n $PRE_API_ID ]]; then
+    docker tag "$PRE_API_ID" "$API_IMAGE" >/dev/null
   fi
-  if [[ -n $PRE_FRONTEND_ID ]]; then
-    docker tag "$PRE_FRONTEND_ID" "$FRONTEND_IMAGE" >/dev/null
+  if [[ -n $PRE_WEB_ID ]]; then
+    docker tag "$PRE_WEB_ID" "$WEB_IMAGE" >/dev/null
   fi
   (cd "$INSTALL_DIR" && docker compose -f "$COMPOSE_FILE" --profile "$PROFILE" up -d)
   if wait_for_health; then
@@ -289,7 +302,7 @@ rollback() {
     exit 1
   fi
   err "rollback also failed health check — manual intervention required"
-  err "  docker compose -f $COMPOSE_FILE --profile $PROFILE logs --tail=200 backend"
+  err "  docker compose -f $COMPOSE_FILE --profile $PROFILE logs --tail=200 api"
   exit 1
 }
 
@@ -306,19 +319,22 @@ main() {
   capture_rollback_state
   run_backup
   fetch_source
-  build_images
+  # Backfill must come AFTER fetch_source so the new caddy/Caddyfile.public
+  # exists on disk by the time `bring_up` mounts it.
+  backfill_caddyfile_path
+  pull_images
   bring_up
 
   if wait_for_health; then
     banner "Update complete"
     cat <<EOF
-  Backend: healthy
+  API:     healthy
   Git SHA: $(git -C "$INSTALL_DIR" rev-parse HEAD)
   Profile: $PROFILE
 
   Pre-update image digests preserved under:
-    vibept-rollback-backend:previous
-    vibept-rollback-frontend:previous
+    vibept-rollback-api:previous
+    vibept-rollback-web:previous
   (used for auto-rollback on the next failed update; overwritten each run)
 
   Tail logs:  docker compose -f $COMPOSE_FILE --profile $PROFILE logs -f

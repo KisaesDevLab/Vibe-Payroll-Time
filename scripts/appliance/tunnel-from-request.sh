@@ -2,7 +2,7 @@
 # Copyright 2026 Kisaes LLC
 # Licensed under the PolyForm Internal Use License 1.0.0.
 # You may not distribute this software. See LICENSE for terms.
-# Host-side applier invoked by vibept-tunnel.service when the backend
+# Host-side applier invoked by vibept-tunnel.service when the api
 # container drops update-control/tunnel-request.json. Responsibilities:
 #
 #   1. Parse the request JSON (token_action, target_enabled, optional token).

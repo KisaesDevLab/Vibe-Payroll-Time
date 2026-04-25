@@ -24,7 +24,8 @@ already exists and routes to the installer or the updater accordingly. On
 first run it walks you through the ingress choice (Cloudflare Tunnel /
 Tailscale Funnel / public + Caddy), stands up Docker + the stack, and leaves
 you at a first-run web wizard for the SuperAdmin. On subsequent runs it takes
-a `pg_dump` snapshot, `git pull`s, rebuilds, rolls over the stack, and
+a `pg_dump` snapshot, `git pull`s the latest compose / scripts, pulls the
+matching GHCR image tag, rolls over the stack, and
 auto-rolls-back on health-check failure (only when no migrations ran —
 otherwise it prints manual recovery steps).
 
@@ -42,10 +43,11 @@ Full list of env-var overrides lives in the header comments of
 ### Container images
 
 Pre-built images are published to the GitHub Container Registry on every
-successful CI run against `main` and every `v*` release tag:
+successful CI run against `main` and every `v*` release tag. Names follow
+the Vibe distribution convention (`vibe-distribution-plan.md`):
 
-- `ghcr.io/kisaesdevlab/vibept-backend`
-- `ghcr.io/kisaesdevlab/vibept-frontend`
+- `ghcr.io/kisaesdevlab/vibe-payroll-api`
+- `ghcr.io/kisaesdevlab/vibe-payroll-web`
 
 Tags:
 
@@ -55,25 +57,47 @@ Tags:
 - `:sha-<short>` — exact commit, pinnable from `IMAGE_TAG=sha-abc1234` in
   `.env`
 
-`docker-compose.prod.yml` already references these paths and falls back to a
-local `docker build` if the image isn't pre-pulled, so the installer works on
-an air-gapped box too.
+`docker-compose.prod.yml` references these paths and pulls them from GHCR;
+build from source uses the grouped overlay (see below).
+
+### Compose file conventions
+
+Three compose files cooperate for the dev → grouped → prod lifecycle:
+
+| File                         | Purpose                                                                                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `docker-compose.yml`         | Dev base — Postgres (+ optional pgAdmin via `--profile tools`) on the host. Backend and frontend run on the host via `npm run dev` for hot reload.                                                                                   |
+| `docker-compose.grouped.yml` | Multi-app dev overlay — adds containerized `api` + `web` (built from source), joins the externally-managed `vibe_ingress` network, bakes the `/payroll/` base path into the bundle. Used to test multi-app deployment shape locally. |
+| `docker-compose.prod.yml`    | Single-app production — pulls `vibe-payroll-{api,web}` from GHCR, ships its own Caddy ingress, supports the `cloudflare` and `tailscale` tunnel profiles.                                                                            |
 
 ## Quick start (dev)
 
 ```bash
-# boot Postgres + backend + frontend
-docker compose -f docker-compose.dev.yml up -d
+# boot Postgres
+docker compose up -d
 
 # run migrations
 npm run migrate --workspace=backend
 
-# start dev servers with hot reload
+# start dev servers with hot reload (host process; no container)
 npm run dev
 ```
 
 Backend: <http://localhost:4000/api/v1/health> · Frontend:
 <http://localhost:5180>
+
+### Multi-app dev (grouped overlay)
+
+To mirror a multi-app deployment locally:
+
+```bash
+docker network create vibe_ingress    # one-time
+docker compose -f docker-compose.yml -f docker-compose.grouped.yml up --build -d
+```
+
+The `api` + `web` containers join `vibe_ingress` and serve under the
+`/payroll/` prefix. Run a Caddy ingress separately in front of
+`vibe_ingress` to route to them.
 
 ## Documentation
 

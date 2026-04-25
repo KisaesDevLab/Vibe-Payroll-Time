@@ -50,6 +50,7 @@ CHOSEN_ACME_EMAIL=""
 CHOSEN_CF_TOKEN=""
 CHOSEN_TS_AUTHKEY=""
 CHOSEN_TS_HOSTNAME=""
+CHOSEN_CADDYFILE_PATH=""
 
 # ---------- output helpers ----------
 _tty() { [[ -t 1 ]] && printf '%s' "$1" || true; }
@@ -310,9 +311,20 @@ EOF
 gather_config() {
   prompt_profile
   case "$CHOSEN_PROFILE" in
-    public)     prompt_public_config ;;
-    cloudflare) prompt_cloudflare_config ;;
-    tailscale)  prompt_tailscale_config ;;
+    public)
+      prompt_public_config
+      # Public profile needs Caddy listening on the operator's domain at
+      # 80/443 with auto-TLS — Caddyfile.public has the {$APP_DOMAIN}
+      # block uncommented. Tunnel profiles keep the default Caddyfile.
+      CHOSEN_CADDYFILE_PATH="./caddy/Caddyfile.public"
+      ;;
+    cloudflare|tailscale)
+      CHOSEN_CADDYFILE_PATH="./caddy/Caddyfile"
+      case "$CHOSEN_PROFILE" in
+        cloudflare) prompt_cloudflare_config ;;
+        tailscale)  prompt_tailscale_config  ;;
+      esac
+      ;;
   esac
   prompt_seed_demo
 }
@@ -352,6 +364,31 @@ load_env_profile() {
     CHOSEN_PROFILE="${line#PROFILE=}"
   fi
   return 0
+}
+
+# Older .env files (pre-Caddyfile-split) lack CADDYFILE_PATH. Compose's
+# default mount points at ./caddy/Caddyfile, which is now the tunnel-mode
+# file. For an existing public-profile install — which used to require
+# manually uncommenting the public block in ./caddy/Caddyfile — the
+# upgrade would silently land on a tunnel-only Caddy and break direct
+# public ingress. Backfill CADDYFILE_PATH=./caddy/Caddyfile.public so the
+# operator's existing domain config keeps working.
+ensure_caddyfile_path_in_existing_env() {
+  local env_path="$INSTALL_DIR/.env"
+  [[ -f $env_path ]] || return 0
+  if grep -qE '^CADDYFILE_PATH=' "$env_path"; then
+    return 0  # already set, leave alone
+  fi
+  case "${CHOSEN_PROFILE:-}" in
+    public)
+      log "backfilling CADDYFILE_PATH=./caddy/Caddyfile.public into existing .env"
+      printf '\n# Backfilled on %s by install.sh: route public-profile traffic\n# through the dedicated Caddyfile.public (was a manual edit pre-rename).\nCADDYFILE_PATH=./caddy/Caddyfile.public\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$env_path"
+      ;;
+    *)
+      # Tunnel profiles match the compose default; nothing to backfill.
+      ;;
+  esac
 }
 
 write_env() {
@@ -410,6 +447,11 @@ APP_DOMAIN=${CHOSEN_APP_DOMAIN}
 CADDY_ACME_EMAIL=${CHOSEN_ACME_EMAIL:-admin@example.com}
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
+# Caddyfile selection. Tunnel profiles use the default ./caddy/Caddyfile
+# which only listens on :8080 (the tunnel sidecar handles TLS). The public
+# profile uses ./caddy/Caddyfile.public which binds {$APP_DOMAIN}:80 + :443
+# and auto-provisions a Let's Encrypt cert on first request.
+CADDYFILE_PATH=${CHOSEN_CADDYFILE_PATH}
 
 # Ingress — Cloudflare Tunnel profile
 CLOUDFLARE_TUNNEL_TOKEN=${CHOSEN_CF_TOKEN}
@@ -422,7 +464,7 @@ TAILSCALE_HOSTNAME=${CHOSEN_TS_HOSTNAME:-vibept}
 # muting in the notifications UI instead.
 NOTIFICATIONS_DISABLED=false
 
-# Payroll CSV export directory (relative to the backend container's cwd).
+# Payroll CSV export directory (relative to the api container's cwd).
 EXPORTS_DIR=./exports
 
 # Licensing — off by default. Turn on once the kisaes-license-portal is
@@ -476,24 +518,20 @@ handle_existing_env() {
 }
 
 # ---------- stack ----------
-# Build args baked into the image and surfaced at /api/v1/admin/health so
-# the appliance dashboard can show "running v1.2.3". Uses git describe so
-# tagged releases show a real version; untagged dev checkouts show a SHA.
-compute_build_args() {
-  APP_VERSION=$(git -C "$INSTALL_DIR" describe --tags --always --dirty 2>/dev/null || echo "unknown")
-  GIT_SHA=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
-  BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  export APP_VERSION GIT_SHA BUILD_DATE
-  log "building version=$APP_VERSION sha=${GIT_SHA:0:7} date=$BUILD_DATE"
-}
-
+# docker-compose.prod.yml is image-pull only — every service references a
+# pre-built GHCR tag (`ghcr.io/kisaesdevlab/vibe-payroll-{api,web}`) and
+# carries no `build:` directive. So we pull, then up. Building from source
+# is the grouped-overlay flow used in dev, not on a customer appliance.
 bring_up_stack() {
-  compute_build_args
-  log "starting stack with profile '$CHOSEN_PROFILE'"
+  log "pulling images for profile '$CHOSEN_PROFILE'"
   (
     cd "$INSTALL_DIR"
-    docker compose -f docker-compose.prod.yml --profile "$CHOSEN_PROFILE" pull || true
-    docker compose -f docker-compose.prod.yml --profile "$CHOSEN_PROFILE" build
+    if ! docker compose -f docker-compose.prod.yml --profile "$CHOSEN_PROFILE" pull; then
+      err "image pull failed — check internet access and GHCR availability"
+      err "  docker compose -f $INSTALL_DIR/docker-compose.prod.yml --profile $CHOSEN_PROFILE pull"
+      exit 1
+    fi
+    log "starting stack"
     docker compose -f docker-compose.prod.yml --profile "$CHOSEN_PROFILE" up -d
   )
 }
@@ -530,16 +568,32 @@ SYSTEMD
 }
 
 # ----- self-service updater wiring -----
-# Creates the bind-mount dir that the backend container writes request.json
+# Creates the bind-mount dir that the api container writes request.json
 # to, and installs the path+service systemd units that watch it.
 setup_update_control_dir() {
   local dir="$INSTALL_DIR/update-control"
   mkdir -p "$dir"
-  # The backend container runs as uid 2000 (pinned in backend/Dockerfile)
+  # The api container runs as uid 2000 (pinned in backend/Dockerfile)
   # so the non-root process can write request.json / read log.txt.
   chown 2000:2000 "$dir"
   chmod 0770 "$dir"
   log "update-control dir ready at $dir"
+}
+
+# Postgres archive_command writes WAL segments to /wal-archive (mounted from
+# the host). Postgres alpine runs as uid 70; if docker auto-creates the host
+# dir on first compose-up it'll be root-owned and the archive_command silently
+# fails ("permission denied") — WAL files pile up in pg_wal, eventually
+# stopping the DB. Pre-create with the right ownership so archive works on
+# first boot. WAL_ARCHIVE_DIR may be overridden via .env; default matches
+# docker-compose.prod.yml.
+setup_wal_archive_dir() {
+  local dir="${WAL_ARCHIVE_DIR:-/var/backups/vibept-wal}"
+  mkdir -p "$dir"
+  # 70:70 = postgres:postgres in postgres:16-alpine.
+  chown 70:70 "$dir"
+  chmod 0700 "$dir"
+  log "WAL archive dir ready at $dir"
 }
 
 install_updater_units() {
@@ -613,19 +667,19 @@ install_tunnel_units() {
 }
 
 wait_for_health() {
-  log "waiting for backend to report healthy (up to 120s)..."
+  log "waiting for api to report healthy (up to 120s)..."
   local status
   for _ in $(seq 1 60); do
-    status=$(docker inspect --format '{{.State.Health.Status}}' vibept-backend 2>/dev/null || echo "absent")
+    status=$(docker inspect --format '{{.State.Health.Status}}' vibept-api 2>/dev/null || echo "absent")
     if [[ $status == healthy ]]; then
-      ok "backend is healthy"
+      ok "api is healthy"
       return 0
     fi
     sleep 2
   done
-  warn "backend didn't report healthy within 120s — recent logs:"
+  warn "api didn't report healthy within 120s — recent logs:"
   docker compose -f "$INSTALL_DIR/docker-compose.prod.yml" --profile "$CHOSEN_PROFILE" \
-    logs --tail=40 backend 2>&1 | sed 's/^/  /' >&2 || true
+    logs --tail=40 api 2>&1 | sed 's/^/  /' >&2 || true
   return 1
 }
 
@@ -636,15 +690,15 @@ run_demo_seed_once() {
     return 0
   fi
   log "seeding demo company (Acme Plumbing)..."
-  # The backend image has npm + the backend workspace; --workspace=backend
+  # The api image has npm + the backend workspace; --workspace=backend
   # makes npm cd into backend/ so knex finds knexfile.cjs natively.
   if docker compose -f "$INSTALL_DIR/docker-compose.prod.yml" --profile "$CHOSEN_PROFILE" \
-       exec -T backend npm run seed:run --workspace=backend 2>&1 | sed 's/^/  /'; then
+       exec -T api npm run seed:run --workspace=backend 2>&1 | sed 's/^/  /'; then
     ok "demo seed applied"
   else
     warn "demo seed failed — you can rerun it later with:"
     warn "  docker compose -f $INSTALL_DIR/docker-compose.prod.yml \\"
-    warn "    exec backend npm run seed:run --workspace=backend"
+    warn "    exec api npm run seed:run --workspace=backend"
   fi
 }
 
@@ -693,9 +747,12 @@ main() {
     gather_config
     summarize_config
     write_env
+  else
+    ensure_caddyfile_path_in_existing_env
   fi
 
   setup_update_control_dir
+  setup_wal_archive_dir
   bring_up_stack
   install_systemd_unit
   install_updater_units

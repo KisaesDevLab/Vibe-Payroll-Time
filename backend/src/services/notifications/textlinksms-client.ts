@@ -44,6 +44,11 @@ export interface TextLinkSmsConfig {
 
 const DEFAULT_BASE_URL = 'https://textlinksms.com';
 const SEND_PATH = '/api/send-sms';
+/** Hard ceiling on a single send. The paired Android relay can be slow
+ *  to acknowledge under poor cellular conditions; 15s is generous but
+ *  bounded so the every-5-minutes missed-punch cron can't pile up
+ *  blocked sends. */
+const TEXTLINKSMS_TIMEOUT_MS = 15_000;
 
 function buildRequest(
   config: TextLinkSmsConfig,
@@ -83,11 +88,16 @@ export async function sendViaTextLinkSms(
 
   let res: Response;
   try {
-    res = await fetch(url, init);
+    res = await fetch(url, { ...init, signal: AbortSignal.timeout(TEXTLINKSMS_TIMEOUT_MS) });
   } catch (err) {
+    const isTimeout = err instanceof DOMException && err.name === 'TimeoutError';
     const msg = err instanceof Error ? err.message : 'network error';
-    logger.warn({ err }, 'textlinksms: network error');
-    throw new SmsDeliveryError(`TextLinkSMS network error: ${msg}`);
+    logger.warn({ err, isTimeout }, 'textlinksms: network error');
+    throw new SmsDeliveryError(
+      isTimeout
+        ? `TextLinkSMS timed out after ${TEXTLINKSMS_TIMEOUT_MS}ms`
+        : `TextLinkSMS network error: ${msg}`,
+    );
   }
 
   // TextLinkSMS still signals some failures via non-2xx (auth errors,

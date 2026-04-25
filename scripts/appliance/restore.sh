@@ -7,7 +7,7 @@
 # Usage:
 #   ./scripts/appliance/restore.sh <path-to-dump.sql.gz>
 #
-# The script STOPS the backend + frontend + caddy services while the
+# The script STOPS the api + web + caddy services while the
 # database is being rewritten, drops the public schema, restores, and
 # restarts everything. Intended for use during a restore drill or real
 # recovery. WAL-based PITR is a manual procedure — see docs/restore.md.
@@ -51,8 +51,8 @@ if [[ "${FORCE:-0}" != "1" ]]; then
   [[ "$answer" == "yes" ]] || { err "aborted"; exit 1; }
 fi
 
-log "stopping backend + frontend + caddy"
-docker compose -f "$COMPOSE_FILE" stop backend frontend caddy || true
+log "stopping api + web + caddy"
+docker compose -f "$COMPOSE_FILE" stop api web caddy || true
 
 log "dropping and recreating public schema"
 docker compose -f "$COMPOSE_FILE" exec -T postgres \
@@ -66,12 +66,13 @@ log "restoring from $DUMP"
 gunzip -c "$DUMP" | docker compose -f "$COMPOSE_FILE" exec -T postgres \
   psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 
-log "running migrations in case the dump predates the running code"
-docker compose -f "$COMPOSE_FILE" run --rm -e MIGRATE_ON_BOOT=true backend \
-  node --input-type=module -e 'import("./backend/src/db/migrate.js").then(m => m.runMigrations())' \
-  || log "migrate runner not wired; skip (backend boot will migrate)"
-
 log "starting services back up"
-docker compose -f "$COMPOSE_FILE" up -d backend frontend caddy
+# The api container honors MIGRATE_ON_BOOT (true by default), so any
+# migrations that postdate the dump apply automatically once it boots.
+# Caddy must come up too in case the operator points a browser at the
+# health endpoint to verify.
+docker compose -f "$COMPOSE_FILE" up -d api web caddy
 
 log "restore complete. verify at the health endpoint."
+log "if the dump predates current migrations, the api applies them on boot"
+log "(MIGRATE_ON_BOOT=true). watch \`docker logs vibept-api\` to confirm."

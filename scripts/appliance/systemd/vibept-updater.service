@@ -6,14 +6,14 @@ After=vibept.service network-online.target
 
 [Service]
 Type=oneshot
-# update.sh mutates the whole stack (rebuild, migrate, restart) so it
-# must run as root. The request file was written by the backend container
-# (non-root); we read + delete it here.
+# update.sh mutates the whole stack (git pull, image pull, migrate,
+# restart) so it must run as root. The request file was written by
+# the api container (non-root); we read + delete it here.
 User=root
 WorkingDirectory=/opt/vibept
 ExecStart=/bin/bash /opt/vibept/scripts/appliance/update-from-request.sh
 # Capture stdout/stderr to the journal in addition to log.txt. The wrapper
-# tees to log.txt itself so the backend can tail it; the journal is a
+# tees to log.txt itself so the api can tail it; the journal is a
 # belt-and-suspenders copy for ops debugging.
 StandardOutput=journal
 StandardError=journal

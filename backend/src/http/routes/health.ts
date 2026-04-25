@@ -14,7 +14,7 @@ healthRouter.get('/', (_req, res) => {
   res.json({
     data: {
       status: 'ok',
-      service: 'vibept-backend',
+      service: 'vibept-api',
       version: VERSION,
       uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
       timestamp: new Date().toISOString(),

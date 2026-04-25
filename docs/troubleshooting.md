@@ -7,7 +7,7 @@ default). If `/api/v1/health/ready` reports pending migrations after a
 restart:
 
 ```bash
-docker compose -f /opt/vibept/docker-compose.prod.yml exec backend \
+docker compose -f /opt/vibept/docker-compose.prod.yml exec api \
   npm run migrate --workspace=backend
 ```
 
@@ -17,7 +17,7 @@ Then re-run the health check.
 
 Open the browser devtools → Network tab → filter on `/api/v1/`. If requests
 fail with CORS errors, your `CORS_ORIGIN` in `.env` does not match the URL
-users actually see. Edit `.env` and `docker compose restart backend`.
+users actually see. Edit `.env` and `docker compose restart api`.
 
 ## "Too many requests" on the kiosk
 
@@ -30,12 +30,12 @@ employee their own.
 Every cron logs to stdout on start-up:
 
 ```
-vibept-backend | auto-clockout sweep scheduled (every 5 minutes)
-vibept-backend | retention sweep scheduled (03:41 UTC daily)
+vibept-api | auto-clockout sweep scheduled (every 5 minutes)
+vibept-api | retention sweep scheduled (03:41 UTC daily)
 ```
 
-Missing a line usually means the backend crashed on boot — `docker compose
-logs backend | tail -50`.
+Missing a line usually means the api crashed on boot — `docker compose
+logs api | tail -50`.
 
 ## Export downloads an empty CSV
 
@@ -78,6 +78,6 @@ If you've been through this page and the health check is still red, open
 an issue at **github.com/KisaesDevLab/Vibe-Payroll-Time/issues** with:
 
 - The output of `docker compose ps`
-- The last 100 lines of `docker compose logs backend`
+- The last 100 lines of `docker compose logs api`
 - The output of `curl -s http://localhost:4000/api/v1/health/ready | jq`
 - The git SHA reported by `/api/v1/version`

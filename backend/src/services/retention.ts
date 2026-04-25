@@ -45,22 +45,44 @@ async function pruneRows(table: string, cutoffDate: Date, column = 'created_at')
 }
 
 async function pruneExportFiles(cutoffDate: Date): Promise<number> {
-  const dir = path.resolve(env.EXPORTS_DIR);
+  // Files live at EXPORTS_DIR/<companyId>/<fileName> — see
+  // payroll-exports/engine.ts which calls
+  // `path.resolve(env.EXPORTS_DIR, String(companyId))` then writes
+  // `<format>-<periodStart>-<hash>.csv` into it. A flat `readdir` of
+  // EXPORTS_DIR sees only the company subdirectories, which `isFile()`
+  // rejects — so before this walked the company subdirs nothing was
+  // ever pruned and disk grew unbounded. Walk one level deep with
+  // `withFileTypes: true` so we visit each company dir's contents.
+  const root = path.resolve(env.EXPORTS_DIR);
   let removed = 0;
   try {
-    const files = await fs.readdir(dir).catch(() => [] as string[]);
-    for (const name of files) {
-      const full = path.join(dir, name);
-      const stat = await fs.stat(full).catch(() => null);
-      if (!stat || !stat.isFile()) continue;
-      if (stat.mtime < cutoffDate) {
-        await fs.unlink(full);
-        removed += 1;
+    const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const full = path.join(root, entry.name);
+      if (entry.isFile()) {
+        // Legacy flat layout: prune in place.
+        const stat = await fs.stat(full).catch(() => null);
+        if (stat && stat.mtime < cutoffDate) {
+          await fs.unlink(full);
+          removed += 1;
+        }
+        continue;
+      }
+      if (!entry.isDirectory()) continue;
+      const subEntries = await fs.readdir(full, { withFileTypes: true }).catch(() => []);
+      for (const sub of subEntries) {
+        if (!sub.isFile()) continue;
+        const subFull = path.join(full, sub.name);
+        const stat = await fs.stat(subFull).catch(() => null);
+        if (stat && stat.mtime < cutoffDate) {
+          await fs.unlink(subFull);
+          removed += 1;
+        }
       }
     }
-    if (removed > 0) logger.info({ dir, removed }, 'retention: export files pruned');
+    if (removed > 0) logger.info({ root, removed }, 'retention: export files pruned');
   } catch (err) {
-    logger.error({ err, dir }, 'retention: export file prune failed');
+    logger.error({ err, root }, 'retention: export file prune failed');
   }
   return removed;
 }

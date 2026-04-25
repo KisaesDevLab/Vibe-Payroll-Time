@@ -6,6 +6,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { startSkewLoop } from './lib/clock-skew';
 import { startQueueFlusher } from './lib/offline-queue';
 import { refreshSessionUser } from './lib/refresh-session-user';
@@ -36,12 +37,21 @@ const queryClient = new QueryClient({
 const container = document.getElementById('root');
 if (!container) throw new Error('root element not found');
 
+// Strip trailing slash from Vite's BASE_URL — react-router's basename
+// expects a path without one. `/` (single-app default) becomes ``, which
+// react-router treats as no basename. `/payroll/` (multi-app overlay)
+// becomes `/payroll`, so route paths like `/dashboard` continue to match
+// against the substring after the prefix.
+const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 ReactDOM.createRoot(container).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter basename={routerBasename}>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );

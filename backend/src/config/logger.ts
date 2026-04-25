@@ -16,7 +16,7 @@ export const logger = pino({
           ignore: 'pid,hostname',
         },
       },
-  base: { service: 'vibept-backend', appliance_id: env.APPLIANCE_ID },
+  base: { service: 'vibept-api', appliance_id: env.APPLIANCE_ID },
   redact: {
     paths: ['req.headers.authorization', 'password', 'passwordHash', 'pinHash'],
     censor: '[REDACTED]',

@@ -87,7 +87,7 @@ at `https://<your-domain>/`.
 
 On first load the frontend polls `/api/v1/health` and `/api/v1/version` — if
 you see red in the home page's "Backend connectivity" card, the backend
-container is not healthy. Check `docker logs vibept-backend`.
+container is not healthy. Check `docker logs vibept-api`.
 
 ## 5. Ingress — profile specifics
 
@@ -118,9 +118,13 @@ QUIC — you don't need to open 80/443 on the appliance.
 
 1. Set `APP_DOMAIN` in `/opt/vibept/.env`.
 2. Point an A/AAAA record at the appliance's public IP.
-3. Uncomment the `{$APP_DOMAIN}` block in `/opt/vibept/caddy/Caddyfile`.
-4. `sudo systemctl restart vibept`. Caddy auto-provisions a Let's Encrypt
+3. `sudo systemctl restart vibept`. Caddy auto-provisions a Let's Encrypt
    certificate on first successful HTTP-01 challenge.
+
+`install.sh` writes `CADDYFILE_PATH=./caddy/Caddyfile.public` to `.env` when
+you choose the public profile, so docker-compose mounts the dedicated
+public-mode Caddyfile (which has the `{$APP_DOMAIN}` site block active).
+Tunnel profiles use the default `caddy/Caddyfile` and don't need a domain.
 
 ## 6. Day-2 operations
 
@@ -129,7 +133,7 @@ QUIC — you don't need to open 80/443 on the appliance.
 | View logs         | `docker compose -f /opt/vibept/docker-compose.prod.yml logs -f`                      |
 | Update appliance  | `sudo /opt/vibept/scripts/appliance/update.sh`                                       |
 | Manual backup     | `sudo /opt/vibept/scripts/appliance/backup.sh`                                       |
-| Run migrations    | `docker compose -f /opt/vibept/docker-compose.prod.yml exec backend npm run migrate` |
+| Run migrations    | `docker compose -f /opt/vibept/docker-compose.prod.yml exec api npm run migrate`     |
 | Open a psql shell | `docker compose -f /opt/vibept/docker-compose.prod.yml exec postgres psql -U vibept` |
 | Restart stack     | `sudo systemctl restart vibept`                                                      |
 | Stop stack        | `sudo systemctl stop vibept`                                                         |
@@ -151,7 +155,7 @@ Dumps land in `/var/backups/vibept/` with 14-day rotation. Off-site copies
 
 ### Backend stays unhealthy
 
-`docker logs vibept-backend` — the most common causes:
+`docker logs vibept-api` — the most common causes:
 
 - `JWT_SECRET must be at least 32 chars` → regenerate with
   `openssl rand -hex 64` and restart.

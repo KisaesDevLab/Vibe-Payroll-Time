@@ -4,10 +4,9 @@
 import { defineConfig } from 'vitest/config';
 // Pull .env from the monorepo root BEFORE vitest evaluates test.env so
 // POSTGRES_HOST/PORT/etc reflect local-dev overrides. Without this,
-// running `npm test` from the repo root (which does not load .env)
-// defaulted POSTGRES_PORT to 5432 while the dev Postgres container
-// binds 5439 — integration tests silently skipped with `dbReachable =
-// false` instead of running against the test DB.
+// running `npm test` from the repo root (which does not load .env) used
+// the wrong default port and integration tests silently skipped with
+// `dbReachable = false` instead of running against the test DB.
 import 'dotenv-flow/config';
 
 export default defineConfig({
@@ -38,7 +37,7 @@ export default defineConfig({
       SECRETS_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       MIGRATE_ON_BOOT: 'false',
       POSTGRES_HOST: process.env.POSTGRES_HOST ?? 'localhost',
-      POSTGRES_PORT: process.env.POSTGRES_PORT ?? '5432',
+      POSTGRES_PORT: process.env.POSTGRES_PORT ?? '5437',
       POSTGRES_USER: process.env.POSTGRES_USER ?? 'vibept',
       POSTGRES_PASSWORD: process.env.POSTGRES_PASSWORD ?? 'vibept_dev',
       POSTGRES_DB: process.env.POSTGRES_DB_TEST ?? 'vibept_test',
@@ -53,7 +52,7 @@ export default defineConfig({
         `postgres://${process.env.POSTGRES_USER ?? 'vibept'}:${
           process.env.POSTGRES_PASSWORD ?? 'vibept_dev'
         }@${process.env.POSTGRES_HOST ?? 'localhost'}:${
-          process.env.POSTGRES_PORT ?? '5432'
+          process.env.POSTGRES_PORT ?? '5437'
         }/${process.env.POSTGRES_DB_TEST ?? 'vibept_test'}`,
     },
   },

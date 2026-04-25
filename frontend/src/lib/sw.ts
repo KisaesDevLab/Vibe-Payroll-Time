@@ -14,7 +14,10 @@ export function registerServiceWorker(): void {
   if (import.meta.env.DEV) return;
 
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+    // Resolve against Vite's base so the SW registers correctly under a
+    // multi-app prefix (e.g. /payroll/sw.js). Single-app builds get /sw.js.
+    const swUrl = `${import.meta.env.BASE_URL}sw.js`;
+    navigator.serviceWorker.register(swUrl).catch(() => {
       // Silent — a failed SW registration shouldn't break the app. The
       // appliance runs fine without offline support; Phase 5 will make
       // this more critical.

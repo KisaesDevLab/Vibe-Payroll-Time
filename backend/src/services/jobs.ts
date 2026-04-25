@@ -83,9 +83,13 @@ export async function updateJob(
     if (patch.description !== undefined) updates.description = patch.description;
     if (patch.isActive !== undefined) updates.is_active = patch.isActive;
 
-    await trx('jobs').where({ id: jobId }).update(updates);
+    // Repeat the company_id guard on the UPDATE itself — jobs.id is unique
+    // so an attacker passing a foreign jobId would already 404 above, but
+    // re-asserting tenant scope on every write keeps the pattern safe
+    // against future refactors that drop the existence check.
+    await trx('jobs').where({ id: jobId, company_id: companyId }).update(updates);
 
-    const fresh = await trx<JobRow>('jobs').where({ id: jobId }).first();
+    const fresh = await trx<JobRow>('jobs').where({ id: jobId, company_id: companyId }).first();
     if (!fresh) throw new Error('job vanished');
     return rowToJob(fresh);
   });
@@ -95,7 +99,7 @@ export async function archiveJob(companyId: number, jobId: number): Promise<void
   const existing = await db<JobRow>('jobs').where({ company_id: companyId, id: jobId }).first();
   if (!existing) throw NotFound('Job not found');
   if (existing.archived_at) return;
-  await db('jobs').where({ id: jobId }).update({
+  await db('jobs').where({ id: jobId, company_id: companyId }).update({
     archived_at: db.fn.now(),
     is_active: false,
     updated_at: db.fn.now(),
@@ -105,12 +109,12 @@ export async function archiveJob(companyId: number, jobId: number): Promise<void
 export async function unarchiveJob(companyId: number, jobId: number): Promise<Job> {
   const existing = await db<JobRow>('jobs').where({ company_id: companyId, id: jobId }).first();
   if (!existing) throw NotFound('Job not found');
-  await db('jobs').where({ id: jobId }).update({
+  await db('jobs').where({ id: jobId, company_id: companyId }).update({
     archived_at: null,
     is_active: true,
     updated_at: db.fn.now(),
   });
-  const fresh = await db<JobRow>('jobs').where({ id: jobId }).first();
+  const fresh = await db<JobRow>('jobs').where({ id: jobId, company_id: companyId }).first();
   if (!fresh) throw new Error('job vanished');
   return rowToJob(fresh);
 }

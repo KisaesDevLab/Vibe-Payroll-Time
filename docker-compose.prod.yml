@@ -8,16 +8,25 @@
 ##   Public internet direct:     docker compose -f docker-compose.prod.yml --profile public up -d
 ##   Cloudflare Tunnel:          docker compose -f docker-compose.prod.yml --profile cloudflare up -d
 ##   Tailscale Funnel:           docker compose -f docker-compose.prod.yml --profile tailscale up -d
+##
+## Services + images follow the Vibe distribution convention:
+##   service `api`  → image ghcr.io/kisaesdevlab/vibe-payroll-api  → container vibept-api
+##   service `web`  → image ghcr.io/kisaesdevlab/vibe-payroll-web  → container vibept-web
+## Per the convention, prod pulls from GHCR by tag and never builds locally.
+## Use docker-compose.grouped.yml (overlaid on docker-compose.yml) for local
+## multi-app dev that needs to build from source.
 
 name: vibept-prod
 
-x-backend-env: &backend-env
+x-api-env: &api-env
   NODE_ENV: production
   LOG_LEVEL: ${LOG_LEVEL:-info}
   APPLIANCE_ID: ${APPLIANCE_ID:?set APPLIANCE_ID}
   BACKEND_HOST: 0.0.0.0
   BACKEND_PORT: 4000
   CORS_ORIGIN: ${CORS_ORIGIN:-https://${APP_DOMAIN}}
+  COOKIE_PATH: ${COOKIE_PATH:-/}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
   POSTGRES_USER: ${POSTGRES_USER:-vibept}
@@ -57,41 +66,35 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
-    # Postgres is never exposed to the host; backend reaches it via the
-    # `internal` network only.
+    # Postgres is never exposed to the host in prod by default; api reaches
+    # it via the `internal` network only. Operators who need direct psql
+    # access can drop a docker-compose.override.yml that publishes 5432.
 
-  backend:
-    image: ghcr.io/kisaesdevlab/vibept-backend:${IMAGE_TAG:-latest}
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-0.0.0}
-        GIT_SHA: ${GIT_SHA:-unknown}
-        BUILD_DATE: ${BUILD_DATE:-unknown}
-    container_name: vibept-backend
+  api:
+    image: ghcr.io/kisaesdevlab/vibe-payroll-api:${IMAGE_TAG:-latest}
+    container_name: vibept-api
     restart: unless-stopped
-    environment: *backend-env
-    # Shared with the host so the self-service updater (SuperAdmin UI)
-    # can drop a request file that a systemd path unit picks up. The
-    # host-side update-from-request.sh runs update.sh and streams
-    # stdout/stderr back to log.txt, which the backend tails for the UI.
+    environment: *api-env
     volumes:
+      # Shared with the host so the self-service updater (SuperAdmin UI)
+      # can drop a request file that a systemd path unit picks up. The
+      # host-side update-from-request.sh runs update.sh and streams
+      # stdout/stderr back to log.txt, which the api tails for the UI.
       - ${UPDATE_CONTROL_DIR:-./update-control}:/app/update-control
+      # Payroll-export CSVs land here. payroll_exports rows reference
+      # files by relative path; without a persistent volume every
+      # `update.sh` (which recreates the container) would orphan past
+      # exports and break re-download from the export history. The
+      # nightly retention sweep prunes the directory on disk.
+      - exports:/app/exports
     depends_on:
       postgres:
         condition: service_healthy
     networks: [internal]
 
-  frontend:
-    image: ghcr.io/kisaesdevlab/vibept-frontend:${IMAGE_TAG:-latest}
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
-        VITE_APP_NAME: ${VITE_APP_NAME:-Vibe Payroll Time}
-    container_name: vibept-frontend
+  web:
+    image: ghcr.io/kisaesdevlab/vibe-payroll-web:${IMAGE_TAG:-latest}
+    container_name: vibept-web
     restart: unless-stopped
     networks: [internal]
 
@@ -108,12 +111,15 @@ services:
       - '${CADDY_HTTP_PORT:-80}:80'
       - '${CADDY_HTTPS_PORT:-443}:443'
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Tunnel profiles use the default tunnel-mode Caddyfile (binds :8080
+      # only). The public profile sets CADDYFILE_PATH=./caddy/Caddyfile.public
+      # in .env so Caddy listens on {$APP_DOMAIN}:80 + :443 with auto-TLS.
+      - ${CADDYFILE_PATH:-./caddy/Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - backend
-      - frontend
+      - api
+      - web
     networks: [internal]
 
   # --------------------------------------------------------------------------
@@ -169,6 +175,7 @@ volumes:
   caddy-data:
   caddy-config:
   tailscale-state:
+  exports:
 
 networks:
   internal:

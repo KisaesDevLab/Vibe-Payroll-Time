@@ -41,8 +41,28 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+function isTruthy(v: TemplateVars[string]): boolean {
+  if (v == null) return false;
+  const s = String(v).trim();
+  return s.length > 0;
+}
+
 function render(template: string, vars: TemplateVars, opts: { html?: boolean } = {}): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => {
+  // Pass 1: Mustache-style conditional sections — `{{#key}}…{{/key}}`.
+  // Keep the inner block when `key` resolves to a non-empty value,
+  // drop it (and the wrappers) otherwise. Without this pass the inner
+  // wrappers leak into rendered HTML — e.g. the `correction_request_decided`
+  // email previously delivered "{{#reviewNote}}<p>Note: ...</p>{{/reviewNote}}"
+  // verbatim because the variable interpolator below only matches
+  // `[a-zA-Z0-9_]` and skipped over the `#`/`/` markers. Match
+  // non-greedily so two adjacent sections don't collapse into one.
+  const sectioned = template.replace(
+    /\{\{#\s*([a-zA-Z0-9_]+)\s*\}\}([\s\S]*?)\{\{\/\s*\1\s*\}\}/g,
+    (_, key: string, body: string) => (isTruthy(vars[key]) ? body : ''),
+  );
+
+  // Pass 2: simple `{{key}}` interpolation.
+  return sectioned.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => {
     const v = vars[key];
     if (v == null) return '';
     const str = String(v);

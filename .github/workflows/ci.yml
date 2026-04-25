@@ -24,9 +24,13 @@ jobs:
       - run: npm run format:check
 
   test:
-    name: unit tests
+    name: unit + integration tests
     runs-on: ubuntu-latest
     services:
+      # Postgres exposed on 5437 to match the dev convention so vitest
+      # config's default POSTGRES_PORT (5437) connects without overrides.
+      # The integration tests connect to vibept_test (created below);
+      # backend/vitest.config.ts hard-defaults POSTGRES_DB_TEST=vibept_test.
       postgres:
         image: postgres:16-alpine
         env:
@@ -34,18 +38,27 @@ jobs:
           POSTGRES_PASSWORD: vibept_dev
           POSTGRES_DB: vibept
         ports:
-          - 5432:5432
+          - 5437:5432
         options: >-
           --health-cmd "pg_isready -U vibept -d vibept"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://vibept:vibept_dev@localhost:5432/vibept
       JWT_SECRET: ci-jwt-secret-placeholder-0123456789abcdef0123456789abcdef
       SECRETS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       MIGRATE_ON_BOOT: 'false'
       NODE_ENV: test
+      # vitest.config.ts assembles its own DATABASE_URL pointing at
+      # vibept_test on POSTGRES_PORT (default 5437). Mirror those here so
+      # ad-hoc steps below (psql, migrate) talk to the same database the
+      # tests will use. Asserting via assert-test-db.ts requires the DB
+      # name to end in `_test`.
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: '5437'
+      POSTGRES_USER: vibept
+      POSTGRES_PASSWORD: vibept_dev
+      POSTGRES_DB_TEST: vibept_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,13 +67,28 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run build
+      # Create the dedicated test database. Without this every integration
+      # test silently SKIPs (each file probes `select 1` and bails on
+      # failure) and the suite reports green on a hidden hole.
+      - name: Create test database
+        env:
+          PGPASSWORD: vibept_dev
+        run: |
+          psql -h localhost -p 5437 -U vibept -d vibept \
+            -c 'CREATE DATABASE vibept_test;'
+      - name: Apply migrations to test database
+        env:
+          DATABASE_URL: postgres://vibept:vibept_dev@localhost:5437/vibept_test
+        run: npm run migrate --workspace=backend
       - run: npm test
 
-  # Build + push backend and frontend images to GHCR. Gated on check +
-  # test so a broken main never publishes. Runs only on push to main or
-  # tag push — pull requests still build through the consumer side but
-  # don't publish to avoid leaking fork-authored images into the
-  # canonical registry.
+  # Build + push api and web images to GHCR. Gated on check + test so a
+  # broken main never publishes. Runs only on push to main or tag push —
+  # pull requests still build through the consumer side but don't publish
+  # to avoid leaking fork-authored images into the canonical registry.
+  #
+  # Image names follow the Vibe distribution convention:
+  # vibe-payroll-{api,web} (vibe-distribution-plan.md).
   publish-images:
     name: publish images (ghcr.io)
     needs: [check, test]
@@ -76,11 +104,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: backend
-            image: vibept-backend
+          - name: api
+            image: vibe-payroll-api
             dockerfile: backend/Dockerfile
-          - name: frontend
-            image: vibept-frontend
+          - name: web
+            image: vibe-payroll-web
             dockerfile: frontend/Dockerfile
     steps:
       - uses: actions/checkout@v4

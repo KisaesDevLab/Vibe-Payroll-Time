@@ -3,7 +3,7 @@
 // You may not distribute this software. See LICENSE for terms.
 /**
  * Punch-engine integration tests. Run against the dev Postgres (see
- * docker-compose.dev.yml) or the CI service container. Skipped when the
+ * docker-compose.yml) or the CI service container. Skipped when the
  * database is unreachable so `npm test` exits clean locally without
  * `docker compose up`.
  */

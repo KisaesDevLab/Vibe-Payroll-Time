@@ -30,6 +30,16 @@ const envSchema = z.object({
   BACKEND_HOST: z.string().default('0.0.0.0'),
   CORS_ORIGIN: z.string().default('http://localhost:5180'),
 
+  /** Cookie path + secure flag — accepted but unused while auth is bearer-token
+   *  only. Plumbed for the multi-app deployment overlay (`/payroll` path,
+   *  Secure=true behind shared HTTPS ingress) so a future cookie middleware
+   *  picks up the right scope without another env-schema change. */
+  COOKIE_PATH: z.string().default('/'),
+  COOKIE_SECURE: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
   DATABASE_URL: optionalEnvString(),
   POSTGRES_HOST: z.string().default('localhost'),
   POSTGRES_PORT: z.coerce.number().int().positive().default(5432),

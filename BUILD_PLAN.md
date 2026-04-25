@@ -23,7 +23,7 @@ Goal: a working dev loop on Kurt's laptop. One command brings up frontend + back
 - [ ] ESLint + Prettier configs (identical rules across workspaces)
 - [ ] `.editorconfig`, `.gitignore`, `.gitattributes`
 - [ ] Pre-commit hook (husky + lint-staged): typecheck, lint, format
-- [ ] `docker-compose.dev.yml`: Postgres 16, pgAdmin (optional), backend hot-reload, frontend vite dev server
+- [ ] `docker-compose.yml`: Postgres 16, pgAdmin (optional); api + web run on the host via `npm run dev` for hot reload
 - [ ] `.env.example` committed; `.env` gitignored
 - [ ] `npm run dev` script at root runs backend + frontend concurrently
 - [ ] `npm run check` runs tsc + eslint across all workspaces

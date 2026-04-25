@@ -1,7 +1,16 @@
-## Vibe Payroll Time — local development stack.
+## Vibe Payroll Time — local development stack (single-app default).
 ##
 ## Starts Postgres only. Backend and frontend run on the host via `npm run dev`
 ## so file watches and hot reload work natively without file-sync plumbing.
+##
+## Default ports follow the Vibe distribution convention so multiple Vibe apps
+## can run side-by-side on the same dev workstation without colliding:
+##   - Postgres → 5437 (was 5432)
+##   - pgAdmin  → 5052 (was 5050)
+## Override either via .env if you need the legacy port.
+##
+## For multi-app testing, layer the grouped overlay:
+##   docker compose -f docker-compose.yml -f docker-compose.grouped.yml up --build
 
 name: vibept-dev
 
@@ -15,7 +24,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibept_dev}
       POSTGRES_DB: ${POSTGRES_DB:-vibept}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '${POSTGRES_PUBLISH_PORT:-5437}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -35,7 +44,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:
-      - '5050:80'
+      - '${PGADMIN_PUBLISH_PORT:-5052}:80'
     depends_on:
       postgres:
         condition: service_healthy

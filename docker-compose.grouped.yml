@@ -1,0 +1,77 @@
+## Vibe Payroll Time — multi-app dev overlay.
+##
+## Layered on top of docker-compose.yml to mirror the multi-app deployment
+## shape locally. The Vibe distribution convention (vibe-distribution-plan.md)
+## stitches multiple Vibe products behind a shared Caddy ingress at
+## https://<host>/<app>/; this overlay builds the api+web containers from
+## source, joins them to an externally-managed `vibe_ingress` network, and
+## bakes the `/payroll/` base path into the frontend bundle.
+##
+## Usage:
+##   docker network create vibe_ingress    # one-time, owned by the host's ingress
+##   docker compose -f docker-compose.yml -f docker-compose.grouped.yml up --build -d
+##
+## The api+web containers are not in the dev base — this overlay introduces
+## them. Host ports are not published; the only entry point is the Caddy
+## ingress (run separately in front of `vibe_ingress`).
+
+name: vibept-grouped
+
+services:
+  postgres:
+    # Reset the host port from the dev base — multi-app testing keeps
+    # postgres internal so the test rig matches a real multi-app appliance.
+    ports: !reset []
+    networks: [internal]
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-grouped-dev}
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_DATE: ${BUILD_DATE:-dev}
+    container_name: vibept-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APPLIANCE_ID: ${APPLIANCE_ID:-grouped-dev}
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: 4000
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://vibe.local}
+      COOKIE_PATH: /payroll
+      COOKIE_SECURE: 'true'
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-vibept}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibept_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-vibept}
+      JWT_SECRET: ${JWT_SECRET:-dev-grouped-jwt-secret-not-for-production-use-at-all-32chars}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      MIGRATE_ON_BOOT: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal, vibe_ingress]
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_BASE_PATH: /payroll/
+        VITE_API_BASE_URL: /payroll/api/v1
+        VITE_APP_NAME: Vibe Payroll Time
+    container_name: vibept-web
+    restart: unless-stopped
+    networks: [internal, vibe_ingress]
+
+networks:
+  internal:
+    driver: bridge
+  # Owned by the host's Caddy ingress; this overlay just joins it.
+  # Create once on the host: `docker network create vibe_ingress`.
+  vibe_ingress:
+    external: true

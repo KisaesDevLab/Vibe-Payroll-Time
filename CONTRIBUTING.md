@@ -45,7 +45,7 @@ commit.
 
 ```bash
 npm install
-docker compose -f docker-compose.dev.yml up -d
+docker compose up -d
 npm run migrate --workspace=backend
 npm run dev
 ```

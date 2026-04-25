@@ -61,6 +61,10 @@ export async function runLicenseHeartbeat(): Promise<number> {
       .count<{ count: string }>({ count: '*' })
       .first();
 
+    // 10s timeout — the heartbeat is best-effort and offline-tolerant by
+    // design; a hung connection to the portal must not stall the cron
+    // scheduler or block subsequent ticks. AbortSignal.timeout throws
+    // TimeoutError → falls into the catch below → logs warn and returns.
     const res = await fetch(env.LICENSE_PORTAL_HEARTBEAT_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -71,6 +75,7 @@ export async function runLicenseHeartbeat(): Promise<number> {
         freeTierCompanyCount: freeIds.length,
         license: token,
       }),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       logger.warn({ status: res.status }, 'license heartbeat rejected');

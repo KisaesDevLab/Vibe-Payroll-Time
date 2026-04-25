@@ -41,6 +41,13 @@ COPY --chown=vibept:vibept shared ./shared
 COPY --chown=vibept:vibept backend ./backend
 COPY --chown=vibept:vibept tsconfig.base.json ./
 
+# Pre-create the exports directory with vibept ownership. docker-compose
+# mounts a named volume here in prod; Docker seeds the volume from the
+# image on first attach, so the volume root inherits vibept:vibept and
+# the non-root api process can mkdir per-company subdirectories without
+# a permissions error on the very first export.
+RUN mkdir -p /app/exports && chown vibept:vibept /app/exports
+
 # Optional build-time metadata. The CI pipeline passes these via
 # `--build-arg`; /api/v1/version surfaces them at runtime.
 ARG APP_VERSION=0.0.0
