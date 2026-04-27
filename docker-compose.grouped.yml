@@ -60,12 +60,15 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-      args:
-        VITE_BASE_PATH: /payroll/
-        VITE_API_BASE_URL: /payroll/api/v1
-        VITE_APP_NAME: Vibe Payroll Time
+      # No build-args needed — the bundle ships with the runtime sentinel
+      # `/__VIBE_BASE_PATH__/` baked in. The container's
+      # docker-entrypoint.d/40-base-path.sh hook reads VITE_BASE_PATH
+      # below at startup and substitutes the sentinel before nginx
+      # starts. Same image works in both single-app and multi-app modes.
     container_name: vibept-web
     restart: unless-stopped
+    environment:
+      VITE_BASE_PATH: /payroll/
     networks: [internal, vibe_ingress]
 
 networks:

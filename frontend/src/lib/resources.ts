@@ -201,7 +201,7 @@ export const badges = {
     companyId: number,
     body: BulkIssueBadgesRequest,
   ): Promise<{ issued: number; skipped: number }> => {
-    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    const apiBase = `${import.meta.env.BASE_URL}api/v1`;
     const session = authStore.get();
     const res = await fetch(`${apiBase}/companies/${companyId}/employees/bulk-badges`, {
       method: 'POST',
@@ -383,7 +383,7 @@ export const reports = {
       if (v === undefined || v === null || v === '') continue;
       qs.set(k, String(v));
     }
-    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    const apiBase = `${import.meta.env.BASE_URL}api/v1`;
     return `${apiBase}/companies/${companyId}/reports/${name}.csv?${qs.toString()}`;
   },
 };
@@ -406,7 +406,7 @@ export const payrollExports = {
   history: (companyId: number) =>
     apiFetch<PayrollExport[]>(`/companies/${companyId}/payroll-exports`),
   downloadUrl: (companyId: number, id: number) => {
-    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    const apiBase = `${import.meta.env.BASE_URL}api/v1`;
     return `${apiBase}/companies/${companyId}/payroll-exports/${id}/download`;
   },
 };
@@ -527,7 +527,7 @@ export interface ApplianceHealth {
 export const admin = {
   health: () => apiFetch<ApplianceHealth>('/admin/health'),
   exportCompanyUrl: (companyId: number) => {
-    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    const apiBase = `${import.meta.env.BASE_URL}api/v1`;
     return `${apiBase}/admin/companies/${companyId}/export-all`;
   },
   licenseStatus: () => apiFetch<LicenseStatus>('/admin/license'),

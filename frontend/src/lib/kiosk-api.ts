@@ -15,7 +15,8 @@ import type {
 import { ApiError } from './api';
 import { kioskStore } from './kiosk-store';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+// Runtime API base — see src/lib/api.ts for the rationale.
+const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
 
 type Envelope<T> = { data: T } | { error: { code: string; message: string } };
 

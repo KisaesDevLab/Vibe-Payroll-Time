@@ -4,7 +4,14 @@
 import type { AuthResponse } from '@vibept/shared';
 import { authStore } from './auth-store';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+// Runtime API base — derived from import.meta.env.BASE_URL (which Vite
+// fills from the runtime sentinel substituted by the web container's
+// docker-entrypoint hook). Single-app boots BASE_URL=`/`, multi-app
+// boots BASE_URL=`/payroll/`, so API_BASE becomes `/api/v1` or
+// `/payroll/api/v1` without a rebuild. The previous build-time
+// VITE_API_BASE_URL knob locked the image to one mode at build time —
+// we now use one image for both.
+const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
 
 export class ApiError extends Error {
   public readonly status: number;

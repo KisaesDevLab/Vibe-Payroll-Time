@@ -44,7 +44,8 @@ export function getClockSkewMs(): number {
 /** Best-effort skew measurement. Silent failures are fine — 0 is a
  *  defensible fallback and the server clamps timestamps to NOW(). */
 export async function measureSkew(): Promise<number> {
-  const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+  // Same runtime-derived base as src/lib/api.ts — see the comment there.
+  const apiBase = `${import.meta.env.BASE_URL}api/v1`;
   const t0 = Date.now();
   try {
     const res = await fetch(`${apiBase}/health`, { method: 'GET' });
