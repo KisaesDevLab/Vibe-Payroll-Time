@@ -2,15 +2,31 @@
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+
+// Runtime base-path sentinel — a single image serves any prefix.
+//
+// Production builds bake `/__VIBE_BASE_PATH__/` into every asset URL,
+// router basename, manifest start_url/scope, and PWA icon path. The
+// frontend container's docker-entrypoint.d/40-base-path.sh hook reads
+// VITE_BASE_PATH at startup and `sed -i` replaces the sentinel across
+// the html/js/css/json/map/webmanifest files in /usr/share/nginx/html
+// before nginx starts.
+//
+// Single-app  : VITE_BASE_PATH=/        → assets at /assets/...
+// Multi-app   : VITE_BASE_PATH=/payroll/ → assets at /payroll/assets/...
+//
+// No rebuild required to switch modes — same image, two URLs. (Same
+// pattern as Vibe MyBooks' packages/web/docker-entrypoint.d/40-base-
+// path.sh and Vibe TB's deploy/web-entrypoint.sh; if any of the three
+// gain a fix, port it to the others.)
+const BASE_PATH_SENTINEL = '/__VIBE_BASE_PATH__/';
 
 /**
  * Emit `manifest.webmanifest` with `start_url` + `scope` resolved to the
- * configured base path. Single-app builds get `/`; multi-app builds (the
- * grouped overlay sets VITE_BASE_PATH=/payroll/) get `/payroll/`.
- *
- * Kept as a build-time emit instead of a static `public/` file because the
- * base path is only known at build time.
+ * runtime sentinel. The container entrypoint substitutes the sentinel
+ * for the real prefix before nginx starts so the manifest carries the
+ * right scope for whatever mode the container booted in.
  */
 function manifestPlugin(basePath: string): Plugin {
   const json = () =>
@@ -85,38 +101,20 @@ function manifestPlugin(basePath: string): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), 'VITE_');
-  // Proxy target is always the local backend when the dev server runs —
-  // the SPA in a browser sends `/api/...` as same-origin, vite catches
-  // that and forwards to the backend listening on localhost:4000 (or
-  // whatever VITE_DEV_BACKEND_ORIGIN overrides to).
-  //
-  // This is decoupled from VITE_API_BASE_URL, which is what the bundled
-  // JS uses AT RUNTIME in the browser. For LAN-access to work (opening
-  // the SPA from a phone or tablet on the same wifi), VITE_API_BASE_URL
-  // must be relative (default: `/api/v1`) so the browser hits the same
-  // host it loaded the SPA from. Baking a `http://localhost:4000`
-  // absolute URL into the bundle would make the other device's browser
-  // try its OWN localhost, which has nothing listening.
-  const devBackendOrigin = env.VITE_DEV_BACKEND_ORIGIN ?? 'http://localhost:4000';
+export default defineConfig(({ command }) => {
+  // Proxy target for `vite dev` — the SPA in a browser sends `/api/...`
+  // as same-origin, vite catches that and forwards to the backend on
+  // localhost:4000 (or VITE_DEV_BACKEND_ORIGIN). Decoupled from runtime
+  // API base — see frontend/src/lib/api.ts, which derives the runtime
+  // base from `import.meta.env.BASE_URL` (the substituted sentinel),
+  // never from a build-time env var.
+  const devBackendOrigin = process.env.VITE_DEV_BACKEND_ORIGIN ?? 'http://localhost:4000';
 
-  // Single-app default `/`; multi-app deployment overlay sets `/payroll/`
-  // so all assets, the manifest scope, and the SPA router resolve under
-  // the shared Caddy ingress prefix. Normalize so a missing or extra
-  // trailing slash doesn't break manifest URLs (`${base}icons/icon.svg`)
-  // or the nginx SPA-fallback path.
-  //
-  // Prefer `process.env` over `loadEnv()` here: loadEnv only walks the
-  // `.env*` files in the project, NOT the parent shell. The frontend
-  // Dockerfile (and the grouped-overlay compose file) wires the value
-  // through `ARG → ENV` so it reaches `npm run build` as a process env
-  // var; without this fallback the multi-app build was silently emitting
-  // a single-app bundle with `base: /` and the Dockerfile's `mv dist/*
-  // dist-prefixed/payroll/*` step then created `/payroll/index.html`
-  // referencing `/assets/...` paths that 404'd at the SPA's actual URL.
-  const rawBase = process.env.VITE_BASE_PATH ?? env.VITE_BASE_PATH ?? '/';
-  const basePath = rawBase === '/' ? '/' : `${rawBase.replace(/\/+$/, '')}/`;
+  // Production builds use the runtime sentinel so the same image serves
+  // any prefix (substituted by the container entrypoint at startup).
+  // `vite dev` keeps `base: '/'` so HMR + the dev proxy work without
+  // the substitution step.
+  const basePath = command === 'build' ? BASE_PATH_SENTINEL : '/';
 
   return {
     base: basePath,
