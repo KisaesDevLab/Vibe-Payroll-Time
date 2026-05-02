@@ -67,11 +67,27 @@ export async function getTimesheet(
 ): Promise<TimesheetResponse> {
   const employee = await db('employees')
     .where({ id: employeeId, company_id: companyId })
-    .first<{ id: number; first_name: string; last_name: string }>();
+    .first<{ id: number; first_name: string; last_name: string; timezone: string | null }>();
   if (!employee) throw NotFound('Employee not found');
 
   const company = await loadCompanyCtx(companyId);
   const settings = await loadSettings(companyId);
+
+  // Phase 14.2 — `employee.timezone` exists on the row (introduced by
+  // migration 20260420000037) so we read it here, but we deliberately
+  // do NOT pass it to `buildTimesheetSummary`:
+  //   - Pay-period and FLSA workweek boundaries are legally per-
+  //     EMPLOYER, not per-employee. Letting an employee's TZ shift
+  //     the OT workweek would be wage-and-hour-claim surface.
+  //   - Day grouping in summaries is shared between employee-facing
+  //     and admin views; rendering different days per viewer would
+  //     desync.
+  // The per-employee TZ instead surfaces at the per-row formatting
+  // layer in the UI ("you punched in at 9:00 AM in your time"). That
+  // formatting is consumer-side and reads `employee.timezone`
+  // directly from the response. v1 does not surface that field yet;
+  // the column is plumbed for the future formatter.
+  void employee.timezone;
 
   let periodStart: Date;
   let periodEnd: Date;

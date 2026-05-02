@@ -20,6 +20,40 @@ const optionalEnvString = () =>
       return trimmed === '' ? undefined : trimmed;
     });
 
+// Phase 14 env-var renames for cross-app parity with sibling Vibe apps
+// (Vibe-MyBooks, Vibe-Connect). Old names continue to work; if the
+// canonical name is unset we copy the legacy value forward and log a
+// single deprecation line. New name wins when both are present.
+function resolveDeprecatedAlias(canonical: string, legacy: string) {
+  const canonicalValue = process.env[canonical];
+  const legacyValue = process.env[legacy];
+  const canonicalSet =
+    canonicalValue !== undefined && canonicalValue !== null && canonicalValue !== '';
+  const legacySet = legacyValue !== undefined && legacyValue !== null && legacyValue !== '';
+  if (!canonicalSet && legacySet) {
+    process.env[canonical] = legacyValue;
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[deprecated] ${legacy} is deprecated; rename to ${canonical}. ` +
+        `The old name still works for now and will be removed in a future release.`,
+    );
+  } else if (canonicalSet && legacySet && canonicalValue !== legacyValue) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[deprecated] both ${canonical} and ${legacy} are set with different values; ${canonical} wins.`,
+    );
+  }
+}
+
+resolveDeprecatedAlias('ALLOWED_ORIGIN', 'CORS_ORIGIN');
+resolveDeprecatedAlias('MIGRATIONS_AUTO', 'MIGRATE_ON_BOOT');
+// LLM_* are the sibling-Vibe-app canonical names. AI_* lives on as a
+// legacy alias because it pre-dates the rename and is heavily
+// documented in CLAUDE.md and .env.example.
+resolveDeprecatedAlias('LLM_API_KEY', 'AI_API_KEY');
+resolveDeprecatedAlias('LLM_MODEL', 'AI_MODEL');
+resolveDeprecatedAlias('LLM_ENDPOINT', 'AI_BASE_URL');
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).default('info'),
@@ -28,17 +62,86 @@ const envSchema = z.object({
 
   BACKEND_PORT: z.coerce.number().int().positive().default(4000),
   BACKEND_HOST: z.string().default('0.0.0.0'),
-  CORS_ORIGIN: z.string().default('http://localhost:5180'),
+
+  /** Comma-separated list of allowed CORS origins. Each entry may be
+   *  either a literal origin (`https://example.com`) or a regex
+   *  delimited with slashes (`/^https:\/\/.*\.tailnet\.ts\.net$/`).
+   *  Phase 14 rename: legacy `CORS_ORIGIN` is read as a fallback. */
+  ALLOWED_ORIGIN: z.string().default('http://localhost:5180'),
+
+  /** Canonical public origin embedded in outbound URLs (magic-link
+   *  emails, payroll-export download links, password-reset links).
+   *  Optional — when unset, the first entry of ALLOWED_ORIGIN is used,
+   *  preserving pre-Phase-14 behavior for standalone customers who
+   *  haven't set this yet. */
+  PUBLIC_URL: optionalEnvString(),
+
+  /** Redis connection string for BullMQ. Required when MIGRATIONS_AUTO
+   *  is true and the four core background jobs (auto-clockout,
+   *  missed-punch, license-heartbeat, retention-sweep) need to run.
+   *  Standalone install.sh provisions a redis:7-alpine container by
+   *  default. Falls back to localhost:6379 in dev. */
+  REDIS_URL: z.string().default('redis://localhost:6379'),
+
+  /** Per-worker concurrency for BullMQ consumers. Two is plenty for
+   *  the four cron-style jobs Payroll-Time runs; bump if customer
+   *  workload grows. */
+  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
+
+  /** Master switch for background-job runtime. When false, the
+   *  scheduler and workers don't start; Redis is never contacted. Used
+   *  by the test suite (no Redis fixture) and by dev environments
+   *  that haven't provisioned Redis yet. The four `run*()` business
+   *  functions remain directly callable. */
+  WORKERS_ENABLED: z
+    .string()
+    .default('true')
+    .transform((v) => v === 'true' || v === '1' || v === 'yes'),
+
+  /** Which background-job role this process plays:
+   *   - `all`       (default for standalone): API container schedules
+   *                 + consumes jobs in-process. Single-container.
+   *   - `scheduler`: API container only enqueues; appliance overlay
+   *                 sets this so it doesn't compete with the
+   *                 dedicated worker container.
+   *   - `worker`:    Worker container only consumes; entrypoint is
+   *                 dist/worker.js. */
+  WORKER_ROLE: z.enum(['all', 'scheduler', 'worker']).default('all'),
+
+  /** Multi-tenancy mode.
+   *   - `multi`  (default for standalone): one appliance hosts many
+   *              companies. The "create new firm" flow is visible;
+   *              users can switch between companies.
+   *   - `single` (appliance overlay): one company per appliance. The
+   *              create-firm flow is hidden; the API refuses to start
+   *              if the database holds more than one company. The
+   *              setup wizard auto-fills the firm name from
+   *              FIRM_NAME on first boot. */
+  TENANT_MODE: z.enum(['single', 'multi']).default('multi'),
+
+  /** Display name to seed the first company with when the appliance
+   *  bootstraps in `single` tenant mode. Operators set this in their
+   *  appliance overlay so the company exists with the customer's name
+   *  before the first SuperAdmin signs up. Ignored when `multi`. */
+  FIRM_NAME: optionalEnvString(),
 
   /** Cookie path + secure flag — accepted but unused while auth is bearer-token
    *  only. Plumbed for the multi-app deployment overlay (`/payroll` path,
    *  Secure=true behind shared HTTPS ingress) so a future cookie middleware
-   *  picks up the right scope without another env-schema change. */
+   *  picks up the right scope without another env-schema change.
+   *
+   *  COOKIE_SECURE accepts three values:
+   *   - `true`  always set the Secure flag (single-domain HTTPS)
+   *   - `false` never set the Secure flag (dev / standalone HTTP)
+   *   - `auto`  set Secure when the request is over HTTPS (the
+   *             appliance default — the parent Caddy terminates TLS
+   *             but the API container sees HTTP-from-proxy, and the
+   *             :5192 emergency port is plain HTTP) */
   COOKIE_PATH: z.string().default('/'),
   COOKIE_SECURE: z
-    .string()
+    .enum(['true', 'false', 'auto'])
     .default('false')
-    .transform((v) => v === 'true'),
+    .transform((v): true | false | 'auto' => (v === 'auto' ? 'auto' : v === 'true')),
 
   DATABASE_URL: optionalEnvString(),
   POSTGRES_HOST: z.string().default('localhost'),
@@ -58,7 +161,12 @@ const envSchema = z.object({
    *  via HKDF when unset, same pattern as the PIN fingerprint key. */
   BADGE_SIGNING_SECRET: optionalEnvString(),
 
-  MIGRATE_ON_BOOT: z
+  /** Run pending Knex migrations during server boot. Default true
+   *  preserves the historical standalone behavior. The appliance
+   *  overlay sets this to "false" because the parent compose runs a
+   *  one-shot migrate sidecar before bringing the API up. Phase 14
+   *  rename: legacy `MIGRATE_ON_BOOT` is read as a fallback. */
+  MIGRATIONS_AUTO: z
     .string()
     .default('true')
     .transform((v) => v === 'true'),
@@ -94,11 +202,34 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
-  // ---------- AI (appliance-wide fallback) ----------
+  // ---------- SMS (appliance-wide fallback) ----------
+  /** Appliance-wide SMS provider, used when the appliance_settings row
+   *  hasn't picked one. `textlink` is accepted as an alias for the
+   *  canonical `textlinksms`. `none` disables SMS for any flow that
+   *  doesn't have an explicit per-company provider. Any other value
+   *  fails zod parse — we'd rather refuse to boot than silently drop
+   *  notifications because of a typo. */
+  SMS_PROVIDER: z.preprocess(
+    (v) => {
+      if (typeof v !== 'string') return v;
+      const lc = v.trim().toLowerCase();
+      if (lc === '' || lc === 'none') return undefined;
+      if (lc === 'textlink') return 'textlinksms';
+      return lc;
+    },
+    z.enum(['twilio', 'textlinksms']).optional(),
+  ),
+
+  // ---------- AI / LLM (appliance-wide fallback) ----------
+  // LLM_* are the canonical names (Phase 14 — match sibling Vibe
+  // apps); AI_* are read as fallbacks via resolveDeprecatedAlias
+  // above so the env-schema fields here are the same string slots,
+  // just renamed. The DB-backed per-company AI config wins over
+  // anything here when set.
   AI_PROVIDER_DEFAULT: z.enum(['anthropic', 'openai_compatible', 'ollama']).default('anthropic'),
-  AI_API_KEY: optionalEnvString(),
-  AI_MODEL: optionalEnvString(),
-  AI_BASE_URL: optionalEnvString(),
+  LLM_API_KEY: optionalEnvString(),
+  LLM_MODEL: optionalEnvString(),
+  LLM_ENDPOINT: optionalEnvString(),
 
   // ---------- Licensing ----------
   /** Master switch. When false (the default), the license middleware

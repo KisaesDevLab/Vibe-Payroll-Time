@@ -6,8 +6,9 @@
 ## Default ports follow the Vibe distribution convention so multiple Vibe apps
 ## can run side-by-side on the same dev workstation without colliding:
 ##   - Postgres → 5437 (was 5432)
+##   - Redis    → 6386 (was 6379)
 ##   - pgAdmin  → 5052 (was 5050)
-## Override either via .env if you need the legacy port.
+## Override any of these via .env if you need the legacy port.
 ##
 ## For multi-app testing, layer the grouped overlay:
 ##   docker compose -f docker-compose.yml -f docker-compose.grouped.yml up --build
@@ -33,6 +34,26 @@ services:
       timeout: 3s
       retries: 10
 
+  # Phase 14: Redis backs BullMQ queues (auto-clockout, missed-punch,
+  # license-heartbeat, retention-sweep). The four background jobs that
+  # used to be in-process node-cron now run through this. Standalone
+  # customers get it auto-provisioned; appliance deployments share the
+  # parent appliance's Redis instead via the appliance overlay.
+  redis:
+    image: redis:7-alpine
+    container_name: vibept-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PUBLISH_PORT:-6386}:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # Optional — bring up with `docker compose --profile tools up -d`
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -51,3 +72,4 @@ services:
 
 volumes:
   pgdata:
+  redisdata:

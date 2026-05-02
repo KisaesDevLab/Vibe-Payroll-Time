@@ -1,10 +1,24 @@
 // Copyright 2026 Kisaes LLC
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
-import cron from 'node-cron';
+import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { db } from '../../db/knex.js';
 import { notify } from './service.js';
+
+// Build a fully-qualified URL for outbound links. Relative paths (like
+// '/my-punch') become broken anchors when an email client renders the
+// HTML, so we prepend PUBLIC_URL when set; falling back to the first
+// ALLOWED_ORIGIN entry preserves pre-Phase-14 behavior for standalone
+// customers who haven't set PUBLIC_URL yet.
+function publicUrl(relativePath: string): string {
+  const base = (env.PUBLIC_URL ?? env.ALLOWED_ORIGIN.split(',')[0] ?? '')
+    .trim()
+    .replace(/\/+$/, '');
+  if (!base) return relativePath;
+  const path = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+  return `${base}${path}`;
+}
 
 /**
  * Sweep every 5 minutes. For each open entry older than the company's
@@ -79,7 +93,7 @@ export async function runMissedPunchSweep(): Promise<number> {
           companyName: r.company_name,
           startedAt: r.started_at.toISOString(),
           elapsedHours,
-          myPunchUrl: '/my-punch',
+          myPunchUrl: publicUrl('/my-punch'),
         },
       });
       sent += 1;
@@ -93,12 +107,4 @@ export async function runMissedPunchSweep(): Promise<number> {
     'missed-punch sweep complete',
   );
   return sent;
-}
-
-export function scheduleMissedPunchReminder(): () => void {
-  const task = cron.schedule('*/5 * * * *', () => {
-    runMissedPunchSweep().catch((err) => logger.error({ err }, 'missed-punch sweep threw'));
-  });
-  logger.info('missed-punch reminder sweep scheduled (every 5 minutes)');
-  return () => task.stop();
 }

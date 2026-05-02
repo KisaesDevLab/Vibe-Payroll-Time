@@ -1,7 +1,6 @@
 // Copyright 2026 Kisaes LLC
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
-import cron from 'node-cron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../config/logger.js';
@@ -99,12 +98,4 @@ export async function runRetentionSweep(): Promise<void> {
   await pruneExportFiles(since(RETENTION.payrollExportFileDays));
 
   logger.info({ elapsed: Date.now() - start }, 'retention sweep complete');
-}
-
-export function scheduleRetentionSweep(): () => void {
-  const task = cron.schedule('41 3 * * *', () => {
-    runRetentionSweep().catch((err) => logger.error({ err }, 'retention sweep threw'));
-  });
-  logger.info('retention sweep scheduled (03:41 UTC daily)');
-  return () => task.stop();
 }

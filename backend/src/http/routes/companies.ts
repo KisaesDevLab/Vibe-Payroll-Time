@@ -9,6 +9,7 @@ import {
   createKioskPairingCodeRequestSchema,
   csvImportRequestSchema,
   inviteMembershipRequestSchema,
+  renameKioskDeviceLocationRequestSchema,
   renameKioskDeviceRequestSchema,
   revokeBadgeRequestSchema,
   setEmployeePinRequestSchema,
@@ -51,6 +52,7 @@ import {
   listKioskDevices,
   renameKioskDevice,
   revokeKioskDevice,
+  setKioskDeviceLocation,
 } from '../../services/kiosk-pairing.js';
 import {
   inviteMembership,
@@ -684,6 +686,25 @@ companiesRouter.patch(
         companyIdFromParams(req),
         Number(req.params.deviceId),
         body.name,
+      );
+      res.json({ data: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.patch(
+  '/:companyId/kiosks/:deviceId/location',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      const body = renameKioskDeviceLocationRequestSchema.parse(req.body);
+      const updated = await setKioskDeviceLocation(
+        companyIdFromParams(req),
+        Number(req.params.deviceId),
+        body.locationLabel,
       );
       res.json({ data: updated });
     } catch (err) {

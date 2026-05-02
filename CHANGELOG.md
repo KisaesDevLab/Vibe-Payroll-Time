@@ -7,6 +7,177 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Phase 14.1: Appliance compatibility (PR 1)
+
+- **`/api/v1/ping`**: cheapest possible liveness probe — no DB, no Redis,
+  no service touch. Used by upstream load balancers (Caddy, HAProxy in
+  the appliance) to answer "is this Node process up?" without coupling
+  that signal to dependency health. `/health` and `/health/ready`
+  retain their pre-Phase-14 semantics.
+- **`PUBLIC_URL` env var**: canonical public origin embedded in
+  outbound URLs (magic-link emails, payroll-export downloads,
+  password resets). When set, wins over the request's host header so
+  emails point at the customer-facing domain even when the API is
+  reached through an internal Caddy/Tailscale hop. Falls back to the
+  first `ALLOWED_ORIGIN` entry when blank.
+- **`ALLOWED_ORIGIN` accepts regex entries**: each comma-separated
+  entry can be a literal origin or a slash-delimited regex
+  (e.g. `/^https:\/\/.*\.tailnet\.ts\.net$/`) so a single value
+  covers a Tailscale tailnet without rebuilding on every device join.
+- **BullMQ + Redis 7 background jobs**: the four cron-style jobs
+  (auto-clockout, missed-punch, license-heartbeat, retention-sweep)
+  migrated from in-process node-cron to BullMQ queues. Standalone
+  customers get a `redis:7-alpine` container in `docker-compose.yml`
+  and `docker-compose.prod.yml` automatically; `WORKER_ROLE=all`
+  default keeps scheduler+consumer in the API process so behavior is
+  unchanged. Worker heartbeats land at
+  `vpt:worker:heartbeat:<queue>:<host>:<pid>` with TTL; `/health`
+  reports per-queue worker status.
+- **Multi-arch GHCR images**: docker-publish workflow now builds for
+  `linux/amd64` and `linux/arm64`. Apple-Silicon developers and
+  Pi-class appliances get native binaries.
+- **GHCR image rename (with backward-compat aliases)**:
+  `ghcr.io/kisaesdevlab/vibe-payroll-time-server` and
+  `vibe-payroll-time-client` are the new canonical image paths.
+  Legacy `vibe-payroll-api` / `vibe-payroll-web` continue publishing
+  in parallel for one minor-release cycle. `docker-compose.prod.yml`
+  still references the legacy names; existing customers upgrade
+  without action.
+
+### Changed — Phase 14.1
+
+- **`CORS_ORIGIN` → `ALLOWED_ORIGIN`** and
+  **`MIGRATE_ON_BOOT` → `MIGRATIONS_AUTO`** for parity with sibling
+  Vibe apps. Both old and new names are read; if only the legacy
+  name is set, a single `[deprecated]` log line fires at boot. New
+  name wins when both are set. Old names will be removed in a future
+  minor release.
+- **Standalone install adds Redis**: `scripts/appliance/install.sh`
+  generates a `.env` containing `REDIS_URL=redis://redis:6379` and
+  the prod compose pulls in the redis service. No operator action
+  required on a fresh install.
+
+### Removed — Phase 14.1
+
+- **`node-cron` dependency**. The four schedulers replaced by BullMQ
+  repeatable jobs. The `run*()` business functions in `services/`
+  remained directly callable from a REPL or test for out-of-band
+  sweeps.
+
+### Added — Phase 14.2: TENANT_MODE + TZ/FLSA + AI/SMS env (PR 2)
+
+- **`TENANT_MODE` env var** (`single` | `multi`, default `multi`).
+  In `single` mode the API refuses to start if the database holds
+  more than one active company — operators get a clear error
+  instead of a multi-firm DB silently rendering as one. The
+  `/api/v1/appliance/info` endpoint exposes `tenantMode` so the
+  frontend can hide multi-firm UI affordances. Pair with `FIRM_NAME`
+  to pre-fill the setup wizard's company name on first boot.
+- **`employees.timezone`** column (nullable). Per-employee TZ
+  override for multi-state firms with remote employees in different
+  zones. Falls back to the firm timezone when null. The override is
+  intentionally scoped to per-row display formatting ("you punched
+  in at 9:00 AM in your time") and is NOT passed to the timesheet
+  summary builder — pay-period boundaries, civil-day grouping, and
+  FLSA workweek boundaries remain per-employer for legal
+  correctness and to keep admin/employee views in sync. The column
+  and resolver helper are plumbed; the per-row formatter ships in
+  a follow-up PR.
+- **DST regression tests**. New `shared/src/time-math/__tests__/dst.test.ts`
+  pins:
+  - 2025-03-09 spring-forward: a 01:30 → 03:30 wall-clock punch
+    reports 3600 seconds (one real hour), not 7200.
+  - 2025-11-02 fall-back: a 01:30 CDT → 01:30 CST punch reports
+    3600 seconds, doesn't double-count the repeated wall-clock hour.
+  - FLSA workweek boundaries stay 7 civil days through both
+    transitions.
+- **Non-Sunday workweek tests**. New tests confirm
+  `companies.week_start_day` is honored across the OT engine — a
+  Monday-start week puts the same Sunday in the previous workweek
+  instead of the current one.
+
+### Changed — Phase 14.2
+
+- **AI env var rename**: `LLM_API_KEY` / `LLM_MODEL` /
+  `LLM_ENDPOINT` are now the canonical names (matching sibling
+  Vibe apps). Legacy `AI_API_KEY` / `AI_MODEL` / `AI_BASE_URL`
+  continue to work; if only the legacy name is set, a single
+  `[deprecated]` log line fires at boot. New name wins when both
+  are set. `AI_PROVIDER_DEFAULT` keeps its current name. Old names
+  will be removed in a future minor release.
+- **`SMS_PROVIDER` env override**: appliance can now set
+  `SMS_PROVIDER=textlinksms` (or the alias `textlink`) and have it
+  used as the appliance-wide fallback when the
+  `appliance_settings.sms_provider` DB column is unset. `none` is
+  accepted and disables SMS for any flow without explicit
+  per-company creds.
+
+### Added — Phase 14.3: Appliance overlay + manifest + PWA (PR 3)
+
+- **`docker-compose.appliance.yml`**: appliance overlay used by
+  Vibe-Appliance (the parent product) to compose Vibe-Payroll-Time
+  alongside other Vibe apps behind a shared Caddy ingress. Single-
+  tenant (`TENANT_MODE=single`), shared Postgres + Redis via the
+  parent's `vibe_net` external network, workers split into a
+  dedicated `vibe-payroll-worker` container so a hot punch endpoint
+  can't starve background work. Volumes bind under
+  `/opt/vibe/data/apps/vibe-payroll-time/{uploads,exports,reports}`
+  for Duplicati visibility.
+- **`.appliance/manifest.json`**: appliance metadata with
+  `emergencyPort: 5192`, `kiosk` block documenting the stable-URL
+  guidance, `workers` block listing the four BullMQ queues, and a
+  corrected `firstLogin` block describing the actual `/setup`
+  setup-token wizard. Lists both new
+  (`vibe-payroll-time-server` / `-client`) and legacy
+  (`vibe-payroll-api` / `-web`) image names so the appliance
+  installer can prefer new and fall back to legacy during the
+  deprecation cycle.
+- **PWA service worker rewritten**: the prior Phase-4 stub at
+  `frontend/public/sw.js` is now a hand-rolled Workbox-style
+  worker. Three caches keyed by build version
+  (`payroll-time-shell-v<ver>`, `-assets-v<ver>`,
+  `-roster-v<ver>`) so each release purges the previous on
+  activate. Route-family strategies:
+  - App shell + entry bundles → cache-first SWR
+  - Static assets → cache-first long-lived
+  - Roster / schedule reads → network-first with 30-second
+    stale fallback (kiosk needs freshest roster, but a wifi blip
+    shouldn't break punch-in)
+  - Punch POSTs → network-only (Phase 5 offline queue plugs in
+    here)
+  - Cross-origin → pass-through
+- **Build-version sentinel + entrypoint**:
+  `frontend/docker-entrypoint.d/50-build-version.sh` substitutes
+  `__VIBE_BUILD_VERSION__` in the SW from the `APP_VERSION`
+  build-arg (semver tag in tagged builds, git SHA otherwise).
+  Same pattern as the existing `40-base-path.sh`; sed-substituted
+  at container startup.
+- **Kiosk `?location=` query param plumbing**: new migration
+  `20260420000038_kiosk_devices_location.js` adds a nullable
+  `location_label` column to `kiosk_devices`. New endpoint
+  `PATCH /api/v1/companies/:companyId/kiosks/:deviceId/location`
+  sets the label. The kiosk URL takes the form
+  `<base>/kiosk?location=<device-id>`; the label is a UI hint for
+  operators with multiple kiosks.
+- **HTTP-origin gates**: `frontend/src/lib/secure-context.ts`
+  exposes a single `isSecureContext()` predicate. The kiosk root
+  route renders an explainer page over plain HTTP instead of the
+  kiosk UI; SW registration silently skips (rather than logging a
+  cryptic browser error).
+
+### Verified — Phase 14.3 emergency-access audit
+
+- App middleware does not force HTTPS or require
+  `X-Forwarded-Proto: https`.
+- No host-header allowlist in app code (helmet's defaults are
+  harmless over HTTP — browsers ignore HSTS on plain HTTP
+  responses).
+- `COOKIE_SECURE` is plumbed through env but unused (auth is
+  bearer-token only); the appliance overlay sets it to `auto` so
+  a future cookie middleware lands with the right behavior.
+- New `src/http/routes/__tests__/ping.test.ts` regression test
+  asserts `/api/v1/ping` returns 200 with no DB or Redis context.
+
 ### Fixed — Extreme QA pass
 
 - **PWA manifest broke on deep SPA URLs**: `frontend/index.html` switched

@@ -14,8 +14,21 @@ export const kioskDeviceSchema = z.object({
   pairedAt: z.string().datetime(),
   lastSeenAt: z.string().datetime().nullable(),
   revokedAt: z.string().datetime().nullable(),
+  /** Phase 14.3 — free-text physical-location label ("Front Counter",
+   *  "Warehouse Bay 2") shown next to the kiosk URL in the admin UI
+   *  so an operator with multiple kiosks can tell them apart. The
+   *  URL itself is `<base>/kiosk?location=<id>` where `<id>` is this
+   *  row's `id`; the label is purely a UI hint. */
+  locationLabel: z.string().max(80).nullable(),
 });
 export type KioskDevice = z.infer<typeof kioskDeviceSchema>;
+
+export const renameKioskDeviceLocationRequestSchema = z.object({
+  locationLabel: z.union([z.string().min(1).max(80), z.null()]),
+});
+export type RenameKioskDeviceLocationRequest = z.infer<
+  typeof renameKioskDeviceLocationRequestSchema
+>;
 
 export const createKioskPairingCodeRequestSchema = z.object({
   name: z.string().max(100).optional(),

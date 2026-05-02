@@ -1,7 +1,6 @@
 // Copyright 2026 Kisaes LLC
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
-import cron from 'node-cron';
 import { logger } from '../config/logger.js';
 import { db } from '../db/knex.js';
 import type { TimeEntryRow } from './punch.js';
@@ -11,10 +10,10 @@ import type { TimeEntryRow } from './punch.js';
  * company's `auto_clockout_hours` setting and close them. Writes an
  * `auto_close` audit row per closure.
  *
- * Runs every 5 minutes. Single-process safe because node-cron serializes
- * per-schedule within the process. In a multi-process future, move the
- * scanning query behind a `pg_try_advisory_lock` to prevent concurrent
- * runs across instances.
+ * Triggered every 5 minutes by the BullMQ `vpt:auto-clockout` queue.
+ * Per-employee `pg_advisory_xact_lock` below prevents a concurrent
+ * human punch from racing the closure when multiple worker replicas
+ * run.
  */
 export async function runAutoClockoutSweep(): Promise<number> {
   const start = Date.now();
@@ -86,13 +85,4 @@ export async function runAutoClockoutSweep(): Promise<number> {
     'auto-clockout sweep complete',
   );
   return closed;
-}
-
-/** Schedule the sweep on a 5-minute cadence. Call once at boot. */
-export function scheduleAutoClockout(): () => void {
-  const task = cron.schedule('*/5 * * * *', () => {
-    runAutoClockoutSweep().catch((err) => logger.error({ err }, 'auto-clockout sweep threw'));
-  });
-  logger.info('auto-clockout sweep scheduled (every 5 minutes)');
-  return () => task.stop();
 }

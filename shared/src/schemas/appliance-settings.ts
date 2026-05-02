@@ -19,8 +19,22 @@ import { z } from 'zod';
 
 const logLevelEnum = z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']);
 const aiProviderEnum = z.enum(['anthropic', 'openai_compatible', 'ollama']);
-const smsProviderEnum = z.enum(['twilio', 'textlinksms']);
-export type SmsProvider = z.infer<typeof smsProviderEnum>;
+// Phase 14.2 — accept `textlink` as an inbound alias for the
+// canonical `textlinksms`. The internal codebase + DB column stay on
+// `textlinksms` (every fallback site assumes it); the alias is a
+// preprocess so request bodies and env vars from sibling Vibe apps
+// using the shorter name keep working without those callers having
+// to learn our naming.
+const smsProviderEnum = z.preprocess(
+  (value) => {
+    if (typeof value === 'string' && value.toLowerCase() === 'textlink') {
+      return 'textlinksms';
+    }
+    return value;
+  },
+  z.enum(['twilio', 'textlinksms']),
+);
+export type SmsProvider = 'twilio' | 'textlinksms';
 
 /** Where a resolved value came from — helps the UI show "using env fallback". */
 const sourceSchema = z.enum(['db', 'env', 'unset']);
@@ -159,6 +173,12 @@ export type TestSendResponse = z.infer<typeof testSendResponseSchema>;
 
 export const applianceInfoSchema = z.object({
   displayName: z.string(),
+  /** Phase 14.2 — `single` hides multi-firm UI affordances; `multi`
+   *  is the standalone default and behaves as pre-Phase-14. */
+  tenantMode: z.enum(['single', 'multi']),
+  /** Pre-fills the setup wizard's company name on first boot in
+   *  single mode. Null in multi mode or when FIRM_NAME is unset. */
+  firmName: z.string().nullable(),
 });
 export type ApplianceInfoResponse = z.infer<typeof applianceInfoSchema>;
 

@@ -35,7 +35,11 @@ export default defineConfig({
       APPLIANCE_ID: 'vitest',
       JWT_SECRET: 'test-jwt-secret-0123456789abcdef0123456789abcdef0123456789',
       SECRETS_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-      MIGRATE_ON_BOOT: 'false',
+      MIGRATIONS_AUTO: 'false',
+      // Tests don't run Redis. The four run*() business functions are
+      // tested directly; the BullMQ transport is exercised by the
+      // appliance integration smoke test, not by vitest.
+      WORKERS_ENABLED: 'false',
       POSTGRES_HOST: process.env.POSTGRES_HOST ?? 'localhost',
       POSTGRES_PORT: process.env.POSTGRES_PORT ?? '5437',
       POSTGRES_USER: process.env.POSTGRES_USER ?? 'vibept',

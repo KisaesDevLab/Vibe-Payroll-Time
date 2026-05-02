@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "slug": "vibe-payroll-time",
+  "displayName": "Vibe Payroll Time",
+  "description": "Employee time tracking with kiosk, PIN/QR auth, and payroll export",
+  "logo": "payroll-time.svg",
+  "userFacing": true,
+  "image": {
+    "server": "ghcr.io/kisaesdevlab/vibe-payroll-time-server",
+    "client": "ghcr.io/kisaesdevlab/vibe-payroll-time-client",
+    "defaultTag": "latest",
+    "legacyAliases": {
+      "server": "ghcr.io/kisaesdevlab/vibe-payroll-api",
+      "client": "ghcr.io/kisaesdevlab/vibe-payroll-web"
+    }
+  },
+  "ports": { "server": 3000, "client": 80 },
+  "subdomains": [
+    {
+      "name": "time",
+      "target": "vibe-payroll-client:80",
+      "audience": "default",
+      "emergencyPort": 5192,
+      "emergencyNote": "Staff-only emergency access. Kiosk mode does NOT work over emergency access — service workers require HTTPS. Wall-mounted kiosks must use the primary domain or Tailscale."
+    }
+  ],
+  "depends": ["postgres", "redis"],
+  "optionalDepends": ["vibe-glm-ocr"],
+  "publicUrlEnvVar": "PUBLIC_URL",
+  "websocket": false,
+  "env": {
+    "required": [
+      { "name": "JWT_SECRET", "generate": "hex32" },
+      { "name": "ENCRYPTION_KEY", "generate": "hex32", "mapsTo": "SECRETS_ENCRYPTION_KEY" },
+      { "name": "BADGE_SIGNING_SECRET", "generate": "hex32" },
+      {
+        "name": "DATABASE_URL",
+        "from": "shared-postgres-url",
+        "database": "vibe_payroll_time_db",
+        "user": "vibepayroll"
+      },
+      { "name": "REDIS_URL", "from": "shared-redis-url", "namespace": "payroll" },
+      { "name": "ALLOWED_ORIGIN", "from": "subdomain-url" },
+      { "name": "PUBLIC_URL", "from": "subdomain-url" },
+      { "name": "TZ", "default": "America/Chicago", "doc": "Host time zone (IANA name)" },
+      { "name": "TENANT_MODE", "default": "single", "doc": "Always single in appliance mode" },
+      { "name": "FIRM_NAME", "from": "customer-prompt", "default": "Default Firm" }
+    ],
+    "optional": [
+      {
+        "name": "SMS_PROVIDER",
+        "default": "none",
+        "doc": "twilio | textlinksms | textlink | none"
+      },
+      { "name": "EMAILIT_API_KEY", "secret": true },
+      { "name": "EMAILIT_FROM_EMAIL", "secret": false },
+      {
+        "name": "LLM_ENDPOINT",
+        "doc": "OpenAI-compatible endpoint URL; auto-detected if Vibe-GLM-OCR is enabled"
+      },
+      { "name": "LLM_API_KEY", "secret": true },
+      { "name": "LLM_MODEL", "doc": "Model id (e.g. claude-opus-4-7, qwen3-8b-instruct)" },
+      { "name": "WORKER_CONCURRENCY", "default": "2" },
+      { "name": "LOG_LEVEL", "default": "info" }
+    ]
+  },
+  "database": { "name": "vibe_payroll_time_db", "user": "vibepayroll" },
+  "firstLogin": {
+    "type": "setup-token-wizard",
+    "url": "/setup",
+    "note": "First-boot setup wizard at /setup creates the SuperAdmin and the firm-internal company in a single transaction. Gated on appliance_settings.installation_id and the absence of any super_admin row history. Once stamped, the setup endpoint refuses to run again — if the operator needs to reset, they must reset the database. The wizard pre-fills the company name from FIRM_NAME when set."
+  },
+  "health": "/api/v1/health",
+  "ping": "/api/v1/ping",
+  "migrations": {
+    "command": ["node", "dist/migrate.js"],
+    "autoEnvVar": "MIGRATIONS_AUTO"
+  },
+  "backup": {
+    "volumes": [
+      "vibe-payroll-time-uploads",
+      "vibe-payroll-time-exports",
+      "vibe-payroll-time-reports"
+    ],
+    "databases": ["vibe_payroll_time_db"]
+  },
+  "kiosk": {
+    "supported": true,
+    "stableUrlGuidance": "Wall-mounted kiosks must use the primary domain or Tailscale URL — service workers and PWA install both require HTTPS, so emergency :5192 access does not work for kiosk tablets. Document the chosen URL in CREDENTIALS.txt under 'Kiosk URL' for the customer's records. The kiosk URL takes the form `<base>/kiosk?location=<id>` where `<id>` is the kiosk-device row issued at pairing time."
+  },
+  "workers": {
+    "container": "vibe-payroll-worker",
+    "queues": [
+      "vpt:auto-clockout",
+      "vpt:missed-punch",
+      "vpt:license-heartbeat",
+      "vpt:retention-sweep"
+    ],
+    "note": "BullMQ-backed background jobs. The api container runs WORKER_ROLE=scheduler; the worker container runs WORKER_ROLE=worker. /api/v1/health reports per-queue heartbeat status under .data.workers."
+  }
+}

@@ -103,9 +103,11 @@ export async function getResolvedSmsProvider(): Promise<ResolvedSmsProvider> {
   }
   // If the operator picked a provider but didn't finish filling creds,
   // we still expose the picked provider so resolveSmsConfig can fall
-  // back to company creds. If they didn't pick anything, infer from
-  // whichever provider has complete creds.
+  // back to company creds. If they didn't pick anything, prefer the
+  // SMS_PROVIDER env override; failing that, infer from whichever
+  // provider has complete creds.
   let provider = row.sms_provider;
+  if (!provider && env.SMS_PROVIDER) provider = env.SMS_PROVIDER;
   if (!provider) {
     if (twilio) provider = 'twilio';
     else if (textlinksms) provider = 'textlinksms';
@@ -135,14 +137,16 @@ export interface ResolvedAI {
 
 export async function getResolvedAI(): Promise<ResolvedAI> {
   const row = await loadRow();
+  // Phase 14.2 env precedence: per-company DB row > LLM_* env (canonical) >
+  // AI_* env (legacy, resolved into LLM_* slots upstream by env.ts).
   const apiKey = row.ai_api_key_encrypted
     ? decryptSecret(row.ai_api_key_encrypted)
-    : (env.AI_API_KEY ?? null);
+    : (env.LLM_API_KEY ?? null);
   return {
     provider: row.ai_provider ?? env.AI_PROVIDER_DEFAULT,
     apiKey,
-    model: row.ai_model ?? env.AI_MODEL ?? null,
-    baseUrl: row.ai_base_url ?? env.AI_BASE_URL ?? null,
+    model: row.ai_model ?? env.LLM_MODEL ?? null,
+    baseUrl: row.ai_base_url ?? env.LLM_ENDPOINT ?? null,
   };
 }
 
@@ -182,9 +186,9 @@ export async function getApplianceSettingsForAdmin(): Promise<ApplianceSettings>
   const emailitApiBase = pick(row.emailit_api_base_url, env.EMAILIT_API_BASE_URL);
 
   const aiProvider = pick(row.ai_provider, env.AI_PROVIDER_DEFAULT);
-  const aiApiKey = pick(row.ai_api_key_encrypted ? 'stored' : null, env.AI_API_KEY ? 'env' : null);
-  const aiModel = pick(row.ai_model, env.AI_MODEL ?? null);
-  const aiBaseUrl = pick(row.ai_base_url, env.AI_BASE_URL ?? null);
+  const aiApiKey = pick(row.ai_api_key_encrypted ? 'stored' : null, env.LLM_API_KEY ? 'env' : null);
+  const aiModel = pick(row.ai_model, env.LLM_MODEL ?? null);
+  const aiBaseUrl = pick(row.ai_base_url, env.LLM_ENDPOINT ?? null);
 
   const retentionEnv = Number(process.env.RETENTION_DAYS);
   const retentionResolved = pick(

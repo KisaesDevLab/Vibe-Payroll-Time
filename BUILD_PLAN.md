@@ -404,10 +404,61 @@ Goal: the appliance is shippable, defensible in a CPA firm's vendor review, and 
 - [ ] Final CLAUDE.md refresh to reflect any architectural decisions made during build
 - [ ] Tag v1.0.0, write release notes, announce
 
+## Phase 14 — Appliance compatibility (one image, two modes)
+
+Goal: same GHCR images run cleanly in two deployment modes — today's standalone install (must not regress) and a new appliance mode where Vibe-Payroll-Time is composed alongside other Vibe apps behind a parent appliance with shared Postgres/Redis, single-tenant per appliance, and three documented access methods (primary domain, Tailscale, emergency `:5192`). Source spec: `vibe-payroll-time-compatibility-addendum.md`. Sequenced as three independently mergeable PRs.
+
+### Phase 14.1 — Common requirements + image rename + BullMQ migration (PR 1)
+
+- [x] Multi-arch buildx in `.github/workflows/docker-publish.yml` (`platforms: linux/amd64,linux/arm64`)
+- [x] Workflow publishes `ghcr.io/kisaesdevlab/vibe-payroll-time-server` and `…-client` and keeps tagging `vibe-payroll-api` / `vibe-payroll-web` for backward compat (same digest, multiple repo refs); CHANGELOG announces old-name deprecation with a removal target version
+- [x] Add `ALLOWED_ORIGIN` env (comma + regex), keep `CORS_ORIGIN` as alias; emit single `[deprecated]` log line if old name is read
+- [x] Add `MIGRATIONS_AUTO`, keep `MIGRATE_ON_BOOT` as alias with same deprecation logging
+- [x] Add `PUBLIC_URL` env; route email / export / magic-link URL builders through it instead of deriving from `CORS_ORIGIN`
+- [x] Add `/api/v1/ping` — no DB, no Redis touch — for HAProxy / upstream liveness
+- [x] Confirm pino prod-mode JSON output passes log-redaction regression (already wired)
+- [x] BullMQ migration:
+  - [x] Add `bullmq` + `ioredis` deps; new `REDIS_URL` env
+  - [x] New `backend/src/workers/` module with one queue per current cron domain: `auto-clockout`, `missed-punch`, `license-heartbeat`, `retention-sweep`
+  - [x] Producer: BullMQ repeat options replace `node-cron` invocations in `server.ts:49-52`
+  - [x] Consumer: `dist/worker.js` entrypoint runs the four queues in-process; concurrency from `WORKER_CONCURRENCY` env (default 2)
+  - [x] Worker heartbeats to Redis at `vpt:worker:heartbeat:<queue>:<host>:<pid>` with TTL; `/api/v1/health` reads them and reports per-queue status
+  - [x] `docker-compose.yml` (standalone) gains `redis:7-alpine` service with named volume + healthcheck; `scripts/appliance/install.sh` provisions Redis automatically
+  - [ ] Smoke test: install on fresh Ubuntu, queue runs, retention sweep fires at expected time _(deferred to appliance integration smoke; vitest covers the WORKERS_ENABLED=false short-circuit)_
+- [x] Update `CLAUDE.md` — reverse the "BullMQ NOT used v1" line; add brief appliance-parity rationale
+- [x] Document deprecations + new Redis dep in `.env.example`, `CHANGELOG.md`, and `docs/deployment.md`
+
+### Phase 14.2 — Tenant mode + TZ/FLSA + AI/SMS env plumbing (PR 2)
+
+- [x] Add `TENANT_MODE ∈ {single, multi}` env (default `multi` for standalone parity)
+- [x] In `single` mode, on first boot with no firms: auto-create firm using `FIRM_NAME`; first admin onboards via existing `/setup` token wizard; refuse to start if existing DB has > 1 firm; surface mode + firmName via `/appliance/info` so frontend can hide multi-firm UI affordances
+- [x] Migration: `employees.timezone` (nullable, falls back to firm TZ)
+- [x] Display layer reads most-specific TZ (employee → firm → host `TZ` env) — column + resolver helper plumbed; per-employee TZ scoped to row formatting only, NOT to summary buckets or FLSA workweeks (those stay per-employer for legal correctness)
+- [x] Confirm OT calculation honors `companies.week_start_day` for non-Sunday workweeks (test added)
+- [x] DST regression tests: 2025-03-09 spring-forward, 2025-11-02 fall-back, golden-file outputs
+- [x] Optional env override `LLM_ENDPOINT` / `LLM_API_KEY` / `LLM_MODEL` in addition to existing DB-backed per-company AI config (env wins when DB row absent); `AI_*` legacy names accepted with deprecation log
+- [x] Confirm `SMS_PROVIDER=textlink` works as alias for current internal `textlinksms`; new `SMS_PROVIDER` env override consulted when DB column null
+
+### Phase 14.3 — Appliance overlay + manifest + emergency + PWA (PR 3)
+
+- [x] `docker-compose.appliance.yml` per addendum §5.9, using new `vibe-payroll-time-server` / `-client` image names; include `vibe-payroll-worker` service (BullMQ consumer)
+- [x] `.appliance/manifest.json` per addendum §5.10 with `emergencyPort: 5192` and `kiosk` block; rewrite `firstLogin` to describe the actual `/setup` setup-token wizard (not the fictional `/register` self-register flow); `workers` block lists the four BullMQ queues
+- [x] Volume bind paths under `/opt/vibe/data/apps/vibe-payroll-time/{uploads,exports,reports}` for Duplicati visibility
+- [x] Service worker → hand-rolled Workbox-style; cache name versioned by build version (`payroll-time-{shell,assets,roster}-v<ver>`); route-family strategies (cache-first SWR shell, network-first 30s for roster/schedule, network-only for punch POSTs, long-lived for static assets); build version baked via `50-build-version.sh` entrypoint
+- [x] Kiosk URL: support `?location=<id>` query param via new `kiosk_devices.location_label` column + setter endpoint (admin UI surface deferred to follow-up)
+- [x] Emergency-access audit:
+  - [x] No in-app HTTPS-redirect (confirmed)
+  - [x] No `X-Forwarded-Proto: https` requirement (confirmed)
+  - [x] No host-header allowlist in app code (confirmed; helmet headers harmless over HTTP)
+  - [x] `COOKIE_SECURE=auto` plumbed in appliance overlay (auth is bearer-token only)
+  - [x] Detect HTTP origin → render kiosk explanatory page instead of kiosk UI
+  - [x] Detect HTTP origin → skip SW registration (no broken PWA install)
+- [ ] Acceptance: parent appliance test brings up `time.<test-domain>` with manager / employee / kiosk all working over primary + Tailscale; emergency `:5192` allows manager but blocks kiosk with the explainer page _(deferred to appliance integration smoke)_
+
 ---
 
 ## Running counts
 
-- Phases: 14 (0–13)
-- Checklist items: ~270 (significantly lighter than Vibe TB's 898 because no scheduling, no PTO, no payroll processing, no GPS, no state-specific compliance)
+- Phases: 15 (0–14)
+- Checklist items: ~310 (Phase 14 adds ~40 items for appliance compatibility on top of the v1 baseline)
 - Expected phase durations assume a single focused developer using Claude Code with `CLAUDE.md` context; your mileage may vary

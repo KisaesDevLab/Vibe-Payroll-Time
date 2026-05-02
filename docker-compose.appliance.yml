@@ -1,0 +1,171 @@
+## Vibe Payroll Time — appliance overlay
+##
+## Used by Vibe-Appliance (the parent product) to compose
+## Vibe-Payroll-Time alongside other Vibe apps behind a shared Caddy
+## ingress at https://time.<firm>.com. Single-tenant (one company per
+## appliance), shared Postgres + Redis (provided by the parent
+## appliance's stack via the `vibe_net` external network), workers
+## split out into a dedicated container.
+##
+## Standalone deployments do NOT use this file — they use
+## docker-compose.yml (dev) or docker-compose.prod.yml (prod), both
+## of which run their own Postgres + Redis and keep workers
+## in-process via WORKER_ROLE=all.
+##
+## Image names use the Phase 14 canonical
+##   ghcr.io/kisaesdevlab/vibe-payroll-time-server  (was vibe-payroll-api)
+##   ghcr.io/kisaesdevlab/vibe-payroll-time-client  (was vibe-payroll-web)
+## Both new and legacy images publish from the same docker-publish.yml
+## workflow during the deprecation cycle, so existing customers can
+## switch by editing this overlay's image refs without a rebuild.
+
+name: vibe-payroll-time-appliance
+
+services:
+  vibe-payroll-server:
+    image: ghcr.io/kisaesdevlab/vibe-payroll-time-server:${VIBE_PAYROLL_TAG:-latest}
+    container_name: vibe-payroll-server
+    networks: [vibe_net]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${VIBE_PAYROLL_LOG_LEVEL:-info}
+      APPLIANCE_ID: ${VIBE_PAYROLL_APPLIANCE_ID:?set VIBE_PAYROLL_APPLIANCE_ID}
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: 3000
+
+      # Ingress — the parent appliance's Caddy terminates TLS at the
+      # firm's public domain and proxies through to this container on
+      # the shared vibe_net network.
+      ALLOWED_ORIGIN: ${VIBE_PAYROLL_ALLOWED_ORIGIN:?set VIBE_PAYROLL_ALLOWED_ORIGIN}
+      PUBLIC_URL: ${VIBE_PAYROLL_PUBLIC_URL:?set VIBE_PAYROLL_PUBLIC_URL}
+
+      # Shared infra — provided by the parent appliance's stack.
+      DATABASE_URL: ${VIBE_PAYROLL_DATABASE_URL:?set VIBE_PAYROLL_DATABASE_URL}
+      REDIS_URL: ${VIBE_PAYROLL_REDIS_URL:?set VIBE_PAYROLL_REDIS_URL}
+
+      # Tenant mode — the appliance hosts exactly one firm per
+      # Vibe-Payroll-Time install. The boot guard refuses to start if
+      # the DB has more than one company, which catches an operator
+      # pointing the appliance at the wrong (multi-firm) database.
+      TENANT_MODE: 'single'
+      FIRM_NAME: ${VIBE_PAYROLL_FIRM_NAME:-}
+
+      # Worker role — appliance splits scheduler from consumer. The
+      # API container only enqueues jobs; the worker container below
+      # only consumes. Setting WORKER_ROLE=all on both would
+      # double-process every job.
+      WORKER_ROLE: 'scheduler'
+      WORKER_CONCURRENCY: ${VIBE_PAYROLL_WORKER_CONCURRENCY:-2}
+
+      # Migrations are gated. The parent appliance runs a one-shot
+      # migrate sidecar (or operator runs `npm run migrate`) before
+      # bringing the API up, so we don't race two replicas applying
+      # the same migration.
+      MIGRATIONS_AUTO: ${VIBE_PAYROLL_MIGRATIONS_AUTO:-false}
+
+      # Auth + crypto.
+      JWT_SECRET: ${VIBE_PAYROLL_JWT_SECRET:?set VIBE_PAYROLL_JWT_SECRET}
+      SECRETS_ENCRYPTION_KEY: ${VIBE_PAYROLL_ENCRYPTION_KEY:?set VIBE_PAYROLL_ENCRYPTION_KEY}
+      BADGE_SIGNING_SECRET: ${VIBE_PAYROLL_BADGE_SIGNING_SECRET:-}
+
+      # Emergency-access compatibility — the parent appliance exposes
+      # an HTTP-only :5192 fallback for staff-only emergency access
+      # when Caddy is down. Cookies stay bearer-token-only; this
+      # plumbing is reserved for a future cookie middleware.
+      COOKIE_SECURE: 'auto'
+
+      # Notifications.
+      EMAILIT_API_KEY: ${VIBE_PAYROLL_EMAILIT_API_KEY:-}
+      EMAILIT_FROM_EMAIL: ${VIBE_PAYROLL_EMAILIT_FROM_EMAIL:-}
+      EMAILIT_FROM_NAME: ${VIBE_PAYROLL_EMAILIT_FROM_NAME:-Vibe Payroll Time}
+      SMS_PROVIDER: ${VIBE_PAYROLL_SMS_PROVIDER:-none}
+
+      # AI / LLM. The parent appliance auto-discovers Vibe-GLM-OCR
+      # via service-discovery and injects LLM_ENDPOINT when both apps
+      # are enabled.
+      LLM_ENDPOINT: ${VIBE_PAYROLL_LLM_ENDPOINT:-}
+      LLM_API_KEY: ${VIBE_PAYROLL_LLM_API_KEY:-}
+      LLM_MODEL: ${VIBE_PAYROLL_LLM_MODEL:-}
+
+      # Timezone — default to America/Chicago to match the standalone
+      # default; firms in other zones override per-company in the
+      # admin UI (and per-employee for multi-state crews).
+      TZ: ${VIBE_PAYROLL_TZ:-America/Chicago}
+    volumes:
+      # Bind paths under /opt/vibe/data/apps/vibe-payroll-time/ so
+      # the parent appliance's Duplicati backup picks them up via its
+      # standard /opt/vibe/data tree walker.
+      - vibe-payroll-time-uploads:/app/uploads
+      - vibe-payroll-time-exports:/app/exports
+      - vibe-payroll-time-reports:/app/reports
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/api/v1/ping']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Phase 14 — dedicated worker container. Same image as the API,
+  # different entrypoint. Splits the four BullMQ queues (auto-clockout,
+  # missed-punch, license-heartbeat, retention-sweep) onto their own
+  # process so a hot punch endpoint can't starve background work.
+  vibe-payroll-worker:
+    image: ghcr.io/kisaesdevlab/vibe-payroll-time-server:${VIBE_PAYROLL_TAG:-latest}
+    container_name: vibe-payroll-worker
+    command: ['node', 'dist/worker.js']
+    networks: [vibe_net]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${VIBE_PAYROLL_LOG_LEVEL:-info}
+      APPLIANCE_ID: ${VIBE_PAYROLL_APPLIANCE_ID:?set VIBE_PAYROLL_APPLIANCE_ID}
+      DATABASE_URL: ${VIBE_PAYROLL_DATABASE_URL:?set VIBE_PAYROLL_DATABASE_URL}
+      REDIS_URL: ${VIBE_PAYROLL_REDIS_URL:?set VIBE_PAYROLL_REDIS_URL}
+      JWT_SECRET: ${VIBE_PAYROLL_JWT_SECRET:?set VIBE_PAYROLL_JWT_SECRET}
+      SECRETS_ENCRYPTION_KEY: ${VIBE_PAYROLL_ENCRYPTION_KEY:?set VIBE_PAYROLL_ENCRYPTION_KEY}
+      WORKER_ROLE: 'worker'
+      WORKER_CONCURRENCY: ${VIBE_PAYROLL_WORKER_CONCURRENCY:-2}
+      WORKERS_ENABLED: 'true'
+      MIGRATIONS_AUTO: 'false'
+      TZ: ${VIBE_PAYROLL_TZ:-America/Chicago}
+      EMAILIT_API_KEY: ${VIBE_PAYROLL_EMAILIT_API_KEY:-}
+      EMAILIT_FROM_EMAIL: ${VIBE_PAYROLL_EMAILIT_FROM_EMAIL:-}
+      EMAILIT_FROM_NAME: ${VIBE_PAYROLL_EMAILIT_FROM_NAME:-Vibe Payroll Time}
+      SMS_PROVIDER: ${VIBE_PAYROLL_SMS_PROVIDER:-none}
+    restart: unless-stopped
+    depends_on: [vibe-payroll-server]
+
+  vibe-payroll-client:
+    image: ghcr.io/kisaesdevlab/vibe-payroll-time-client:${VIBE_PAYROLL_TAG:-latest}
+    container_name: vibe-payroll-client
+    networks: [vibe_net]
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:80/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  vibe_net:
+    external: true
+
+volumes:
+  vibe-payroll-time-uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VIBE_DATA_ROOT:-/opt/vibe/data}/apps/vibe-payroll-time/uploads
+  vibe-payroll-time-exports:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VIBE_DATA_ROOT:-/opt/vibe/data}/apps/vibe-payroll-time/exports
+  vibe-payroll-time-reports:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VIBE_DATA_ROOT:-/opt/vibe/data}/apps/vibe-payroll-time/reports

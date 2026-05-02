@@ -48,8 +48,18 @@ COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 # in case the build context was checked out on Windows with
 # core.autocrlf=true.
 COPY frontend/docker-entrypoint.d/40-base-path.sh /docker-entrypoint.d/40-base-path.sh
+COPY frontend/docker-entrypoint.d/50-build-version.sh /docker-entrypoint.d/50-build-version.sh
 RUN sed -i 's/\r$//' /docker-entrypoint.d/40-base-path.sh \
- && chmod +x /docker-entrypoint.d/40-base-path.sh
+                    /docker-entrypoint.d/50-build-version.sh \
+ && chmod +x /docker-entrypoint.d/40-base-path.sh \
+             /docker-entrypoint.d/50-build-version.sh
+
+# Build version is baked at image build time via build-args and
+# re-exposed as runtime env so the 50-build-version.sh entrypoint can
+# substitute it into the service worker. Same pattern as APP_VERSION
+# on the backend image.
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

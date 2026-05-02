@@ -8,12 +8,13 @@ import { pinoHttp } from 'pino-http';
 import { API_PREFIX } from '@vibept/shared';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { parseAllowedOrigins } from '../config/public-url.js';
 import { errorHandler, notFoundHandler } from './errors.js';
 import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { authRouter } from './routes/auth.js';
 import { companiesRouter } from './routes/companies.js';
-import { applianceInfoRouter, healthRouter, versionRouter } from './routes/health.js';
+import { applianceInfoRouter, healthRouter, pingRouter, versionRouter } from './routes/health.js';
 import { kioskRouter } from './routes/kiosk.js';
 import { licensingRouter } from './routes/licensing.js';
 import { manualEntriesRouter } from './routes/manual-entries.js';
@@ -39,7 +40,7 @@ export function createApp(): Express {
   );
   app.use(
     cors({
-      origin: env.CORS_ORIGIN.split(',').map((o) => o.trim()),
+      origin: parseAllowedOrigins(env.ALLOWED_ORIGIN),
       credentials: true,
     }),
   );
@@ -56,6 +57,7 @@ export function createApp(): Express {
     }),
   );
 
+  app.use(`${API_PREFIX}/ping`, pingRouter);
   app.use(`${API_PREFIX}/health`, healthRouter);
   app.use(`${API_PREFIX}/version`, versionRouter);
   app.use(`${API_PREFIX}/appliance/info`, applianceInfoRouter);

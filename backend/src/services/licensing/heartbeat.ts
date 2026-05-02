@@ -2,7 +2,6 @@
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
 import { FREE_CLIENT_COMPANY_CAP } from '@vibept/shared';
-import cron from 'node-cron';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { db } from '../../db/knex.js';
@@ -91,17 +90,4 @@ export async function runLicenseHeartbeat(): Promise<number> {
     logger.warn({ err }, 'license heartbeat failed');
     return 0;
   }
-}
-
-/** Schedule at a quiet hour (04:17 local); returns a stop function. */
-export function scheduleLicenseHeartbeat(): () => void {
-  if (!env.LICENSE_PORTAL_HEARTBEAT_URL) {
-    logger.info('license heartbeat skipped (LICENSE_PORTAL_HEARTBEAT_URL unset)');
-    return () => undefined;
-  }
-  const task = cron.schedule('17 4 * * *', () => {
-    runLicenseHeartbeat().catch((err) => logger.error({ err }, 'license heartbeat threw'));
-  });
-  logger.info('license heartbeat scheduled (daily 04:17)');
-  return () => task.stop();
 }

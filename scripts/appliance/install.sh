@@ -429,6 +429,14 @@ POSTGRES_PASSWORD=$pgpass
 POSTGRES_DB=vibept
 DATABASE_URL=postgres://vibept:$pgpass@postgres:5432/vibept
 
+# Phase 14 — BullMQ-backed background jobs need Redis. The redis
+# service is brought up by docker-compose.prod.yml; the URL points at
+# its internal-network hostname.
+REDIS_URL=redis://redis:6379
+WORKERS_ENABLED=true
+WORKER_ROLE=all
+WORKER_CONCURRENCY=2
+
 JWT_SECRET=$jwt
 SECRETS_ENCRYPTION_KEY=$secrets
 BADGE_SIGNING_SECRET=$badge
@@ -436,7 +444,7 @@ BADGE_SIGNING_SECRET=$badge
 VITE_API_BASE_URL=/api/v1
 VITE_APP_NAME=Vibe Payroll Time
 
-MIGRATE_ON_BOOT=true
+MIGRATIONS_AUTO=true
 # Leave the boot-time seed off — the installer runs the seed once as a
 # one-shot post-install step if the operator opted in. Flipping this to
 # true makes every restart re-seed and wipe demo edits.

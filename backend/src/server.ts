@@ -8,16 +8,14 @@ import { runMigrations } from './db/migrate.js';
 import { runDemoSeed } from './db/seed-demo.js';
 import { waitForDb } from './db/wait.js';
 import { createApp } from './http/app.js';
-import { scheduleAutoClockout } from './services/auto-clockout.js';
-import { scheduleLicenseHeartbeat } from './services/licensing/heartbeat.js';
-import { scheduleMissedPunchReminder } from './services/notifications/missed-punch-cron.js';
-import { scheduleRetentionSweep } from './services/retention.js';
+import { enforceTenantMode } from './services/tenant-mode.js';
+import { startBackgroundJobs } from './workers/runtime.js';
 
 async function main() {
   logger.info('waiting for database');
   await waitForDb();
 
-  if (env.MIGRATE_ON_BOOT) {
+  if (env.MIGRATIONS_AUTO) {
     logger.info('running pending migrations');
     try {
       await runMigrations();
@@ -26,6 +24,11 @@ async function main() {
       throw err;
     }
   }
+
+  // Phase 14.2: refuse to boot in single-tenant mode against a
+  // multi-firm DB. Runs after migrations so the companies table is
+  // guaranteed to exist on a fresh install.
+  await enforceTenantMode();
 
   if (env.SEED_DEMO_ON_BOOT) {
     // The seed needs SECRETS_ENCRYPTION_KEY to produce PINs that the
@@ -46,10 +49,7 @@ async function main() {
   }
 
   const app = createApp();
-  const stopAutoClockout = scheduleAutoClockout();
-  const stopMissedPunch = scheduleMissedPunchReminder();
-  const stopLicenseHeartbeat = scheduleLicenseHeartbeat();
-  const stopRetention = scheduleRetentionSweep();
+  const backgroundJobs = await startBackgroundJobs();
   const server = app.listen(env.BACKEND_PORT, env.BACKEND_HOST, () => {
     logger.info(
       { host: env.BACKEND_HOST, port: env.BACKEND_PORT, env: env.NODE_ENV },
@@ -59,10 +59,7 @@ async function main() {
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
-    stopAutoClockout();
-    stopMissedPunch();
-    stopLicenseHeartbeat();
-    stopRetention();
+    await backgroundJobs.stop();
     server.close(() => logger.info('http server closed'));
     await closeDb();
     process.exit(0);

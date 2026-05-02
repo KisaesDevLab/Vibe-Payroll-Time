@@ -6,9 +6,15 @@ name: docker-publish
 # vibe-installer's apps/payroll stack pulls these tags via env-pinned
 # IMAGE_TAG knobs.
 #
-# Image names follow the Vibe distribution convention:
-#   vibe-payroll-api  — Express + Knex + BullMQ
-#   vibe-payroll-web  — nginx-served Vite SPA
+# Image names: Phase 14 standardizes on vibe-payroll-time-{server,client}
+# for cross-app uniformity with sibling Vibe apps. The legacy
+# vibe-payroll-{api,web} tags continue to publish in parallel for one
+# minor-release cycle so anyone who already pulled doesn't break.
+#   vibe-payroll-time-server / vibe-payroll-api — Express + Knex + BullMQ
+#   vibe-payroll-time-client / vibe-payroll-web — nginx-served Vite SPA
+#
+# After the deprecation window, drop the api/web entries from the
+# matrix.
 #
 # Triggers:
 #   - push to main      → :main, :sha-<shortsha>, :latest (rolling)
@@ -35,22 +41,35 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: api
-            image: vibe-payroll-api
+          # Each matrix entry builds ONE image and pushes it under TWO
+          # repo paths (canonical Phase 14 name + legacy alias). Same
+          # digest under both. Drop the legacy `image_legacy` after the
+          # deprecation cycle.
+          - name: server
+            image: vibe-payroll-time-server
+            image_legacy: vibe-payroll-api
             dockerfile: backend/Dockerfile
-          - name: web
-            image: vibe-payroll-web
+          - name: client
+            image: vibe-payroll-time-client
+            image_legacy: vibe-payroll-web
             dockerfile: frontend/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
       # GHCR is case-sensitive on the namespace; KisaesDevLab → kisaesdevlab.
-      - name: Compute lowercased image path
+      - name: Compute lowercased image paths
         id: img
         run: |
           OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           echo "ref=ghcr.io/$OWNER_LC/${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+          echo "ref_legacy=ghcr.io/$OWNER_LC/${{ matrix.image_legacy }}" >> "$GITHUB_OUTPUT"
 
+      # Phase 14 — multi-arch builds (amd64 + arm64). Apple-Silicon
+      # developers and Raspberry-Pi-class appliances now get native
+      # binaries instead of QEMU-emulated x86_64. QEMU adds ~5-10 min
+      # per build but we accept the cost for parity with sibling Vibe
+      # apps' release pipeline.
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -63,7 +82,14 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.img.outputs.ref }}
+          # Push to BOTH the canonical and legacy repo paths in one
+          # build. metadata-action expands each `tags:` entry across
+          # every `images:` ref, so a vX.Y.Z release tag publishes
+          # vibe-payroll-time-server:X.Y.Z AND vibe-payroll-api:X.Y.Z
+          # from the same digest.
+          images: |
+            ${{ steps.img.outputs.ref }}
+            ${{ steps.img.outputs.ref_legacy }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -83,10 +109,7 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
-          # GMKtec NucBox M6 (reference appliance) is x86_64. arm64 cross-
-          # build via QEMU adds ~5-10 min and isn't a current deployment
-          # target — flip on when a customer asks.
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |

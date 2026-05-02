@@ -23,6 +23,7 @@ interface KioskDeviceRow {
   last_seen_at: Date | null;
   revoked_at: Date | null;
   pairing_code_id: number | null;
+  location_label: string | null;
 }
 
 function rowToDevice(row: KioskDeviceRow): KioskDevice {
@@ -33,7 +34,36 @@ function rowToDevice(row: KioskDeviceRow): KioskDevice {
     pairedAt: row.paired_at.toISOString(),
     lastSeenAt: row.last_seen_at?.toISOString() ?? null,
     revokedAt: row.revoked_at?.toISOString() ?? null,
+    locationLabel: row.location_label ?? null,
   };
+}
+
+/** Set or clear a kiosk device's free-text location label. Pass null
+ *  to clear. The label is a UI hint only — the URL embeds the
+ *  device's row id, not the label.
+ *
+ *  Both the lookup AND the update WHERE-clauses include `company_id`
+ *  for defense-in-depth. The data model has no path that moves a
+ *  kiosk between companies, so a TOCTOU between the lookup and
+ *  update isn't exploitable today, but the doubled scope keeps the
+ *  function safe if a future endpoint introduces such a path. */
+export async function setKioskDeviceLocation(
+  companyId: number,
+  deviceId: number,
+  locationLabel: string | null,
+): Promise<KioskDevice> {
+  const existing = await db<KioskDeviceRow>('kiosk_devices')
+    .where({ company_id: companyId, id: deviceId })
+    .first();
+  if (!existing) throw NotFound('Kiosk device not found');
+  await db('kiosk_devices')
+    .where({ company_id: companyId, id: deviceId })
+    .update({ location_label: locationLabel });
+  const fresh = await db<KioskDeviceRow>('kiosk_devices')
+    .where({ company_id: companyId, id: deviceId })
+    .first();
+  if (!fresh) throw new Error('device vanished');
+  return rowToDevice(fresh);
 }
 
 function generatePairingCode(): string {

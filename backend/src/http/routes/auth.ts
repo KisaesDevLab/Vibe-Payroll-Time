@@ -134,19 +134,23 @@ authRouter.get('/magic/options', async (_req, res, next) => {
 authRouter.post('/magic/request', authRateLimiter, async (req, res, next) => {
   try {
     const body = magicLinkRequestSchema.parse(req.body);
-    // Prefer the client-supplied origin (window.location.origin) when
-    // it's on the CORS allowlist — otherwise the magic link points at
-    // the backend (4000) instead of the frontend (5180) in dev, or at
-    // an internal Caddy host in prod. An attacker can't redirect the
+    // Prefer PUBLIC_URL when set — that's the canonical operator-chosen
+    // origin for outbound links and is what we want appearing in magic
+    // links regardless of which internal hop processed the request.
+    // Otherwise prefer the client-supplied origin (window.location.origin)
+    // when it matches the ALLOWED_ORIGIN allowlist; failing that, fall
+    // back to the request's own host. An attacker can't redirect the
     // link by supplying a bogus origin because we verify against the
-    // CORS_ORIGIN env whitelist.
+    // ALLOWED_ORIGIN env whitelist.
     const { env } = await import('../../config/env.js');
-    const allowed = new Set(env.CORS_ORIGIN.split(',').map((o) => o.trim()));
+    const { resolvePublicOrigin } = await import('../../config/public-url.js');
     const hostOrigin = `${req.protocol}://${req.get('host') ?? ''}`;
-    const origin =
-      body.origin && allowed.has(body.origin.replace(/\/+$/, ''))
-        ? body.origin.replace(/\/+$/, '')
-        : hostOrigin;
+    const origin = resolvePublicOrigin({
+      publicUrl: env.PUBLIC_URL,
+      allowedOrigin: env.ALLOWED_ORIGIN,
+      clientOrigin: body.origin,
+      requestOrigin: hostOrigin,
+    });
     await requestMagicLink({
       identifier: body.identifier,
       channel: body.channel,
