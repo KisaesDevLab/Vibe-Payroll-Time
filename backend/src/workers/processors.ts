@@ -9,7 +9,7 @@ import { runLicenseHeartbeat } from '../services/licensing/heartbeat.js';
 import { runMissedPunchSweep } from '../services/notifications/missed-punch-cron.js';
 import { runRetentionSweep } from '../services/retention.js';
 import { getRedisConnection } from './connection.js';
-import { QUEUE_NAMES, type QueueName } from './queues.js';
+import { QUEUE_NAMES, QUEUE_PREFIX, type QueueName } from './queues.js';
 
 // Each processor is a thin adapter around the existing run*() function.
 // Keeping the business logic in services/ means BullMQ is purely a
@@ -45,6 +45,7 @@ export function startWorkers(): Worker[] {
   for (const queue of Object.values(QUEUE_NAMES)) {
     const worker = new Worker(queue, processors[queue], {
       connection,
+      prefix: QUEUE_PREFIX,
       concurrency: env.WORKER_CONCURRENCY,
     });
 

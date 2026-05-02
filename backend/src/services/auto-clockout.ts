@@ -10,7 +10,7 @@ import type { TimeEntryRow } from './punch.js';
  * company's `auto_clockout_hours` setting and close them. Writes an
  * `auto_close` audit row per closure.
  *
- * Triggered every 5 minutes by the BullMQ `vpt:auto-clockout` queue.
+ * Triggered every 5 minutes by the BullMQ `auto-clockout` queue (prefix `vpt`).
  * Per-employee `pg_advisory_xact_lock` below prevents a concurrent
  * human punch from racing the closure when multiple worker replicas
  * run.
