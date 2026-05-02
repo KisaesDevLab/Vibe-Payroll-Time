@@ -78,8 +78,13 @@ jobs:
           psql -h localhost -p 5437 -U vibept -d vibept \
             -c 'CREATE DATABASE vibept_test;'
       - name: Apply migrations to test database
+        # `knexfile.cjs`'s `test` env appends `_test` to whatever
+        # DATABASE_URL points at, so passing DATABASE_URL=...vibept_test
+        # would migrate `vibept_test_test`. Pass DATABASE_URL_TEST
+        # (which short-circuits the suffix logic) so knex uses the
+        # given URL verbatim.
         env:
-          DATABASE_URL: postgres://vibept:vibept_dev@localhost:5437/vibept_test
+          DATABASE_URL_TEST: postgres://vibept:vibept_dev@localhost:5437/vibept_test
         run: npm run migrate --workspace=backend
       - run: npm test
 
