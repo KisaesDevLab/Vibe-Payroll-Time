@@ -1,3 +1,5 @@
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/I3D3227TTP)
+
 # Vibe Payroll Time
 
 A self-hosted, multi-tenant **employee time tracking** appliance for hourly and
