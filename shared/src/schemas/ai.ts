@@ -17,6 +17,9 @@ export const aiSettingsSchema = z.object({
   aiBaseUrl: z.string().nullable(),
   aiApiKeyConfigured: z.boolean(),
   aiDailyCorrectionLimit: z.number().int().min(0).max(500),
+  /** Deployment-level AI mode (dual-mode, router-option addendum). In `router` mode the
+   *  provider/model/key fields above are inert — the Vibe AI Router's policy decides. */
+  aiMode: z.enum(['direct', 'router']).default('direct'),
 });
 export type AISettings = z.infer<typeof aiSettingsSchema>;
 

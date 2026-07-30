@@ -559,7 +559,18 @@ function AISection({ companyId }: { companyId: number }) {
         AI enabled for this company
       </label>
 
-      <div className="grid grid-cols-2 gap-4">
+      {effective.aiMode === 'router' && (
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          <span className="font-medium">Managed by Vibe AI Router.</span> This appliance routes AI
+          requests through the Vibe AI Router — model choice, provider keys, data protection, and
+          cost tracking are administered in the router console. The provider settings below are not
+          used while router mode is active.
+        </div>
+      )}
+
+      <div
+        className={`grid grid-cols-2 gap-4${effective.aiMode === 'router' ? ' pointer-events-none opacity-50' : ''}`}
+      >
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-slate-700">Provider</span>
           <select

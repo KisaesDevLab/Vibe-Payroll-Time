@@ -2,6 +2,7 @@
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
 import type { AISettings, UpdateAISettingsRequest } from '@vibept/shared';
+import { env } from '../../config/env.js';
 import { db } from '../../db/knex.js';
 import { Forbidden, NotFound } from '../../http/errors.js';
 import { getResolvedAI } from '../appliance-settings.js';
@@ -38,6 +39,7 @@ export async function getAISettings(companyId: number): Promise<AISettings> {
     aiBaseUrl: row.ai_base_url,
     aiApiKeyConfigured: !!row.ai_api_key_encrypted,
     aiDailyCorrectionLimit: row.ai_daily_correction_limit,
+    aiMode: env.VIBE_AI_MODE,
   };
 }
 
@@ -69,6 +71,7 @@ export async function updateAISettings(
       aiBaseUrl: fresh.ai_base_url,
       aiApiKeyConfigured: !!fresh.ai_api_key_encrypted,
       aiDailyCorrectionLimit: fresh.ai_daily_correction_limit,
+      aiMode: env.VIBE_AI_MODE,
     };
   });
 }
@@ -99,6 +102,16 @@ export async function resolveProviderConfig(companyId: number): Promise<Provider
   };
 }
 
+/**
+ * The company-level AI on/off switch, enforced in BOTH modes: router mode moves
+ * provider/model/scrubbing decisions to the router, but whether a company's staff
+ * may use AI features at all stays this app's call.
+ */
+export async function assertAIEnabled(companyId: number): Promise<void> {
+  const row = await loadRow(companyId);
+  if (!row.ai_enabled) throw Forbidden('AI features are disabled for this company');
+}
+
 export async function dailyCorrectionLimit(companyId: number): Promise<number> {
   const row = await loadRow(companyId);
   return row.ai_daily_correction_limit;
@@ -109,7 +122,8 @@ export async function recordTokenUsage(input: {
   companyId: number;
   userId: number | null;
   feature: 'nl_correction' | 'support_chat';
-  provider: ProviderConfig['provider'];
+  /** 'vibe_router' when the request went through the Vibe AI Router (dual-mode) */
+  provider: ProviderConfig['provider'] | 'vibe_router';
   model: string;
   promptTokens: number;
   completionTokens: number;

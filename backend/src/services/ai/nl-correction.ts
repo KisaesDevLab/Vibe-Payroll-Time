@@ -11,8 +11,14 @@ import type {
 import { db } from '../../db/knex.js';
 import { Conflict, Forbidden, NotFound } from '../../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow, deleteEntry, editEntry } from '../punch.js';
-import { dailyCorrectionLimit, recordTokenUsage, resolveProviderConfig } from './config.js';
-import { complete, type ToolDef } from './provider.js';
+import {
+  assertAIEnabled,
+  dailyCorrectionLimit,
+  recordTokenUsage,
+  resolveProviderConfig,
+} from './config.js';
+import { complete, type ProviderConfig, type ToolDef } from './provider.js';
+import { aiMode, completeViaRouter, ROUTER_TASK_CLASSES } from './router-mode.js';
 import { sanitizeUserInput, detectInjectionHeuristic } from './sanitize.js';
 
 // ---------------------------------------------------------------------------
@@ -156,11 +162,19 @@ export async function previewNLCorrection(
   body: NLCorrectionRequest,
 ): Promise<NLCorrectionPreview> {
   const { selfEdit } = await authorizeForEmployee(actor, body.employeeId);
-  const cfg = await resolveProviderConfig(actor.companyId);
-  if (cfg.provider !== 'anthropic') {
-    throw Conflict(
-      'Natural-language corrections require Anthropic; configure it in AI settings or use manager edits directly.',
-    );
+  // Router mode: tool-capable model selection is router policy's job (the task class
+  // declares requires.tools, so the router refuses config that can't serve it). The
+  // Anthropic-only restriction is a DIRECT-mode limitation of this app's providers.
+  let cfg: ProviderConfig | undefined;
+  if (aiMode() === 'router') {
+    await assertAIEnabled(actor.companyId);
+  } else {
+    cfg = await resolveProviderConfig(actor.companyId);
+    if (cfg.provider !== 'anthropic') {
+      throw Conflict(
+        'Natural-language corrections require Anthropic; configure it in AI settings or use manager edits directly.',
+      );
+    }
   }
   const limit = await dailyCorrectionLimit(actor.companyId);
   await incrementDailyUse(actor.companyId, body.employeeId, limit);
@@ -201,19 +215,34 @@ ${flagged ? '- The user prompt contained language that may be a prompt-injection
 The employee's timesheet for ${body.periodStart} → ${body.periodEnd} (durations in seconds):
 ${JSON.stringify(summaryForLLM, null, 2)}`;
 
-  const response = await complete(cfg, {
+  const input = {
     system,
-    messages: [{ role: 'user', content: prompt }],
+    messages: [{ role: 'user' as const, content: prompt }],
     tools: TOOLS,
     maxTokens: 2048,
-  });
+  };
+  let response: Awaited<ReturnType<typeof complete>>;
+  let providerUsed: Parameters<typeof recordTokenUsage>[0]['provider'];
+  let modelUsed: string;
+  if (cfg === undefined) {
+    const routed = await completeViaRouter(ROUTER_TASK_CLASSES.NL_CORRECTION, input, {
+      userId: String(actor.userId),
+    });
+    response = routed;
+    providerUsed = 'vibe_router';
+    modelUsed = routed.model;
+  } else {
+    response = await complete(cfg, input);
+    providerUsed = cfg.provider;
+    modelUsed = cfg.model;
+  }
 
   await recordTokenUsage({
     companyId: actor.companyId,
     userId: actor.userId,
     feature: 'nl_correction',
-    provider: cfg.provider,
-    model: cfg.model,
+    provider: providerUsed,
+    model: modelUsed,
     promptTokens: response.tokens.prompt,
     completionTokens: response.tokens.completion,
   });

@@ -7,6 +7,25 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — MIG-7: Vibe AI Router as an option (dual-mode)
+
+- **`VIBE_AI_MODE=router`** sends all AI traffic (NL corrections, support chat)
+  through the appliance's Vibe AI Router: the app stops choosing providers and
+  models — task classes + router policy decide — and scrubbing, budgets, audit,
+  and cost tracking move to the router console. `direct` (default) is the
+  standalone single-install behavior, unchanged. No silent cross-mode fallback;
+  router mode without `VIBE_AI_ROUTER_URL` + `VIBE_AI_TOKEN` refuses to boot.
+- Task classes `payroll_nl_correction` (requires tools) and
+  `payroll_support_chat` register idempotently at boot in router mode and start
+  `local_only` on the router (SSNs + wages stay on the appliance until an admin
+  explicitly widens them).
+- In router mode the NL-correction feature no longer requires an Anthropic key —
+  any tool-capable model the router policy assigns works, including local ones.
+- Company AI settings show a "Managed by Vibe AI Router" banner (provider/model/
+  key fields inert) while router mode is active; the company-level AI on/off
+  switch and daily correction limits still apply in both modes.
+- Vendored `@kisaes/vibe-ai-client` 0.2.0 (single dependency-free file).
+
 ### Added — Phase 14.1: Appliance compatibility (PR 1)
 
 - **`/api/v1/ping`**: cheapest possible liveness probe — no DB, no Redis,

@@ -231,6 +231,17 @@ const envSchema = z.object({
   LLM_MODEL: optionalEnvString(),
   LLM_ENDPOINT: optionalEnvString(),
 
+  // ---------- Vibe AI Router (dual-mode, router-option addendum Q-063/Q-064) ----------
+  /** `router` sends ALL AI traffic through the appliance's Vibe AI Router — the app stops
+   *  choosing providers/models; task classes + router policy decide, and the provider
+   *  settings above (and per-company DB config) become inert. `direct` (default) is the
+   *  standalone/single-install behavior. */
+  VIBE_AI_MODE: z.enum(['direct', 'router']).default('direct'),
+  /** e.g. http://vibe-ai-router:8220 (internal docker DNS on the appliance) */
+  VIBE_AI_ROUTER_URL: optionalEnvString(),
+  /** app token minted in the router console — never a provider key */
+  VIBE_AI_TOKEN: optionalEnvString(),
+
   // ---------- Licensing ----------
   /** Master switch. When false (the default), the license middleware
    *  short-circuits every check to pass — the appliance runs fully
@@ -250,7 +261,19 @@ const envSchema = z.object({
   LICENSE_PORTAL_HEARTBEAT_URL: optionalEnvString(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const envSchemaChecked = envSchema.superRefine((v, ctx) => {
+  // Router mode without an address/token cannot work and MUST NOT silently fall back to
+  // direct mode (that would ship raw prompts around the router's scrubber). Refuse to boot.
+  if (v.VIBE_AI_MODE === 'router' && (!v.VIBE_AI_ROUTER_URL || !v.VIBE_AI_TOKEN)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['VIBE_AI_MODE'],
+      message: 'VIBE_AI_MODE=router requires VIBE_AI_ROUTER_URL and VIBE_AI_TOKEN',
+    });
+  }
+});
+
+const parsed = envSchemaChecked.safeParse(process.env);
 
 if (!parsed.success) {
   // Surface the first issue clearly; the app cannot boot without valid config.

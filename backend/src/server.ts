@@ -8,6 +8,7 @@ import { runMigrations } from './db/migrate.js';
 import { runDemoSeed } from './db/seed-demo.js';
 import { waitForDb } from './db/wait.js';
 import { createApp } from './http/app.js';
+import { registerRouterTaskClasses } from './services/ai/router-mode.js';
 import { enforceTenantMode } from './services/tenant-mode.js';
 import { startBackgroundJobs } from './workers/runtime.js';
 
@@ -49,6 +50,9 @@ async function main() {
   }
 
   const app = createApp();
+  // Router mode: declare this app's task classes (idempotent; retries in the background —
+  // on the appliance this backend regularly starts before the router is healthy).
+  registerRouterTaskClasses();
   const backgroundJobs = await startBackgroundJobs();
   const server = app.listen(env.BACKEND_PORT, env.BACKEND_HOST, () => {
     logger.info(
