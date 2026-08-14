@@ -106,11 +106,22 @@ export const membershipSchema = z.object({
 });
 export type Membership = z.infer<typeof membershipSchema>;
 
+/** Exactly one of `initialPassword` / `sendInvite` is required when the
+ *  email is new to the appliance — but "is it new" is a server-side
+ *  question, so that rule is enforced in `inviteMembership`, not here. */
 export const inviteMembershipRequestSchema = z.object({
   email: z.string().email().max(254),
   role: z.enum(['company_admin', 'supervisor', 'employee']),
   /** If the email is new to the appliance, a user account is created with
    *  this initial password. The admin communicates it out-of-band. */
   initialPassword: z.string().min(12).max(256).optional(),
+  /** Skip the shared-password dance entirely: create the account with a
+   *  random password nobody ever sees, and let the new member set their
+   *  own via an emailed/texted sign-in link. The admin follows up with
+   *  `POST .../memberships/:id/send-link`.
+   *
+   *  Preferred for hourly staff — a password the admin reads aloud and
+   *  never rotates is the worst credential in the building. */
+  sendInvite: z.boolean().optional().default(false),
 });
 export type InviteMembershipRequest = z.infer<typeof inviteMembershipRequestSchema>;

@@ -6,6 +6,7 @@ import type { AdminUser, AdminUsersResponse, CompanyRole } from '@vibept/shared'
 import { useMemo, useState } from 'react';
 import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
+import { SendLinkMenu } from '../components/SendLinkMenu';
 import { TopBar } from '../components/TopBar';
 import { ApiError } from '../lib/api';
 import { admin } from '../lib/resources';
@@ -72,6 +73,7 @@ export function AllUsersPage(): JSX.Element {
                   <th className="px-4 py-3 text-left font-medium">Role</th>
                   <th className="px-4 py-3 text-left font-medium">Memberships</th>
                   <th className="px-4 py-3 text-left font-medium">Last login</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -118,11 +120,21 @@ export function AllUsersPage(): JSX.Element {
                     <td className="px-4 py-3 text-xs text-slate-500">
                       {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}
                     </td>
+                    {/* The row itself opens the memberships drawer, so
+                        swallow clicks here — otherwise every menu
+                        interaction also yanks the drawer open. */}
+                    <td
+                      className="px-4 py-3 text-right"
+                      onClick={(e) => e.stopPropagation()}
+                      role="presentation"
+                    >
+                      <SendLinkMenu send={(body) => admin.sendUserLink(u.id, body)} />
+                    </td>
                   </tr>
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
                       No users match the current filter.
                     </td>
                   </tr>

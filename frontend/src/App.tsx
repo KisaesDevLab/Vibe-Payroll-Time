@@ -25,6 +25,7 @@ import { LoginPage } from './pages/LoginPage';
 import { MagicLinkConsumePage } from './pages/MagicLinkConsumePage';
 import { MyPunchPage } from './pages/MyPunchPage';
 import { MyTimesheetPage } from './pages/MyTimesheetPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { NotificationPreferencesPage } from './pages/NotificationPreferencesPage';
 import { NotificationsLogPage } from './pages/NotificationsLogPage';
 import { PayrollExportsPage } from './pages/PayrollExportsPage';
@@ -107,6 +108,11 @@ export function App() {
             point is to MINT a session. Even if the user already has
             one, hit consume so the new token rotates them in. */}
         <Route path="/auth/magic" element={<MagicLinkConsumePage />} />
+        {/* Password-reset callback. Same token exchange as /auth/magic,
+            but requires a new password before releasing the user into
+            the app — see ResetPasswordPage. Also unauthenticated for
+            the same reason. */}
+        <Route path="/auth/reset" element={<ResetPasswordPage />} />
         <Route path="/setup" element={<Navigate to="/" replace />} />
 
         <Route path="/kiosk" element={<KioskRoot />} />

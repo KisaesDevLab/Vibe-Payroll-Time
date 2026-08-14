@@ -9,6 +9,7 @@ import type {
   Employee,
   EmployeeBadgeState,
   IssueBadgeResponse,
+  MagicLinkOptionsResponse,
   UpdateEmployeeRequest,
 } from '@vibept/shared';
 import { useState } from 'react';
@@ -17,7 +18,8 @@ import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
 import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
-import { ApiError } from '../lib/api';
+import { SendLinkMenu } from '../components/SendLinkMenu';
+import { ApiError, apiFetch } from '../lib/api';
 import { badges as badgesApi, employees as employeesApi } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
@@ -266,10 +268,67 @@ function CreateEmployeeModal({
     pinLength: 6,
   });
 
-  const create = useMutation({
-    mutationFn: () => employeesApi.create(companyId, form),
-    onSuccess: (res) => onCreated(res.plaintextPin, res.employee.id),
+  // Invite-on-create. Both default off: creating an employee record and
+  // granting them a web login are separate decisions, and plenty of
+  // hourly staff are kiosk-only by design.
+  const [inviteEmail, setInviteEmail] = useState(false);
+  const [inviteSms, setInviteSms] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const options = useQuery({
+    queryKey: ['magic-options'],
+    queryFn: () => apiFetch<MagicLinkOptionsResponse>('/auth/magic/options', { anonymous: true }),
+    staleTime: 60_000,
+    retry: false,
   });
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const res = await employeesApi.create(companyId, form);
+
+      // Send after the record exists, one call per chosen channel. The
+      // first one creates the web login (createLogin), the second finds
+      // it already there — so ticking both doesn't make two accounts.
+      const channels: Array<'email' | 'sms'> = [
+        ...(inviteEmail ? (['email'] as const) : []),
+        ...(inviteSms ? (['sms'] as const) : []),
+      ];
+      const problems: string[] = [];
+      for (const channel of channels) {
+        try {
+          const sent = await employeesApi.sendLink(companyId, res.employee.id, {
+            channel,
+            purpose: 'login',
+            createLogin: true,
+          });
+          if (sent.status !== 'sent' && sent.status !== 'queued') {
+            problems.push(
+              `${channel}: not sent (${sent.status})${sent.error ? ` — ${sent.error}` : ''}`,
+            );
+          }
+        } catch (err) {
+          // Never fail the whole create over a delivery problem — the
+          // employee record is the thing that matters and it already
+          // exists. Report it and let them retry from the drawer.
+          problems.push(`${channel}: ${err instanceof ApiError ? err.message : 'send failed'}`);
+        }
+      }
+      return { res, problems };
+    },
+    onSuccess: ({ res, problems }) => {
+      if (problems.length > 0) {
+        setNotice(
+          `Employee created, but the invite didn't go out — ${problems.join('; ')}. ` +
+            'Open their record and use "Send sign-in link" to retry.',
+        );
+        return;
+      }
+      onCreated(res.plaintextPin, res.employee.id);
+    },
+  });
+
+  const emailAvailable = !!options.data?.emailEnabled;
+  const smsAvailable = !!options.data?.smsEnabled;
 
   return (
     <Modal
@@ -283,7 +342,11 @@ function CreateEmployeeModal({
           </Button>
           <Button
             loading={create.isPending}
-            disabled={!form.firstName || !form.lastName}
+            // Either invite channel needs an email address: the login
+            // account is keyed on it, even when the link goes by text.
+            disabled={
+              !form.firstName || !form.lastName || ((inviteEmail || inviteSms) && !form.email)
+            }
             onClick={() => create.mutate()}
           >
             Create
@@ -329,6 +392,76 @@ function CreateEmployeeModal({
           />
           Generate kiosk PIN on creation
         </label>
+
+        <fieldset className="rounded-md border border-slate-200 p-3">
+          <legend className="px-1 text-xs font-medium uppercase tracking-widest text-slate-500">
+            Web login invite
+          </legend>
+          <p className="mb-2 text-xs text-slate-600">
+            Optional. Creates a login for this person and sends a link so they choose their own
+            password. Leave both off for kiosk-only staff.
+          </p>
+
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={inviteEmail}
+              disabled={!emailAvailable || !form.email}
+              onChange={(e) => setInviteEmail(e.target.checked)}
+            />
+            Email them a sign-in link
+          </label>
+          {!form.email && (
+            <p className="pl-6 text-xs text-slate-500">Add an email address above to enable.</p>
+          )}
+          {form.email && !emailAvailable && (
+            <p className="pl-6 text-xs text-slate-500">
+              No email transport configured on this appliance.
+            </p>
+          )}
+
+          <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={inviteSms}
+              disabled={!smsAvailable || !form.phone}
+              onChange={(e) => setInviteSms(e.target.checked)}
+            />
+            Text them a sign-in link
+          </label>
+          {!form.phone && (
+            <p className="pl-6 text-xs text-slate-500">Add a phone number above to enable.</p>
+          )}
+          {form.phone && !smsAvailable && (
+            <p className="pl-6 text-xs text-slate-500">
+              No SMS provider configured for this company or appliance.
+            </p>
+          )}
+
+          {/* A new hire has no way to verify a number until they can sign
+              in, and this text is how they sign in — so the send goes to
+              an unconfirmed number by design. Say so: a mistyped digit
+              delivers a working sign-in link to a stranger. */}
+          {inviteSms && (
+            <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+              This texts a number nobody has confirmed yet. Double-check the digits before creating.
+            </p>
+          )}
+
+          {!form.email && inviteSms && (
+            <p className="mt-2 text-xs text-slate-600">
+              An email address is still required — it's the identity of the login account.
+            </p>
+          )}
+        </fieldset>
+
+        {notice && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            {notice}
+          </div>
+        )}
         {create.isError && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {create.error instanceof ApiError ? create.error.message : 'Create failed.'}
@@ -583,6 +716,7 @@ function EmployeeDetailDrawer({
             {new Date(employee.createdAt).toLocaleDateString()}
           </dd>
         </dl>
+        <EmployeeLoginPanel companyId={companyId} employee={employee} onChanged={onChanged} />
         <EmployeeBadgePanel
           companyId={companyId}
           employee={employee}
@@ -608,6 +742,128 @@ function EmployeeDetailDrawer({
         />
       )}
     </Drawer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Web login
+// ---------------------------------------------------------------------------
+
+/**
+ * Sign-in link / password reset, from the employee record.
+ *
+ * The same actions exist on the Team page, but Team is keyed on user
+ * accounts — an admin looking at a person's employee record shouldn't
+ * have to go find their membership row by email to send them a
+ * password reset. Three states:
+ *
+ *   - linked to a user account  → send / re-send anything
+ *   - no account, has an email  → offer to create one and invite
+ *   - no account, no email      → kiosk-only; explain, don't nag
+ */
+function EmployeeLoginPanel({
+  companyId,
+  employee,
+  onChanged,
+}: {
+  companyId: number;
+  employee: Employee;
+  onChanged: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const invite = useMutation({
+    mutationFn: (channel: 'email' | 'sms') =>
+      employeesApi.sendLink(companyId, employee.id, {
+        channel,
+        purpose: 'login',
+        createLogin: true,
+      }),
+    onMutate: () => {
+      setError(null);
+      setNotice(null);
+    },
+    onSuccess: (r) => {
+      const delivered = r.status === 'sent' || r.status === 'queued';
+      setNotice(
+        delivered
+          ? `${r.loginCreated ? 'Login created. ' : ''}Sign-in link sent to ${r.sentTo}.` +
+              (r.phoneUnverified ? ' (unconfirmed number — check the digits)' : '')
+          : `Not sent (${r.status})${r.error ? ` — ${r.error}` : ''}.`,
+      );
+      // The employee row now carries a user_id; refresh so the panel
+      // switches to its linked state without a manual reload.
+      if (r.loginCreated) onChanged();
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not send the link.'),
+  });
+
+  if (employee.userId) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Web login</p>
+            <p className="text-xs text-slate-600">
+              Enabled · signs in at the app with {employee.email ?? 'their email'}
+            </p>
+          </div>
+          <SendLinkMenu
+            send={(body) => employeesApi.sendLink(companyId, employee.id, body)}
+            label="Send link"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <p className="text-sm font-semibold text-slate-900">Web login</p>
+
+      {!employee.email ? (
+        <p className="mt-1 text-xs text-slate-600">
+          Not set up. This employee punches at a kiosk with their PIN or badge. Add an email address
+          above and save to enable web sign-in.
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-slate-600">
+            Not set up. Create a login and send {employee.firstName} a link to choose their own
+            password.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={invite.isPending || employee.status !== 'active'}
+              onClick={() => invite.mutate('email')}
+              className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+            >
+              Create login & email link
+            </button>
+            {employee.phone && (
+              <button
+                type="button"
+                disabled={invite.isPending || employee.status !== 'active'}
+                onClick={() => invite.mutate('sms')}
+                className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+              >
+                Create login & text link
+              </button>
+            )}
+          </div>
+          {employee.status !== 'active' && (
+            <p className="mt-2 text-xs text-slate-500">
+              Reactivate this employee first — terminated staff can't be given a login.
+            </p>
+          )}
+        </>
+      )}
+
+      {notice && <p className="mt-2 text-xs text-emerald-700">{notice}</p>}
+      {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+    </div>
   );
 }
 

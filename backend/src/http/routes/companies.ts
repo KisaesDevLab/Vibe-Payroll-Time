@@ -12,6 +12,8 @@ import {
   renameKioskDeviceLocationRequestSchema,
   renameKioskDeviceRequestSchema,
   revokeBadgeRequestSchema,
+  sendAccountLinkRequestSchema,
+  sendEmployeeLinkRequestSchema,
   setEmployeePinRequestSchema,
   updateCompanyRequestSchema,
   updateCompanySettingsRequestSchema,
@@ -60,7 +62,9 @@ import {
   revokeMembership,
   updateMembershipRole,
 } from '../../services/memberships.js';
-import { Forbidden, Unauthorized } from '../errors.js';
+import { db } from '../../db/knex.js';
+import { BadRequest, Forbidden, NotFound, Unauthorized } from '../errors.js';
+import { originForRequest } from '../outbound-origin.js';
 import { requireAuth, requireCompanyRole, requireSuperAdmin } from '../middleware/auth.js';
 
 export const companiesRouter: Router = Router({ mergeParams: true });
@@ -273,6 +277,147 @@ companiesRouter.delete(
     try {
       await revokeMembership(companyIdFromParams(req), Number(req.params.membershipId));
       res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * Send (or re-send) a sign-in or password-reset link to a member.
+ *
+ * This is the delivery half of the invite flow. `POST /memberships`
+ * creates the account but tells nobody it exists — before this endpoint
+ * the admin had to read an initial password off their screen and pass
+ * it along out-of-band, once, with no way to re-send if it never
+ * landed. Now they can hand over a self-service link instead, as many
+ * times as it takes.
+ *
+ * Authorization: company_admin on THIS company, and the membership must
+ * belong to it — a company admin at Acme must not be able to mint a
+ * login link for a user whose only membership is at Bob's Landscaping
+ * by guessing membership ids. `resolveMembershipUser` enforces the
+ * company scope in the lookup itself rather than trusting the id.
+ */
+companiesRouter.post(
+  '/:companyId/memberships/:membershipId/send-link',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const membershipId = Number(req.params.membershipId);
+      if (!Number.isFinite(membershipId) || membershipId <= 0) {
+        return next(NotFound('Membership not found'));
+      }
+      const body = sendAccountLinkRequestSchema.parse(req.body ?? {});
+
+      const membership = await db('company_memberships')
+        .where({ id: membershipId, company_id: companyIdFromParams(req) })
+        .first<{ user_id: number }>();
+      if (!membership) return next(NotFound('Membership not found'));
+
+      const { sendAccountLink } = await import('../../services/magic-links.js');
+      const result = await sendAccountLink({
+        targetUserId: membership.user_id,
+        channel: body.channel,
+        purpose: body.purpose,
+        origin: originForRequest(req, body.origin),
+        actorUserId: req.user.id,
+        ip: req.ip ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+      });
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * Send a sign-in / password-reset link from the EMPLOYEE record, rather
+ * than from the Team membership row.
+ *
+ * Same underlying send, different starting point — and the starting
+ * point matters, because the Employees page is where an admin actually
+ * manages a person. Making them cross-reference a Team row by email to
+ * do something about the human whose record is open in front of them is
+ * the friction this endpoint removes.
+ *
+ * The wrinkle the Team route doesn't have: an employee may legitimately
+ * have no user account at all (`user_id IS NULL` — the kiosk-only
+ * default). `createLogin` provisions one on the spot, but only when the
+ * caller explicitly asks. Granting web access is an authorization
+ * decision; it must never be a side effect of pressing "send".
+ */
+companiesRouter.post(
+  '/:companyId/employees/:employeeId/send-link',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const companyId = companyIdFromParams(req);
+      const employeeId = Number(req.params.employeeId);
+      if (!Number.isFinite(employeeId) || employeeId <= 0) {
+        return next(NotFound('Employee not found'));
+      }
+      const body = sendEmployeeLinkRequestSchema.parse(req.body ?? {});
+
+      const employee = await db('employees')
+        .where({ id: employeeId, company_id: companyId })
+        .first<{ id: number; user_id: number | null; email: string | null; status: string }>();
+      if (!employee) return next(NotFound('Employee not found'));
+
+      let userId = employee.user_id;
+      let loginCreated = false;
+
+      if (!userId) {
+        if (!body.createLogin) {
+          return next(
+            BadRequest(
+              'This employee has no web login yet. Re-send with createLogin to create one, or leave them kiosk-only.',
+            ),
+          );
+        }
+        if (!employee.email) {
+          return next(
+            BadRequest(
+              'Add an email address to this employee before creating a web login — it is the account identity.',
+            ),
+          );
+        }
+        if (employee.status !== 'active') {
+          // healEmployeeLinksForUser only links active rows, so a
+          // terminated employee would get an orphan account that never
+          // points back at this record.
+          return next(BadRequest('Cannot create a login for a terminated employee.'));
+        }
+
+        // Reuse the invite path rather than inserting a user here: it
+        // already handles "this email is new" vs "this email exists on
+        // the appliance but isn't a member here", and it runs the
+        // employee↔user link heal inside its own transaction.
+        const membership = await inviteMembership(companyId, {
+          email: employee.email,
+          role: 'employee',
+          sendInvite: true,
+        });
+        userId = membership.userId;
+        loginCreated = true;
+      }
+
+      const { sendAccountLink } = await import('../../services/magic-links.js');
+      const result = await sendAccountLink({
+        targetUserId: userId,
+        channel: body.channel,
+        purpose: body.purpose,
+        origin: originForRequest(req, body.origin),
+        actorUserId: req.user.id,
+        ip: req.ip ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+      });
+      res.json({ data: { ...result, loginCreated } });
     } catch (err) {
       next(err);
     }

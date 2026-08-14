@@ -1,6 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
+import crypto from 'node:crypto';
 import type { CompanyRole, InviteMembershipRequest, Membership } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, NotFound } from '../http/errors.js';
@@ -52,15 +53,23 @@ export async function inviteMembership(
     if (user?.disabled_at) throw Conflict('User is disabled');
 
     if (!user) {
-      if (!body.initialPassword) {
+      if (!body.initialPassword && !body.sendInvite) {
         throw BadRequest(
-          'Email is new to the appliance — provide initialPassword to create the account',
+          'Email is new to the appliance — provide initialPassword, or set sendInvite to have them set their own via a sign-in link',
         );
       }
+      // With sendInvite and no chosen password, hash 32 random bytes.
+      // Nobody — not the admin, not us — ever learns this value; the
+      // account is reachable only through a magic link or a password
+      // reset, both of which prove control of the mailbox or phone.
+      // Deliberately NOT a null/empty hash: `verifyPassword` must have
+      // something real to fail against, so a blank submitted password
+      // can't ever match.
+      const initial = body.initialPassword ?? crypto.randomBytes(32).toString('base64url');
       const [created] = await trx('users')
         .insert({
           email: body.email,
-          password_hash: await hashPassword(body.initialPassword),
+          password_hash: await hashPassword(initial),
           role_global: 'none',
         })
         .returning<Array<{ id: number; email: string; disabled_at: Date | null }>>([

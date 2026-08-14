@@ -44,6 +44,56 @@ every request so revoking a role takes effect immediately.
   `magic_links`. TTL 15 minutes. Rate-limited to 3 requests per identifier
   per hour. `POST /auth/magic/request` is a silent no-op for unknown
   identifiers — the response never reveals whether an account exists.
+- **Password reset** (`POST /auth/password-reset/request`) uses the same
+  token machinery with `purpose = 'password_reset'` and a 30-minute TTL.
+  Identical anti-enumeration contract: always 204, never confirms the
+  identifier. Both flows share one 3-per-hour budget per identifier, so
+  alternating between the endpoints can't double the send ceiling.
+  The link lands on `/auth/reset`, which consumes the token for a
+  magic-link-tagged session and then requires a new password before
+  releasing the user — landing there with a working session and an
+  unknown credential is what the flow exists to fix.
+- **Admin-initiated sends** (`POST /companies/:id/memberships/:id/send-link`
+  for CompanyAdmins, `POST /admin/users/:id/send-link` for SuperAdmins)
+  mint the same tokens on someone else's behalf, stamped with
+  `initiated_by_user_id`. Three consequences:
+  - They are **excluded from the self-service rate-limit bucket** (partial
+    index `magic_links_selfservice_rate_idx`). An admin re-sending an invite
+    four times can't exhaust that person's own recovery budget and lock them
+    out.
+  - They **do report delivery outcomes**, unlike the self-service endpoints.
+    The caller is authenticated and already looking at the account's row, so
+    there is nothing to enumerate — and a silent skip would leave an admin
+    waiting on a text that never arrives. Addresses come back masked
+    (`j••@example.com`) rather than in full.
+  - The company-scoped routes resolve the target through the membership or
+    employee row **filtered by `company_id`**, so a CompanyAdmin at one company
+    can't mint a link for a user at another by guessing ids. Both are
+    supervisor-forbidden (`company_admin` only) and covered by route-level
+    tests in `send-link.api.integration.test.ts`.
+- **Unverified phone numbers, admin sends only.** `sendAccountLink` will text a
+  number on an active employee record even when `phone_verified_at IS NULL`,
+  and reports `phoneUnverified: true` so the UI can warn. Rationale: the
+  verification requirement exists because in the **self-service** path the
+  phone number IS the lookup key — an unverified one would let anyone point a
+  stranger's account at their own handset. An admin-initiated send picks the
+  recipient by identity from a record they have open; the number is just the
+  address on it. Requiring verification would also make the new-hire case
+  impossible, since an employee can't verify a phone until they can sign in and
+  the text is how they sign in. The residual risk is an admin typo, which is
+  the same risk that already applies to the email address on the same form.
+  `resolveByIdentifier` (self-service) still requires `phone_verified_at`.
+- **Provisioning a login from an employee record**
+  (`POST /companies/:id/employees/:id/send-link` with `createLogin: true`)
+  requires an email address, refuses terminated employees, and never fires
+  implicitly — omitting `createLogin` on an unlinked employee is a 400, not a
+  silent account creation. It routes through `inviteMembership`, so the
+  employee↔user link heals in the same transaction.
+- **Invite without a password**: `POST /companies/:id/memberships` with
+  `sendInvite: true` creates the account with a hash of 32 random bytes that
+  nobody — admin or operator — ever learns. The account is reachable only by
+  proving control of the mailbox or phone. It is deliberately a real hash,
+  not a null or sentinel, so an empty submitted password can never match.
 - **Magic-link origin** is the client-supplied `window.location.origin`
   validated against the `CORS_ORIGIN` env whitelist. An attacker can't
   supply `origin=https://evil.example` and redirect a real user's link —
@@ -95,6 +145,14 @@ every request so revoking a role takes effect immediately.
 
 ## AI data flow
 
+Prompts go to the provider configured under **Settings → AI** in direct mode.
+In router mode (`VIBE_AI_MODE=router`) they go to the appliance's Vibe AI
+Router instead, which applies its own policy (local-only models by default),
+scrubbing, and audit ledger — see `docs/ai-router.md`. Router mode **fails
+closed**: a router outage surfaces as an error, and the app never falls back
+to calling a provider directly — that would route the prompt around the
+router's scrubber and ledger.
+
 When AI is enabled for a company:
 
 - **NL timesheet corrections** send the user's prompt + a sanitized snapshot
@@ -106,7 +164,8 @@ When AI is enabled for a company:
   user docs. The support-chat tool has **zero write capability** — it cannot
   call any tool, only answer in text.
 - All prompts + completions are logged to `ai_correction_usage` (for NL
-  corrections) for rate-limiting and operator review.
+  corrections) for rate-limiting and operator review. In router mode,
+  token-usage rows record `provider = 'vibe_router'`.
 - Setting `ai_enabled = false` on a company skips every LLM call.
 
 No customer PII (home addresses, SSNs, bank info) is ever in the database, so

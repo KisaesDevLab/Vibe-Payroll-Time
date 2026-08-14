@@ -28,6 +28,11 @@ import { authStore } from '../lib/auth-store';
 
 type MagicChannel = 'email' | 'sms';
 
+/** Which flow the identifier form is collecting for. `login` mints a
+ *  sign-in link; `password_reset` mints one that lands on /auth/reset
+ *  and forces a new password before letting the user through. */
+type LinkFlow = 'login' | 'password_reset';
+
 export function LoginPage() {
   const navigate = useNavigate();
   const applianceName = useApplianceName();
@@ -58,18 +63,31 @@ export function LoginPage() {
   });
 
   const [magicChannel, setMagicChannel] = useState<MagicChannel | null>(null);
+  const [magicFlow, setMagicFlow] = useState<LinkFlow>('login');
   const [magicIdentifier, setMagicIdentifier] = useState('');
   const [magicSent, setMagicSent] = useState(false);
 
   const requestMagic = useMutation({
-    mutationFn: (body: MagicLinkRequest) =>
-      apiFetch<void>('/auth/magic/request', {
-        method: 'POST',
-        anonymous: true,
-        body: JSON.stringify(body),
-      }),
+    mutationFn: ({ flow, ...body }: MagicLinkRequest & { flow: LinkFlow }) =>
+      apiFetch<void>(
+        flow === 'password_reset' ? '/auth/password-reset/request' : '/auth/magic/request',
+        {
+          method: 'POST',
+          anonymous: true,
+          body: JSON.stringify(body),
+        },
+      ),
+    // Both endpoints 204 whether or not the identifier matched, so
+    // "sent" here means "the request was accepted" — never "an account
+    // exists". The confirmation copy is worded to match.
     onSuccess: () => setMagicSent(true),
   });
+
+  const startFlow = (channel: MagicChannel, flow: LinkFlow) => {
+    setMagicChannel(channel);
+    setMagicFlow(flow);
+    setMagicSent(false);
+  };
 
   const showEmail = options.data?.emailEnabled ?? false;
   const showSms = options.data?.smsEnabled ?? false;
@@ -85,10 +103,12 @@ export function LoginPage() {
       {magicChannel ? (
         <MagicLinkForm
           channel={magicChannel}
+          flow={magicFlow}
           identifier={magicIdentifier}
           onIdentifierChange={setMagicIdentifier}
           onSubmit={() =>
             requestMagic.mutate({
+              flow: magicFlow,
               channel: magicChannel,
               identifier: magicIdentifier,
               // Tell the backend where we live so the link URL points
@@ -103,6 +123,14 @@ export function LoginPage() {
             setMagicSent(false);
             setMagicIdentifier('');
           }}
+          onSwitchChannel={
+            showEmail && showSms
+              ? () => {
+                  setMagicChannel(magicChannel === 'email' ? 'sms' : 'email');
+                  setMagicIdentifier('');
+                }
+              : undefined
+          }
           sent={magicSent}
           pending={requestMagic.isPending}
         />
@@ -163,7 +191,7 @@ export function LoginPage() {
                 {showEmail && (
                   <button
                     type="button"
-                    onClick={() => setMagicChannel('email')}
+                    onClick={() => startFlow('email', 'login')}
                     className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-100"
                   >
                     Email me a login link
@@ -172,14 +200,36 @@ export function LoginPage() {
                 {showSms && (
                   <button
                     type="button"
-                    onClick={() => setMagicChannel('sms')}
+                    onClick={() => startFlow('sms', 'login')}
                     className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-100"
                   >
                     Text me a login link
                   </button>
                 )}
               </div>
+
+              {/* Password reset rides the same transports. Offered only
+                  when at least one is configured — an appliance with
+                  neither has no way to prove mailbox control, so the
+                  only recovery path is an admin resetting it for them
+                  (documented in docs/admin-guide.md). */}
+              <div className="mt-1 border-t border-slate-200 pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => startFlow(showEmail ? 'email' : 'sms', 'password_reset')}
+                  className="text-sm text-slate-600 underline hover:text-slate-900"
+                >
+                  Forgot your password?
+                </button>
+              </div>
             </div>
+          )}
+
+          {!showAnyMagic && (
+            <p className="text-center text-xs text-slate-500">
+              Forgot your password? Ask your administrator to reset it — this appliance has no email
+              or SMS transport configured for self-service recovery.
+            </p>
           )}
         </>
       )}
@@ -189,28 +239,41 @@ export function LoginPage() {
 
 function MagicLinkForm({
   channel,
+  flow,
   identifier,
   onIdentifierChange,
   onSubmit,
   onBack,
+  onSwitchChannel,
   sent,
   pending,
 }: {
   channel: MagicChannel;
+  flow: LinkFlow;
   identifier: string;
   onIdentifierChange: (v: string) => void;
   onSubmit: () => void;
   onBack: () => void;
+  /** Only supplied when both transports are configured. */
+  onSwitchChannel?: (() => void) | undefined;
   sent: boolean;
   pending: boolean;
 }) {
+  const isReset = flow === 'password_reset';
+
   if (sent) {
     return (
       <div className="flex flex-col gap-4 rounded-lg border border-emerald-200 bg-emerald-50 p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-emerald-900">Check your {channel}</h2>
+        <h2 className="text-base font-semibold text-emerald-900">
+          Check your {channel === 'email' ? 'email' : 'phone'}
+        </h2>
+        {/* Deliberately conditional ("if an account matches") — the
+            server 204s either way, and promising delivery would turn
+            this page into an account-enumeration oracle. */}
         <p className="text-sm text-emerald-900">
-          If an account matches <span className="font-mono">{identifier}</span>, a login link is on
-          its way. It's valid for 15 minutes and can only be used once.
+          If an account matches <span className="font-mono">{identifier}</span>, a{' '}
+          {isReset ? 'password reset' : 'login'} link is on its way. It's valid for{' '}
+          {isReset ? '30' : '15'} minutes and can only be used once.
         </p>
         <button
           type="button"
@@ -232,11 +295,15 @@ function MagicLinkForm({
       }}
     >
       <h2 className="text-base font-semibold text-slate-900">
-        {channel === 'email' ? 'Email me a login link' : 'Text me a login link'}
+        {isReset
+          ? 'Reset your password'
+          : channel === 'email'
+            ? 'Email me a login link'
+            : 'Text me a login link'}
       </h2>
       <p className="text-sm text-slate-600">
         Enter the {channel === 'email' ? 'email address' : 'phone number'} on your account. We'll
-        send a one-tap sign-in link.
+        send {isReset ? 'a link to choose a new password' : 'a one-tap sign-in link'}.
       </p>
       <FormField
         label={channel === 'email' ? 'Email' : 'Phone'}
@@ -246,6 +313,20 @@ function MagicLinkForm({
         value={identifier}
         onChange={(e) => onIdentifierChange(e.target.value)}
       />
+      {/* Reset is entered from a single "Forgot your password?" button,
+          which has to guess a channel. Someone whose account has a
+          phone but no email would otherwise be stranded on the wrong
+          form with no way across. */}
+      {onSwitchChannel && (
+        <button
+          type="button"
+          onClick={onSwitchChannel}
+          className="self-start text-xs text-slate-600 underline hover:text-slate-900"
+        >
+          {channel === 'email' ? 'Use my phone number instead' : 'Use my email address instead'}
+        </button>
+      )}
+
       <div className="flex justify-between gap-2">
         <button type="button" onClick={onBack} className="text-sm text-slate-600 hover:underline">
           ← Back

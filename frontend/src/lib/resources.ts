@@ -58,6 +58,10 @@ import type {
   ReportCatalogResponse,
   ReportResult,
   RunExportRequest,
+  SendAccountLinkRequest,
+  SendAccountLinkResponse,
+  SendEmployeeLinkRequest,
+  SendEmployeeLinkResponse,
   TimeEntry,
   TimesheetResponse,
   UpdateCompanyRequest,
@@ -135,6 +139,21 @@ export const memberships = {
     apiFetch<void>(`/companies/${companyId}/memberships/${membershipId}`, {
       method: 'DELETE',
     }),
+  /** Send or re-send a sign-in / password-reset link to a member.
+   *  `origin` tells the server which host to build the link against —
+   *  same contract as the login page's magic-link request. */
+  sendLink: (
+    companyId: number,
+    membershipId: number,
+    body: Omit<SendAccountLinkRequest, 'origin'>,
+  ) =>
+    apiFetch<SendAccountLinkResponse>(
+      `/companies/${companyId}/memberships/${membershipId}/send-link`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...body, origin: window.location.origin }),
+      },
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -174,6 +193,24 @@ export const employees = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  /** Send a sign-in / password-reset link straight from the employee
+   *  record. Pass `createLogin` to provision a web account first for an
+   *  employee who is currently kiosk-only. */
+  sendLink: (
+    companyId: number,
+    employeeId: number,
+    // `createLogin` optional here (the Zod output type makes it
+    // required) so the shared SendLinkMenu, which only knows about
+    // channel + purpose, can call this for an already-linked employee.
+    body: Omit<SendEmployeeLinkRequest, 'origin' | 'createLogin'> & { createLogin?: boolean },
+  ) =>
+    apiFetch<SendEmployeeLinkResponse>(
+      `/companies/${companyId}/employees/${employeeId}/send-link`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...body, origin: window.location.origin }),
+      },
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -495,6 +532,18 @@ export const licensing = {
 // Appliance admin (SuperAdmin only)
 // ---------------------------------------------------------------------------
 
+export interface AiRouterHealth {
+  mode: 'direct' | 'router';
+  registration: {
+    status: 'disabled' | 'pending' | 'registered' | 'failing';
+    attempts: number;
+    lastAttemptAt: string | null;
+    registeredAt: string | null;
+    lastError: { message: string; status: number | null; code: string | null } | null;
+    nextRetryInMs: number | null;
+  };
+}
+
 export interface ApplianceHealth {
   appliance: {
     id: string;
@@ -509,6 +558,7 @@ export interface ApplianceHealth {
     notificationsDisabled: boolean;
     aiProviderDefault: string;
   };
+  aiRouter: AiRouterHealth;
   companies: Array<{
     id: number;
     name: string;
@@ -572,6 +622,13 @@ export const admin = {
     apiFetch<BulkMembershipsResponse>(`/admin/users/${userId}/memberships`, {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+  /** Appliance-wide counterpart to `memberships.sendLink` — any user,
+   *  including ones with no company memberships at all. */
+  sendUserLink: (userId: number, body: Omit<SendAccountLinkRequest, 'origin'>) =>
+    apiFetch<SendAccountLinkResponse>(`/admin/users/${userId}/send-link`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, origin: window.location.origin }),
     }),
   tunnel: () => apiFetch<TunnelStatusResponse>('/admin/tunnel'),
   updateTunnel: (body: UpdateTunnelRequest) =>

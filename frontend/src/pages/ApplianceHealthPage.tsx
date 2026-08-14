@@ -4,6 +4,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AiRouterCard } from '../components/AiRouterCard';
 import { TopBar } from '../components/TopBar';
 import { UpdateCard } from '../components/UpdateCard';
 import { authStore } from '../lib/auth-store';
@@ -75,6 +76,9 @@ export function ApplianceHealthPage() {
               <Card label="Open punches">
                 <p className="font-mono text-2xl text-slate-900">{data.runtime.openTimeEntries}</p>
                 <p className="text-xs text-slate-500">employees currently on the clock</p>
+              </Card>
+              <Card label="AI Router">
+                <AiRouterCard aiRouter={data.aiRouter} />
               </Card>
             </section>
 

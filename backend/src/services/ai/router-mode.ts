@@ -34,8 +34,15 @@ export const ROUTER_TASK_CLASSES = {
 
 export type AiMode = 'direct' | 'router';
 
+let modeOverride: AiMode | undefined;
+
 export function aiMode(): AiMode {
-  return env.VIBE_AI_MODE;
+  return modeOverride ?? env.VIBE_AI_MODE;
+}
+
+/** test seam — env is zod-parsed and frozen at import, so tests can't flip it */
+export function _setAiModeForTests(m: AiMode | undefined): void {
+  modeOverride = m;
 }
 
 let client: VibeAiClient | undefined;
@@ -135,18 +142,60 @@ export async function completeViaRouter(
   }
 }
 
+export type RouterRegistrationStatus = 'disabled' | 'pending' | 'registered' | 'failing';
+
+export interface RouterRegistrationState {
+  status: RouterRegistrationStatus;
+  attempts: number;
+  lastAttemptAt: string | null;
+  registeredAt: string | null;
+  lastError: { message: string; status: number | null; code: string | null } | null;
+  nextRetryInMs: number | null;
+}
+
+const initialRegistrationState = (): RouterRegistrationState => ({
+  status: 'disabled',
+  attempts: 0,
+  lastAttemptAt: null,
+  registeredAt: null,
+  lastError: null,
+  nextRetryInMs: null,
+});
+
+let registration: RouterRegistrationState = initialRegistrationState();
+
+/** Snapshot for /admin/health. `status: 'disabled'` in direct mode. */
+export function getRouterRegistrationState(): RouterRegistrationState {
+  return {
+    ...registration,
+    lastError: registration.lastError ? { ...registration.lastError } : null,
+  };
+}
+
+/** test seam */
+export function _resetRouterRegistrationForTests(): void {
+  registration = initialRegistrationState();
+}
+
 /**
  * Declare this app's task classes at boot (idempotent, version-stamped). Registration
  * failure must NOT block boot — on the appliance, apps regularly start before the
  * router is healthy — so this retries in the background and logs until it lands.
  * Requests made before registration completes fail closed at the router (unknown
  * task class → 403), which is the correct interim behavior.
+ *
+ * 401/403 means the app token itself is bad (most often: minted for the wrong
+ * identity — must be exactly 'vibe-payroll-time'). That only resolves through
+ * operator action, so retries slow to 5 minutes — but never stop, so a router-side
+ * fix recovers without an app restart. State is exposed via
+ * getRouterRegistrationState() so /admin/health can surface a stuck registration.
  */
 export function registerRouterTaskClasses(): void {
   if (aiMode() !== 'router') return;
-  let attempt = 0;
+  registration = { ...initialRegistrationState(), status: 'pending' };
   const tryOnce = async (): Promise<void> => {
-    attempt += 1;
+    registration.attempts += 1;
+    registration.lastAttemptAt = new Date().toISOString();
     try {
       const res = await routerClient().registerTaskClasses({
         app: 'vibe-payroll-time',
@@ -166,11 +215,23 @@ export function registerRouterTaskClasses(): void {
           },
         ],
       });
+      registration.status = 'registered';
+      registration.registeredAt = new Date().toISOString();
+      registration.lastError = null;
+      registration.nextRetryInMs = null;
       logger.info({ registered: res.registered }, 'vibe-ai-router task classes registered');
     } catch (err) {
-      const delayMs = Math.min(60_000, 5_000 * attempt);
+      const authFailure = err instanceof VibeAiError && (err.status === 401 || err.status === 403);
+      const delayMs = authFailure ? 300_000 : Math.min(60_000, 5_000 * registration.attempts);
+      registration.status = 'failing';
+      registration.lastError = {
+        message: err instanceof Error ? err.message : String(err),
+        status: err instanceof VibeAiError ? err.status : null,
+        code: err instanceof VibeAiError ? err.code : null,
+      };
+      registration.nextRetryInMs = delayMs;
       logger.warn(
-        { err, attempt, retryInMs: delayMs },
+        { err, attempt: registration.attempts, retryInMs: delayMs },
         'vibe-ai-router task-class registration failed; will retry',
       );
       const timer = setTimeout(() => void tryOnce(), delayMs);

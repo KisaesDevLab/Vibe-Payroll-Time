@@ -67,6 +67,36 @@ The JWT was not signed by the public key configured via
 public key, or the portal rotated its signing key — request a fresh JWT from
 `licensing.kisaes.com`.
 
+## AI features are down and the log repeats "vibe-ai-router task-class registration failed; will retry"
+
+An endless retry loop (warn lines with a growing `attempt`) is almost always
+an App token minted for the wrong identity — it must be exactly
+`vibe-payroll-time` (older router docs said `vibe-payroll`). The router 403s
+registration and the failure is otherwise silent: AI menus render, but every
+request fails closed. The **AI Router** card on the SuperAdmin **Appliance**
+dashboard shows the same thing without log access — a red "registration
+failing" with `HTTP 403` and the token-identity hint.
+
+Fix: mint a token for the exact identity in the router console, update
+`VIBE_AI_TOKEN` in `.env`, `docker compose restart api`, and confirm the
+`vibe-ai-router task classes registered` line appears on the **first**
+attempt. Secondary cause: `VIBE_AI_ROUTER_URL` unreachable from the api
+container. See `docs/ai-router.md`.
+
+## AI requests return 502/503 in router mode
+
+The router is down or unreachable. There is **by design no fallback** to a
+direct provider — that would route prompts around the router's scrubber and
+ledger. Restore the router (check its container logs) rather than looking
+for an app-side workaround.
+
+## NL corrections fail but the support chat works
+
+Capability gate: the model the router policy assigned to
+`payroll_nl_correction` does not support tool calling. Assign a
+tools-capable local model in the router console (the Ollama capability probe
+must show `tools: true`; `qwen3` works). See `docs/ai-router.md`.
+
 ## Restore drill
 
 See `docs/restore.md` for the step-by-step. Run it quarterly against a

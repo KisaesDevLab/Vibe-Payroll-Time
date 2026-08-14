@@ -17,14 +17,109 @@ appliance. (A **SuperAdmin** manages the appliance itself — see
    - Auto-clock-out threshold (default 12h) — set to your longest legitimate shift
 3. **Invite your team.** Go to **Team** to invite CompanyAdmins + Supervisors,
    and **Employees** to create employee records. Employees without a login email
-   can still punch at a kiosk using their PIN.
+   can still punch at a kiosk using their PIN. See
+   [Getting people signed in](#getting-people-signed-in) for the two ways to
+   hand out access.
 4. **(Optional) Pair a kiosk.** From **Kiosks** generate a pairing code, open the
    kiosk URL on the tablet, and enter the code within five minutes.
 5. **(Optional) Configure notifications.** Under **Settings → Email / SMS**, paste
    an EmailIt API key and/or Twilio credentials. These are stored encrypted.
 6. **(Optional) Enable AI.** Under **Settings → AI**, turn on the toggle and
    paste an Anthropic key if you want natural-language timesheet corrections
-   and the support chat bot.
+   and the support chat bot. On appliances managed by the Vibe AI Router the
+   provider and key fields show "Managed by Vibe AI Router" and there is
+   nothing to paste — the toggle and daily correction limits are still yours.
+
+## Getting people signed in
+
+Two records control access, and personal-device punching needs both:
+
+| Record            | Created at                   | Gives them            |
+| ----------------- | ---------------------------- | --------------------- |
+| User + membership | **Team → Invite user**       | The ability to log in |
+| Employee          | **Employees → Add employee** | The ability to punch  |
+
+Use the **same email address** on both and they link automatically — in either
+order. An employee with no email stays kiosk-only (PIN or badge), which is the
+intended setup for shared-device staff.
+
+### Inviting someone
+
+**Team → Invite user** offers two ways to get them in:
+
+- **Send them a sign-in link** (recommended). No password is ever set. They get
+  an email or text, click through, and choose their own. Nothing to read aloud,
+  nothing to write down, nothing to rotate later.
+- **Set an initial password myself.** You choose a 12+ character password and
+  pass it along yourself. Use this when the appliance has no email or SMS
+  transport configured.
+
+Sending links requires EmailIt or an SMS provider under **Settings → Email /
+SMS** (or the appliance-wide fallback a SuperAdmin sets). Without either, the
+link option is disabled and only the manual-password path is available.
+
+### Inviting from the employee record
+
+You can also do all of this without leaving **Employees**, which is usually
+where you already are:
+
+- **Adding someone?** The **Add employee** form has a **Web login invite**
+  section — tick "Email them a sign-in link" and/or "Text them a sign-in link".
+  Both are off by default, since plenty of hourly staff are kiosk-only. An
+  email address is required either way: it's the identity of the login account,
+  even when the link goes out by text.
+- **Someone already on the roster?** Open their record. The **Web login** panel
+  shows one of three things:
+  - _Enabled_ — with the same **Send link** menu described below.
+  - _Not set up_, with an email on file — a **Create login & email link**
+    button (plus **& text link** if they have a phone). One click creates the
+    account and sends the invite.
+  - _Not set up_, no email — they're kiosk-only. Add an email and save to
+    enable web sign-in.
+
+### Re-sending, and resetting a forgotten password
+
+Every row on **Team**, and every employee record with a login, has a **Send
+link** menu with four actions:
+
+- Email / text a **sign-in link** — for "I never got the invite" and "I can't
+  find the email you sent Tuesday". Valid 15 minutes, single use.
+- Email / text a **password reset** — for "I forgot my password". Valid 30
+  minutes, single use. Setting the new password signs the account out
+  everywhere else, which is what you want if the reason they're locked out is
+  that someone else got in.
+
+You never see or set the new password — it goes straight from them to the
+system. Re-send as many times as you need; admin-initiated sends don't count
+against the person's own recovery limit.
+
+SuperAdmins have the same control on **Appliance → People**, for any account on
+the box including ones with no company memberships.
+
+> **Check the phone number before you text.** An admin-initiated text goes to
+> whatever number is on the employee record, confirmed or not — a new hire has
+> no way to confirm a phone until they can sign in, and the text is how they
+> sign in. That means a mistyped digit sends a working sign-in link to a
+> stranger. The UI flags unconfirmed numbers when it sends. (Employees typing
+> their own number into **Forgot your password?** on the login page still need
+> a confirmed one — there the number is the lookup key, so an unconfirmed one
+> would let anyone point someone else's account at their own handset.)
+
+### If a send doesn't go out
+
+The menu reports what actually happened, not just that the button worked. A
+result of "Not sent" names the reason — no phone on file, phone not verified,
+EmailIt not configured for this company or the appliance. Fix the underlying
+cause and re-send; the notification log under **Settings → Notifications** has
+the full history (message bodies for links are deliberately redacted so nobody
+can copy someone else's sign-in link out of the log).
+
+### Employees who can't self-serve
+
+If the appliance has no email and no SMS transport at all, there is no
+self-service recovery path — the login page says so. Recovery is: a CompanyAdmin
+removes and re-invites the member with a new initial password, or a SuperAdmin
+does the same from **Appliance → People**.
 
 ## Running the week
 

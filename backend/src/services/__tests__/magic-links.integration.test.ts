@@ -13,7 +13,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/knex.js';
 import { runMigrations } from '../../db/migrate.js';
-import { consumeMagicLink, getMagicLinkOptions, requestMagicLink } from '../magic-links.js';
+import {
+  consumeMagicLink,
+  getMagicLinkOptions,
+  requestMagicLink,
+  requestPasswordReset,
+  sendAccountLink,
+} from '../magic-links.js';
 import { hashPassword } from '../passwords.js';
 
 const dbReachable = await db
@@ -255,5 +261,267 @@ describe.skipIf(!dbReachable)('magic-links service', () => {
 
     const rows = await db('magic_links').where({ user_id: userId, channel: 'sms' });
     expect(rows).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------
+  // Password reset
+  // -------------------------------------------------------------------
+
+  it('requestPasswordReset mints a 30-minute password_reset token', async () => {
+    const before = Date.now();
+    await requestPasswordReset({
+      identifier: 'admin@test.local',
+      channel: 'email',
+      origin: 'https://test.local',
+      ip: null,
+      userAgent: null,
+    });
+
+    const rows = await db('magic_links').where({ user_id: userId });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.purpose).toBe('password_reset');
+    expect(rows[0]!.initiated_by_user_id).toBeNull();
+
+    // 30-minute TTL, not the 15 a login link gets. Generous bounds so a
+    // slow CI box doesn't flake the assertion.
+    const ttlMs = new Date(rows[0]!.expires_at).getTime() - before;
+    expect(ttlMs).toBeGreaterThan(29 * 60_000);
+    expect(ttlMs).toBeLessThan(31 * 60_000);
+
+    const audit = await db('auth_events').where({
+      user_id: userId,
+      event_type: 'password_reset_requested',
+    });
+    expect(audit.length).toBe(1);
+  });
+
+  it('requestPasswordReset is silent for unknown identifiers', async () => {
+    await requestPasswordReset({
+      identifier: 'ghost@test.local',
+      channel: 'email',
+      origin: 'https://test.local',
+      ip: null,
+      userAgent: null,
+    });
+    expect(await db('magic_links')).toHaveLength(0);
+  });
+
+  it('login and reset share one 3-per-hour self-service budget', async () => {
+    // Two of each. The fourth request onward must be dropped
+    // regardless of which flow asked — otherwise alternating between
+    // the two endpoints doubles the ceiling.
+    await requestMagicLink({
+      identifier: 'admin@test.local',
+      channel: 'email',
+      origin: 'https://test.local',
+      ip: null,
+      userAgent: null,
+    });
+    await requestPasswordReset({
+      identifier: 'admin@test.local',
+      channel: 'email',
+      origin: 'https://test.local',
+      ip: null,
+      userAgent: null,
+    });
+    await requestMagicLink({
+      identifier: 'admin@test.local',
+      channel: 'email',
+      origin: 'https://test.local',
+      ip: null,
+      userAgent: null,
+    });
+    await requestPasswordReset({
+      identifier: 'admin@test.local',
+      channel: 'email',
+      origin: 'https://test.local',
+      ip: null,
+      userAgent: null,
+    });
+
+    expect(await db('magic_links').where({ user_id: userId })).toHaveLength(3);
+  });
+
+  it('consumeMagicLink accepts a password_reset token like any other', async () => {
+    const crypto = await import('node:crypto');
+    const token = 'reset-token-long-enough-for-the-schema-1234567';
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    await db('magic_links').insert({
+      token_hash: hash,
+      user_id: userId,
+      channel: 'email',
+      purpose: 'password_reset',
+      identifier: 'admin@test.local',
+      expires_at: new Date(Date.now() + 60_000),
+    });
+
+    const session = await consumeMagicLink({ token, ip: null, userAgent: null });
+    expect(session.accessToken).toBeTruthy();
+
+    // Must be tagged as magic_link so /auth/set-password will accept a
+    // new password without the old one — that tag is the entire
+    // mechanism behind the reset landing page.
+    const claims = JSON.parse(
+      Buffer.from(session.accessToken.split('.')[1]!, 'base64url').toString('utf8'),
+    );
+    expect(claims.authMethod).toBe('magic_link');
+  });
+
+  // -------------------------------------------------------------------
+  // Admin-initiated sends
+  // -------------------------------------------------------------------
+
+  it('sendAccountLink records the acting admin and reports an outcome', async () => {
+    const result = await sendAccountLink({
+      targetUserId: userId,
+      channel: 'email',
+      purpose: 'login',
+      origin: 'https://test.local',
+      actorUserId: userId,
+      ip: null,
+      userAgent: null,
+    });
+
+    expect(result.channel).toBe('email');
+    expect(result.purpose).toBe('login');
+    // Masked, never the raw address.
+    expect(result.sentTo).not.toBe('admin@test.local');
+    expect(result.sentTo).toContain('@test.local');
+
+    const rows = await db('magic_links').where({ user_id: userId });
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0]!.initiated_by_user_id)).toBe(userId);
+  });
+
+  it('admin sends do not consume the self-service rate-limit budget', async () => {
+    // Four admin-initiated sends — well past the 3/hour self-service
+    // cap — must not stop the user from requesting their own link.
+    for (let i = 0; i < 4; i++) {
+      await sendAccountLink({
+        targetUserId: userId,
+        channel: 'email',
+        purpose: 'login',
+        origin: 'https://test.local',
+        actorUserId: userId,
+        ip: null,
+        userAgent: null,
+      });
+    }
+    await requestMagicLink({
+      identifier: 'admin@test.local',
+      channel: 'email',
+      origin: 'https://test.local',
+      ip: null,
+      userAgent: null,
+    });
+
+    const selfService = await db('magic_links')
+      .where({ user_id: userId })
+      .whereNull('initiated_by_user_id');
+    expect(selfService).toHaveLength(1);
+  });
+
+  it('sendAccountLink refuses SMS when no phone at all exists', async () => {
+    await expect(
+      sendAccountLink({
+        targetUserId: userId,
+        channel: 'sms',
+        purpose: 'login',
+        origin: 'https://test.local',
+        actorUserId: userId,
+        ip: null,
+        userAgent: null,
+      }),
+    ).rejects.toThrow(/No phone number on file/);
+
+    // Nothing was minted — a token we can't deliver would just pollute
+    // the audit trail.
+    expect(await db('magic_links')).toHaveLength(0);
+  });
+
+  it('sendAccountLink texts an UNVERIFIED employee number and flags it', async () => {
+    // The new-hire case: an employee can't verify a phone until they
+    // can sign in, and this text is how they sign in. Admin-initiated
+    // sends therefore accept an unconfirmed number — the admin picked
+    // the recipient by identity, not by typing a number into a public
+    // lookup — but the caller is told so it can warn about typos.
+    await db('employees').insert({
+      company_id: companyId,
+      user_id: userId,
+      first_name: 'New',
+      last_name: 'Hire',
+      phone: '+15555550188',
+      phone_verified_at: null,
+      status: 'active',
+    });
+
+    const result = await sendAccountLink({
+      targetUserId: userId,
+      channel: 'sms',
+      purpose: 'login',
+      origin: 'https://test.local',
+      actorUserId: userId,
+      ip: null,
+      userAgent: null,
+    });
+
+    expect(result.phoneUnverified).toBe(true);
+    expect(result.sentTo).toBe('•••-••88');
+    const rows = await db('magic_links').where({ user_id: userId, channel: 'sms' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.identifier).toBe('+15555550188');
+  });
+
+  it('self-service SMS still requires a verified number', async () => {
+    // The loosening above is scoped to admin-initiated sends. In the
+    // public lookup the number IS the lookup key, so an unverified one
+    // must never resolve to an account.
+    await db('employees').insert({
+      company_id: companyId,
+      user_id: userId,
+      first_name: 'New',
+      last_name: 'Hire',
+      phone: '+15555550166',
+      phone_verified_at: null,
+      status: 'active',
+    });
+
+    await requestMagicLink({
+      identifier: '+15555550166',
+      channel: 'sms',
+      origin: 'https://test.local',
+      ip: null,
+      userAgent: null,
+    });
+
+    expect(await db('magic_links')).toHaveLength(0);
+  });
+
+  it('sendAccountLink finds a verified phone on the employee record', async () => {
+    await db('employees').insert({
+      company_id: companyId,
+      user_id: userId,
+      first_name: 'Admin',
+      last_name: 'User',
+      phone: '+15555550177',
+      phone_verified_at: new Date(),
+      status: 'active',
+    });
+
+    const result = await sendAccountLink({
+      targetUserId: userId,
+      channel: 'sms',
+      purpose: 'password_reset',
+      origin: 'https://test.local',
+      actorUserId: userId,
+      ip: null,
+      userAgent: null,
+    });
+
+    expect(result.sentTo).toBe('•••-••77');
+    const rows = await db('magic_links').where({ user_id: userId, channel: 'sms' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.identifier).toBe('+15555550177');
+    expect(rows[0]!.purpose).toBe('password_reset');
   });
 });

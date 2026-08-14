@@ -4,12 +4,33 @@ How to clock in, clock out, take a break, and check your hours.
 
 ## Install the app on your phone (personal device)
 
-1. Your admin will send you a magic-link invite or give you an email + password.
-2. Open the link in Chrome (Android) or Safari (iPhone).
+1. Your admin will send you a sign-in link by email or text, or give you an
+   email + password.
+2. Open the link in Chrome (Android) or Safari (iPhone). Sign-in links are good
+   for 15 minutes and work once — if yours expired, ask for another, or use
+   **Forgot your password?** on the sign-in page.
 3. Sign in and tap **Add to Home Screen**. The icon behaves like a native app.
 4. Punches taken while the phone is offline are saved and will sync when you
    reconnect — a small banner will say "offline — punches will sync" until it
    catches up.
+
+## If you can't get in
+
+On the sign-in page:
+
+- **Email me a login link** / **Text me a login link** — signs you in without a
+  password. Good for 15 minutes, one use.
+- **Forgot your password?** — sends a link that lets you choose a new one. Good
+  for 30 minutes, one use. Setting a new password signs you out on your other
+  devices.
+
+Both say "if an account matches…" whether or not one does, so nothing is
+revealed to someone typing in guesses. If no message arrives, check the address
+or number your admin has on file — texts only reach a phone number you've
+verified. Ask your admin to re-send; they can do it as many times as needed.
+
+If your appliance has no email or texting set up, these options won't appear.
+Ask your admin to reset your password for you.
 
 ## Clocking in and out
 

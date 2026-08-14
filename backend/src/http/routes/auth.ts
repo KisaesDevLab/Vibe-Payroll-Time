@@ -7,6 +7,7 @@ import {
   logoutRequestSchema,
   magicLinkConsumeRequestSchema,
   magicLinkRequestSchema,
+  passwordResetRequestSchema,
   refreshRequestSchema,
   setPasswordAfterMagicLinkRequestSchema,
 } from '@vibept/shared';
@@ -22,6 +23,7 @@ import {
   consumeMagicLink,
   getMagicLinkOptions,
   requestMagicLink,
+  requestPasswordReset,
 } from '../../services/magic-links.js';
 import {
   issueAccessToken,
@@ -31,6 +33,7 @@ import {
 } from '../../services/tokens.js';
 import { findUserById, healEmployeeLinksForUser } from '../../services/users.js';
 import { NotFound } from '../errors.js';
+import { originForRequest } from '../outbound-origin.js';
 import { requireAuth } from '../middleware/auth.js';
 import { authRateLimiter } from '../middleware/rate-limit.js';
 
@@ -130,31 +133,43 @@ authRouter.get('/magic/options', async (_req, res, next) => {
 
 /** Request a magic link. Rate-limited (both here at the HTTP layer and
  *  again per-identifier inside the service). Always 204 on the happy
- *  path — we never reveal whether the identifier matched. */
+ *  path — we never reveal whether the identifier matched.
+ *
+ *  Origin precedence lives in `originForRequest`: PUBLIC_URL when the
+ *  operator set one, else the client-supplied origin if it's on the
+ *  ALLOWED_ORIGIN allowlist, else the request's own host. */
 authRouter.post('/magic/request', authRateLimiter, async (req, res, next) => {
   try {
     const body = magicLinkRequestSchema.parse(req.body);
-    // Prefer PUBLIC_URL when set — that's the canonical operator-chosen
-    // origin for outbound links and is what we want appearing in magic
-    // links regardless of which internal hop processed the request.
-    // Otherwise prefer the client-supplied origin (window.location.origin)
-    // when it matches the ALLOWED_ORIGIN allowlist; failing that, fall
-    // back to the request's own host. An attacker can't redirect the
-    // link by supplying a bogus origin because we verify against the
-    // ALLOWED_ORIGIN env whitelist.
-    const { env } = await import('../../config/env.js');
-    const { resolvePublicOrigin } = await import('../../config/public-url.js');
-    const hostOrigin = `${req.protocol}://${req.get('host') ?? ''}`;
-    const origin = resolvePublicOrigin({
-      publicUrl: env.PUBLIC_URL,
-      allowedOrigin: env.ALLOWED_ORIGIN,
-      clientOrigin: body.origin,
-      requestOrigin: hostOrigin,
-    });
     await requestMagicLink({
       identifier: body.identifier,
       channel: body.channel,
-      origin,
+      origin: originForRequest(req, body.origin),
+      ip: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** "I forgot my password." Identical contract to /magic/request —
+ *  always 204, never confirms the identifier exists, shares the same
+ *  3-per-hour-per-identifier budget. Separate endpoint so the
+ *  auth_events trail distinguishes a sign-in attempt from a credential
+ *  change, which is what a security reviewer reads the log for.
+ *
+ *  The link lands on /auth/reset, which consumes the token for a
+ *  magic-link-tagged session and then requires a new password before
+ *  letting the user into the app. */
+authRouter.post('/password-reset/request', authRateLimiter, async (req, res, next) => {
+  try {
+    const body = passwordResetRequestSchema.parse(req.body);
+    await requestPasswordReset({
+      identifier: body.identifier,
+      channel: body.channel,
+      origin: originForRequest(req, body.origin),
       ip: req.ip ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });

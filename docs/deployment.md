@@ -62,6 +62,9 @@ After install, edit `/opt/vibept/.env`:
 - For `tailscale` profile: paste `TAILSCALE_AUTHKEY`
 - Review `JWT_SECRET` and `SECRETS_ENCRYPTION_KEY` — the installer generates
   strong values but you can rotate them before first login
+- (Optional) AI: leave `VIBE_AI_MODE=direct` unless this appliance runs the
+  Vibe AI Router; router mode also requires `VIBE_AI_ROUTER_URL` and
+  `VIBE_AI_TOKEN` — see `docs/ai-router.md`
 
 Restart:
 
@@ -171,6 +174,9 @@ Dumps land in `/var/backups/vibept/` with 14-day rotation. Off-site copies
   for 30 seconds. If it persists, check `docker logs vibept-postgres`.
 - `invalid environment configuration` → a required `.env` variable is missing
   or malformed.
+- `VIBE_AI_MODE=router requires VIBE_AI_ROUTER_URL and VIBE_AI_TOKEN` → set
+  both (token from the router console) or switch back to `direct`. See
+  `docs/ai-router.md`.
 
 ### TLS fails (direct public profile)
 

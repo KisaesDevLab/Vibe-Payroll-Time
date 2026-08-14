@@ -7,6 +7,71 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Account recovery: password reset + admin-initiated invite/resend
+
+- **Self-service password reset.** `POST /auth/password-reset/request` and a
+  **Forgot your password?** entry on the login page. The link lands on
+  `/auth/reset`, which exchanges the token for a session and then requires a
+  new password before releasing the user into the app. Closes the gap where
+  the `password_reset` notification template, `auth_events` types, and
+  log-redaction rules all existed but nothing minted the token.
+- **Admin "Send link" on every member row.** Sends or re-sends a sign-in link
+  or a password reset over email or SMS, surfaced on **Team** and
+  **Appliance → People**. Backed by
+  `POST /companies/:companyId/memberships/:membershipId/send-link`
+  (CompanyAdmin, scoped to that company's memberships) and
+  `POST /admin/users/:userId/send-link` (SuperAdmin, any account).
+- **Invite without choosing a password.** `inviteMembership` accepts
+  `sendInvite: true` and creates the account with a hash of 32 random bytes
+  nobody ever learns; the new member sets their own via the emailed link.
+  Previously an admin had to invent a password, read it out loud, and had no
+  way to re-send it.
+- **Employee-record surfaces**, so none of this requires knowing that logins
+  live on a separate Team page:
+  - **Add employee** grows a _Web login invite_ section — checkboxes to email
+    and/or text a sign-in link on creation. Both default off; kiosk-only staff
+    are still the default.
+  - The employee drawer grows a **Web login** panel: **Send link** when an
+    account exists, **Create login & email/text link** when it doesn't, and a
+    plain explanation when there's no email to key an account on.
+  - `POST /companies/:companyId/employees/:employeeId/send-link` backs both.
+    With `createLogin: true` it provisions the account through
+    `inviteMembership` (so the employee↔user link heals in the same
+    transaction) and then sends. It refuses without an email, refuses for
+    terminated employees, and refuses to provision at all unless `createLogin`
+    is explicit — granting web access is never a side effect of "send".
+
+### Changed
+
+- `magic_links` gains `purpose` (`login` | `password_reset`, default `login`)
+  and `initiated_by_user_id`. One token lifecycle now backs passwordless login,
+  password reset, and admin-initiated sends — reset is a magic link whose
+  landing page forces a password change, so there is no second token system to
+  keep in sync. Reset TTL is 30 minutes (matching what the template has always
+  promised); login stays at 15.
+- The 3-per-hour rate limit now counts **self-service requests only** (new
+  partial index `magic_links_selfservice_rate_idx`). An admin re-sending an
+  invite can no longer exhaust that person's own recovery budget. Login and
+  reset share the one bucket, so alternating endpoints can't double the ceiling.
+- Admin-initiated sends report real delivery outcomes (masked address plus the
+  skip reason) instead of the anti-enumeration silence the public endpoints
+  keep — the caller is authenticated and looking at the account, so there's
+  nothing to enumerate.
+- **Admin-initiated SMS now accepts an unverified number** on an active
+  employee record, returning `phoneUnverified: true` so the UI warns about
+  typos. A new hire can't verify a phone until they can sign in, and the text
+  is how they sign in, so the previous rule made the main use case impossible.
+  Self-service SMS is unchanged and still requires verification — there the
+  number is the lookup key, which is a different threat model entirely. See
+  `docs/security.md`.
+
+### Fixed
+
+- **Magic link by SMS never reached employees.** When the lookup matched a
+  number on `employees.phone`, the dispatcher was handed `users.phone` — almost
+  always NULL for an hourly employee — so the send was skipped with "no phone
+  on file". The matched number is now what gets used.
+
 ### Added — MIG-7: Vibe AI Router as an option (dual-mode)
 
 - **`VIBE_AI_MODE=router`** sends all AI traffic (NL corrections, support chat)

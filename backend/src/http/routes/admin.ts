@@ -3,6 +3,7 @@
 // You may not distribute this software. See LICENSE for terms.
 import {
   bulkMembershipsRequestSchema,
+  sendAccountLinkRequestSchema,
   testEmailRequestSchema,
   testSmsRequestSchema,
   updateApplianceSettingsRequestSchema,
@@ -31,8 +32,10 @@ import {
   readLogChunk,
   requestUpdate,
 } from '../../services/update-manager.js';
+import { aiMode, getRouterRegistrationState } from '../../services/ai/router-mode.js';
 import { VERSION, GIT_SHA, BUILD_DATE } from '../../version.js';
 import { Conflict, HttpError, NotFound, Unauthorized } from '../errors.js';
+import { originForRequest } from '../outbound-origin.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 
 export const adminRouter: Router = Router();
@@ -116,6 +119,13 @@ adminRouter.get('/health', requireAuth, requireSuperAdmin, async (_req, res, nex
           licensingEnforced: env.LICENSING_ENFORCED,
           notificationsDisabled: env.NOTIFICATIONS_DISABLED,
           aiProviderDefault: env.AI_PROVIDER_DEFAULT,
+        },
+        // Structured like /health's `workers` field: AI is non-essential to "is
+        // the API up", so a stuck registration renders as its own card rather
+        // than degrading any aggregate status.
+        aiRouter: {
+          mode: aiMode(),
+          registration: getRouterRegistrationState(),
         },
         companies: companies.map((c) => ({
           id: c.id,
@@ -293,6 +303,44 @@ adminRouter.post(
       const body = bulkMembershipsRequestSchema.parse(req.body);
       const { reconcileMemberships } = await import('../../services/admin-users.js');
       const result = await reconcileMemberships(userId, body);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/**
+ * Send (or re-send) a sign-in or password-reset link to any user on the
+ * appliance. The People-page counterpart to the per-company endpoint at
+ * `POST /companies/:companyId/memberships/:membershipId/send-link`.
+ *
+ * SuperAdmin scope is appliance-wide by definition, so unlike the
+ * company route there's no membership to scope the lookup against —
+ * any user id is fair game, including one with no memberships at all
+ * (a freshly-created SuperAdmin who needs to get in for the first
+ * time).
+ */
+adminRouter.post(
+  '/users/:userId/send-link',
+  requireAuth,
+  requireSuperAdmin,
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const userId = Number(req.params.userId);
+      if (!Number.isFinite(userId) || userId <= 0) return next(NotFound('Bad userId'));
+      const body = sendAccountLinkRequestSchema.parse(req.body ?? {});
+      const { sendAccountLink } = await import('../../services/magic-links.js');
+      const result = await sendAccountLink({
+        targetUserId: userId,
+        channel: body.channel,
+        purpose: body.purpose,
+        origin: originForRequest(req, body.origin),
+        actorUserId: req.user.id,
+        ip: req.ip ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+      });
       res.json({ data: result });
     } catch (err) {
       next(err);

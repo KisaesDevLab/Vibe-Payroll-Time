@@ -41,7 +41,7 @@ SMS is opt-in per employee. Employees add their number under
 **Notifications → Phone number**, enter the 6-digit code we text them, and
 can toggle individual notification types on/off.
 
-## AI — multi-provider
+## AI — multi-provider (direct) or Vibe AI Router
 
 Default: Anthropic (`claude-sonnet-4-6`). Configure under **Settings → AI**:
 
@@ -49,6 +49,11 @@ Default: Anthropic (`claude-sonnet-4-6`). Configure under **Settings → AI**:
 - **OpenAI-compatible:** paste an API key + base URL + model (works with
   Azure OpenAI, together.ai, openrouter, vLLM, etc.)
 - **Ollama:** paste the Ollama HTTP base URL + model name; no API key needed
+
+On appliances running the Vibe AI Router, set `VIBE_AI_MODE=router` instead:
+the app sends all AI traffic through the router and the per-company provider
+settings above become inert (**Settings → AI** shows "Managed by Vibe AI
+Router"). See `docs/ai-router.md` for provisioning and verification.
 
 When AI is off, no provider is called — not for corrections, not for the
 support chat. See `docs/security-review.md` for the full data-flow.

@@ -51,6 +51,12 @@ documented waiver, or blocks the release.
 - [ ] `ai_enabled = false` on a company skips every provider call
 - [ ] Prompts + completions are truncated to the documented 4k cap before
       being logged
+- [ ] In router mode, a router outage fails closed — verified no code path
+      falls back to a direct provider call
+- [ ] `VIBE_AI_TOKEN` is an App token minted for identity
+      `vibe-payroll-time`, not a provider key, and is not committed anywhere
+- [ ] Both task classes remain on local-only tiers in the router policy, or
+      the widening has a documented waiver
 
 ## Licensing
 
