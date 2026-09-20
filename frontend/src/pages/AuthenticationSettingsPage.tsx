@@ -55,6 +55,14 @@ export function AuthenticationSettingsPage() {
               Passwords and login links keep working until the mode is set to SSO only. Kiosk PIN
               and badge punches are never affected.
             </p>
+            {/* The shared form below suggests `npx vibe-auth breakglass ensure`,
+                which cannot load this image's TypeScript adapter. */}
+            <p className="mt-2 max-w-3xl text-xs text-slate-500">
+              The break-glass account is provisioned from the server, not from this page: on the
+              Vibe Appliance by <code>sudo vibe identity register vibe-payroll</code>; standalone,
+              with the command in <code>docs/sso.md</code>. It signs in at <code>/login/local</code>
+              .
+            </p>
           </div>
           <Link
             to="/appliance"
