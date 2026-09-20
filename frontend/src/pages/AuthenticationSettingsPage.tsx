@@ -61,7 +61,7 @@ export function AuthenticationSettingsPage() {
               The break-glass account is provisioned from the server, not from this page: on the
               Vibe Appliance by <code>sudo vibe identity register vibe-payroll</code>; standalone,
               with the command in <code>docs/sso.md</code>. It signs in at <code>/login/local</code>
-              .
+              , which is deliberately not linked from anywhere.
             </p>
           </div>
           <Link
