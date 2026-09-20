@@ -48,6 +48,7 @@
       "/api/v1/kiosk/*",
       "/auth/magic",
       "/auth/reset",
+      "/login/local",
       "/kiosk",
       "/kiosk/*"
     ],
