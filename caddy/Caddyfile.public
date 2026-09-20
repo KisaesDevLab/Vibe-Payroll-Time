@@ -41,6 +41,19 @@
 		}
 	}
 
+	# Single sign-on (Vibe Auth) engine routes live on the API. A path list,
+	# not /auth/*: the SPA itself owns /auth/magic and /auth/reset (the
+	# magic-link and password-reset landing pages). Keep in step with the
+	# dev proxy in frontend/vite.config.ts and the appliance manifest.
+	@vibeauth path /auth/oidc/* /auth/status /auth/me /auth/settings /auth/settings/*
+	handle @vibeauth {
+		reverse_proxy api:4000 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
 	handle {
 		reverse_proxy web:8080
 	}

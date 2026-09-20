@@ -14,7 +14,10 @@ export type AuthEventType =
   | 'password_reset_requested'
   | 'password_reset_completed'
   | 'magic_link_requested'
-  | 'magic_link_consumed';
+  | 'magic_link_consumed'
+  /** Single sign-on events, named by @kisaesdevlab/vibe-auth
+   *  (`vibe.auth.login.success`, `vibe.auth.breakglass.used`, …). */
+  | `vibe.auth.${string}`;
 
 export interface RecordAuthEventInput {
   eventType: AuthEventType;

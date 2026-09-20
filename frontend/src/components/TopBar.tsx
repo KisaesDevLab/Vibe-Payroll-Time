@@ -7,6 +7,7 @@ import { useApplianceName } from '../hooks/useApplianceName';
 import { useSession } from '../hooks/useSession';
 import { apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
+import { isSsoSession, ssoSignOut } from '../lib/sso';
 import { Button } from './Button';
 
 /**
@@ -48,6 +49,11 @@ export function TopBar() {
     } catch {
       /* ignore; clear local state regardless */
     }
+    // A single sign-on session also has an identity row server-side. Read
+    // the token from the store, not the closure — the logout call above
+    // may have rotated it.
+    const accessToken = authStore.get()?.accessToken;
+    if (accessToken && isSsoSession(accessToken)) await ssoSignOut(accessToken);
     authStore.set(null);
     navigate('/login', { replace: true });
   };

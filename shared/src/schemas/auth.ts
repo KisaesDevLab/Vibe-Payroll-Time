@@ -2,6 +2,7 @@
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
 import { z } from 'zod';
+import { BREAKGLASS_USERNAME } from '../constants.js';
 
 /** Shape of the authenticated user returned across auth endpoints. */
 export const authUserSchema = z.object({
@@ -25,9 +26,10 @@ export const authUserSchema = z.object({
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
 
-/** Login request (email + password). */
+/** Login request (email + password). The break-glass username is the
+ *  one non-email identifier admitted — see BREAKGLASS_USERNAME. */
 export const loginRequestSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.union([z.string().email().max(254), z.literal(BREAKGLASS_USERNAME)]),
   password: z.string().min(8).max(256),
   rememberDevice: z.boolean().optional().default(false),
 });
@@ -81,7 +83,7 @@ export type SetPasswordAfterMagicLinkRequest = z.infer<
 /** Returned from GET /auth/me so the frontend can adjust the
  *  Preferences UI (e.g. show "Set new password" without a
  *  current-password field) when the session came from a magic link. */
-export const authMethodSchema = z.enum(['password', 'magic_link']);
+export const authMethodSchema = z.enum(['password', 'magic_link', 'sso']);
 export type AuthMethod = z.infer<typeof authMethodSchema>;
 
 // ---------------------------------------------------------------------------

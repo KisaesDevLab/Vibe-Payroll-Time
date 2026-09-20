@@ -18,6 +18,11 @@ export interface UserRow {
   updated_at: Date;
   last_login_at: Date | null;
   disabled_at: Date | null;
+  /** Set on accounts created just-in-time by single sign-on. While set
+   *  the account has no local credential: the self-service magic-link and
+   *  password-reset paths skip it. Cleared when a password is set through
+   *  an admin-sent link. */
+  sso_provisioned_at: Date | null;
 }
 
 export async function findActiveUserByEmail(email: string): Promise<UserRow | undefined> {

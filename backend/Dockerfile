@@ -12,16 +12,24 @@ WORKDIR /app
 # workspace manifest is needed so npm's workspace resolver doesn't error, but
 # its dependencies are never installed thanks to --omit-workspace-root + the
 # specific --workspace flags below.
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* .npmrc ./
 COPY shared/package.json ./shared/
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 
+# @kisaesdevlab/vibe-auth (single sign-on) comes from GitHub Packages —
+# .npmrc maps the scope — and that registry wants a token even for reads.
+# It is passed as a BuildKit secret and written to a throwaway user npmrc
+# that never lands in a layer:
+#   docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN ...
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci \
+    --mount=type=secret,id=NODE_AUTH_TOKEN,required=true \
+    printf '//npm.pkg.github.com/:_authToken=%s\n' "$(cat /run/secrets/NODE_AUTH_TOKEN)" > /root/.npmrc \
+ && npm ci \
       --workspace=@vibept/backend \
       --workspace=@vibept/shared \
-      --include-workspace-root
+      --include-workspace-root \
+ && rm -f /root/.npmrc
 
 FROM node:20-alpine AS runtime
 WORKDIR /app

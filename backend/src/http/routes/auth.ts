@@ -32,6 +32,12 @@ import {
   rotateRefreshToken,
 } from '../../services/tokens.js';
 import { findUserById, healEmployeeLinksForUser } from '../../services/users.js';
+import {
+  assertLinkSignInAllowed,
+  assertLocalLoginAllowed,
+  noteLocalLogin,
+} from '../../services/vibe-auth/policy.js';
+import { emailForLoginIdentifier } from '../../services/vibe-auth/users.js';
 import { NotFound } from '../errors.js';
 import { originForRequest } from '../outbound-origin.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -43,7 +49,11 @@ authRouter.post('/login', authRateLimiter, async (req, res, next) => {
   try {
     const body = loginRequestSchema.parse(req.body);
     const ctx = { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null };
+    // Single sign-on policy: under oidc_only only the break-glass account
+    // may use a password. Checked before any bcrypt work is spent.
+    assertLocalLoginAllowed(emailForLoginIdentifier(body.email));
     const session = await loginWithPassword(body, ctx);
+    await noteLocalLogin(session.user, ctx.ip);
     res.json({ data: session });
   } catch (err) {
     next(err);
@@ -68,11 +78,12 @@ authRouter.post('/refresh', authRateLimiter, async (req, res, next) => {
     // pick up the fix; the next 15-minute refresh tick heals them.
     await healEmployeeLinksForUser(user.id, user.email);
 
-    const access = issueAccessToken({
-      id: user.id,
-      email: user.email,
-      roleGlobal: user.role_global,
-    });
+    // A single sign-on session stays recognisably one across rotation:
+    // sign-out needs the `sid` to find the identity behind it.
+    const access = issueAccessToken(
+      { id: user.id, email: user.email, roleGlobal: user.role_global },
+      rotated.ssoSid ? { authMethod: 'sso', sid: rotated.ssoSid } : {},
+    );
 
     await recordAuthEvent({
       eventType: 'refresh',
@@ -141,6 +152,7 @@ authRouter.get('/magic/options', async (_req, res, next) => {
 authRouter.post('/magic/request', authRateLimiter, async (req, res, next) => {
   try {
     const body = magicLinkRequestSchema.parse(req.body);
+    assertLinkSignInAllowed();
     await requestMagicLink({
       identifier: body.identifier,
       channel: body.channel,
@@ -166,6 +178,7 @@ authRouter.post('/magic/request', authRateLimiter, async (req, res, next) => {
 authRouter.post('/password-reset/request', authRateLimiter, async (req, res, next) => {
   try {
     const body = passwordResetRequestSchema.parse(req.body);
+    assertLinkSignInAllowed();
     await requestPasswordReset({
       identifier: body.identifier,
       channel: body.channel,
@@ -186,11 +199,15 @@ authRouter.post('/password-reset/request', authRateLimiter, async (req, res, nex
 authRouter.post('/magic/consume', authRateLimiter, async (req, res, next) => {
   try {
     const body = magicLinkConsumeRequestSchema.parse(req.body);
+    // Refuse BEFORE consuming, so a link issued ahead of the switch to
+    // oidc_only is not burned by the attempt.
+    assertLinkSignInAllowed();
     const session = await consumeMagicLink({
       token: body.token,
       ip: req.ip ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
+    await noteLocalLogin(session.user, req.ip ?? null);
     res.json({ data: session });
   } catch (err) {
     next(err);

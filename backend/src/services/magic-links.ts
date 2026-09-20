@@ -227,6 +227,13 @@ async function findPhoneForUser(
  * Self-service lookup: turn a typed-in identifier into a recipient.
  * Returns null for anything that doesn't resolve — callers must treat
  * that as a silent no-op, never as an error the caller can observe.
+ *
+ * Accounts provisioned by single sign-on (`sso_provisioned_at` set) never
+ * resolve here. A link-minted session may set a password without knowing
+ * the old one, so resolving them would let an SSO account bootstrap a
+ * local credential from its mailbox alone, with no admin involved. The
+ * admin-initiated path (`sendAccountLink`) is deliberately not filtered:
+ * that IS the admin's involvement.
  */
 async function resolveByIdentifier(
   identifier: string,
@@ -237,6 +244,7 @@ async function resolveByIdentifier(
       (await db<UserRow>('users')
         .whereRaw('LOWER(email) = ?', identifier)
         .whereNull('disabled_at')
+        .whereNull('sso_provisioned_at')
         .first()) ?? null;
     if (!user) return null;
     return {
@@ -256,6 +264,7 @@ async function resolveByIdentifier(
     .where('phone', identifier)
     .whereNotNull('phone_verified_at')
     .whereNull('disabled_at')
+    .whereNull('sso_provisioned_at')
     .first();
   if (byUserPhone) {
     return { user: byUserPhone, identifier, phone: identifier, phoneVerified: true };
@@ -266,6 +275,7 @@ async function resolveByIdentifier(
     .where('employees.phone', identifier)
     .whereNotNull('employees.phone_verified_at')
     .whereNull('users.disabled_at')
+    .whereNull('users.sso_provisioned_at')
     .where('employees.status', 'active')
     .first<UserRow>('users.*');
   if (!byEmployeePhone) return null;

@@ -10,6 +10,7 @@ import { useSetupStatus } from './hooks/useSetupStatus';
 import { AllUsersPage } from './pages/AllUsersPage';
 import { ApplianceHealthPage } from './pages/ApplianceHealthPage';
 import { ApplianceSettingsPage } from './pages/ApplianceSettingsPage';
+import { AuthenticationSettingsPage } from './pages/AuthenticationSettingsPage';
 import { CompaniesListPage } from './pages/CompaniesListPage';
 import { CompanyLayout } from './pages/CompanyLayout';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
@@ -104,6 +105,13 @@ export function App() {
     <AppShell>
       <Routes>
         <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
+        {/* Break-glass: the password form even when the firm has gone
+            SSO-only. Unlisted on purpose — the appliance prints the URL
+            alongside the break-glass credentials. */}
+        <Route
+          path="/login/local"
+          element={session ? <Navigate to="/" replace /> : <LoginPage breakglass />}
+        />
         {/* Magic-link callback. Must run unauthenticated — the whole
             point is to MINT a session. Even if the user already has
             one, hit consume so the new token rotates them in. */}
@@ -182,6 +190,14 @@ export function App() {
           element={
             <RequireSuperAdmin>
               <ApplianceSettingsPage />
+            </RequireSuperAdmin>
+          }
+        />
+        <Route
+          path="/appliance/authentication"
+          element={
+            <RequireSuperAdmin>
+              <AuthenticationSettingsPage />
             </RequireSuperAdmin>
           }
         />

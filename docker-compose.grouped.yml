@@ -47,6 +47,7 @@ services:
         APP_VERSION: ${APP_VERSION:-grouped-dev}
         GIT_SHA: ${GIT_SHA:-dev}
         BUILD_DATE: ${BUILD_DATE:-dev}
+      secrets: [NODE_AUTH_TOKEN]
     container_name: vibept-api
     restart: unless-stopped
     environment:
@@ -86,11 +87,19 @@ services:
       # docker-entrypoint.d/40-base-path.sh hook reads VITE_BASE_PATH
       # below at startup and substitutes the sentinel before nginx
       # starts. Same image works in both single-app and multi-app modes.
+      secrets: [NODE_AUTH_TOKEN]
     container_name: vibept-web
     restart: unless-stopped
     environment:
       VITE_BASE_PATH: /payroll/
     networks: [internal, vibe_ingress]
+
+# Build-time only: npm ci inside both images reads @kisaesdevlab/vibe-auth
+# (single sign-on) from GitHub Packages, which wants a token even for reads.
+# Export NODE_AUTH_TOKEN (a PAT with read:packages) before `up --build`.
+secrets:
+  NODE_AUTH_TOKEN:
+    environment: NODE_AUTH_TOKEN
 
 networks:
   internal:

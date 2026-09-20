@@ -10,6 +10,7 @@ import { waitForDb } from './db/wait.js';
 import { createApp } from './http/app.js';
 import { registerRouterTaskClasses } from './services/ai/router-mode.js';
 import { enforceTenantMode } from './services/tenant-mode.js';
+import { startVibeAuth, stopVibeAuth } from './services/vibe-auth/engine.js';
 import { startBackgroundJobs } from './workers/runtime.js';
 
 async function main() {
@@ -49,6 +50,12 @@ async function main() {
     }
   }
 
+  // Single sign-on. Never throws for an unreachable identity provider;
+  // its ONE refusal — VIBE_AUTH_MODE=oidc_only with no active break-glass
+  // account — must abort the boot, because starting anyway would leave an
+  // IdP outage with no way in at all.
+  await startVibeAuth();
+
   const app = createApp();
   // Router mode: declare this app's task classes (idempotent; retries in the background —
   // on the appliance this backend regularly starts before the router is healthy).
@@ -64,6 +71,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
     await backgroundJobs.stop();
+    stopVibeAuth();
     server.close(() => logger.info('http server closed'));
     await closeDb();
     process.exit(0);

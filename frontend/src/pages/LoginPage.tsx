@@ -1,6 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
+import { LoginPanel } from '@kisaesdevlab/vibe-auth/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type {
   AuthResponse,
@@ -15,6 +16,7 @@ import { FormField } from '../components/FormField';
 import { useApplianceName } from '../hooks/useApplianceName';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
+import { SSO_BASE_PATH, takeSsoHandoffError } from '../lib/sso';
 
 /**
  * Unified sign-in page. Three paths, all optional:
@@ -24,6 +26,17 @@ import { authStore } from '../lib/auth-store';
  *
  * The options endpoint is public (the page needs it before the user is
  * authenticated) and returns `{ emailEnabled, smsEnabled }`.
+ *
+ * Single sign-on (Vibe Auth) wraps all of it in <LoginPanel>, which reads
+ * GET /auth/status: it adds the "Sign in with …" button when SSO is on and
+ * hides the local forms entirely once the firm has gone SSO-only. The SSO
+ * flow ends on a redirect carrying the session in the URL fragment, which
+ * main.tsx consumes before this page ever renders (lib/sso.ts).
+ *
+ * `/login/local` renders this page with `breakglass`: the password form
+ * even in SSO-only mode, for the one account that may still use it. The
+ * magic-link options are dropped there — the server refuses them in that
+ * mode, and the break-glass address is undeliverable by design.
  */
 
 type MagicChannel = 'email' | 'sms';
@@ -33,8 +46,9 @@ type MagicChannel = 'email' | 'sms';
  *  and forces a new password before letting the user through. */
 type LinkFlow = 'login' | 'password_reset';
 
-export function LoginPage() {
+export function LoginPage({ breakglass = false }: { breakglass?: boolean }) {
   const navigate = useNavigate();
+  const [ssoError] = useState(takeSsoHandoffError);
   const applianceName = useApplianceName();
   const [form, setForm] = useState<LoginRequest>({
     email: '',
@@ -89,150 +103,180 @@ export function LoginPage() {
     setMagicSent(false);
   };
 
-  const showEmail = options.data?.emailEnabled ?? false;
-  const showSms = options.data?.smsEnabled ?? false;
+  const showEmail = !breakglass && (options.data?.emailEnabled ?? false);
+  const showSms = !breakglass && (options.data?.smsEnabled ?? false);
   const showAnyMagic = showEmail || showSms;
+
+  // The product's own forms, exactly as before SSO existed. Handed to
+  // <LoginPanel> as children so it can hide the lot in SSO-only mode.
+  const localSignIn = magicChannel ? (
+    <MagicLinkForm
+      channel={magicChannel}
+      flow={magicFlow}
+      identifier={magicIdentifier}
+      onIdentifierChange={setMagicIdentifier}
+      onSubmit={() =>
+        requestMagic.mutate({
+          flow: magicFlow,
+          channel: magicChannel,
+          identifier: magicIdentifier,
+          // Tell the backend where we live so the link URL points
+          // at the frontend, not the backend API host. Ignored
+          // server-side when not on the CORS allowlist, so it
+          // can't be abused to redirect the link.
+          origin: window.location.origin,
+        })
+      }
+      onBack={() => {
+        setMagicChannel(null);
+        setMagicSent(false);
+        setMagicIdentifier('');
+      }}
+      onSwitchChannel={
+        showEmail && showSms
+          ? () => {
+              setMagicChannel(magicChannel === 'email' ? 'sms' : 'email');
+              setMagicIdentifier('');
+            }
+          : undefined
+      }
+      sent={magicSent}
+      pending={requestMagic.isPending}
+    />
+  ) : (
+    <>
+      <form
+        className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          login.mutate(form);
+        }}
+      >
+        <FormField
+          // The break-glass account signs in by username, which the
+          // browser's own email validation would reject.
+          label={breakglass ? 'Email or break-glass username' : 'Email'}
+          type={breakglass ? 'text' : 'email'}
+          autoComplete={breakglass ? 'username' : 'email'}
+          required
+          value={form.email}
+          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+        />
+        <FormField
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={form.password}
+          onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+        />
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-slate-300"
+            checked={!!form.rememberDevice}
+            onChange={(e) => setForm((f) => ({ ...f, rememberDevice: e.target.checked }))}
+          />
+          Remember this device
+        </label>
+
+        {login.isError && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {login.error instanceof ApiError
+              ? login.error.message
+              : 'Sign in failed — please retry.'}
+          </div>
+        )}
+
+        <Button type="submit" loading={login.isPending}>
+          Sign in
+        </Button>
+      </form>
+
+      {showAnyMagic && (
+        <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
+            Or sign in without a password
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {showEmail && (
+              <button
+                type="button"
+                onClick={() => startFlow('email', 'login')}
+                className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-100"
+              >
+                Email me a login link
+              </button>
+            )}
+            {showSms && (
+              <button
+                type="button"
+                onClick={() => startFlow('sms', 'login')}
+                className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-100"
+              >
+                Text me a login link
+              </button>
+            )}
+          </div>
+
+          {/* Password reset rides the same transports. Offered only
+                  when at least one is configured — an appliance with
+                  neither has no way to prove mailbox control, so the
+                  only recovery path is an admin resetting it for them
+                  (documented in docs/admin-guide.md). */}
+          <div className="mt-1 border-t border-slate-200 pt-2 text-center">
+            <button
+              type="button"
+              onClick={() => startFlow(showEmail ? 'email' : 'sms', 'password_reset')}
+              className="text-sm text-slate-600 underline hover:text-slate-900"
+            >
+              Forgot your password?
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!showAnyMagic && !breakglass && (
+        <p className="text-center text-xs text-slate-500">
+          Forgot your password? Ask your administrator to reset it — this appliance has no email or
+          SMS transport configured for self-service recovery.
+        </p>
+      )}
+    </>
+  );
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-12">
       <header className="text-center">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{applianceName}</h1>
-        <p className="mt-1 text-sm text-slate-600">Sign in to continue</p>
+        <p className="mt-1 text-sm text-slate-600">
+          {breakglass ? 'Break-glass sign-in with a local password' : 'Sign in to continue'}
+        </p>
       </header>
 
-      {magicChannel ? (
-        <MagicLinkForm
-          channel={magicChannel}
-          flow={magicFlow}
-          identifier={magicIdentifier}
-          onIdentifierChange={setMagicIdentifier}
-          onSubmit={() =>
-            requestMagic.mutate({
-              flow: magicFlow,
-              channel: magicChannel,
-              identifier: magicIdentifier,
-              // Tell the backend where we live so the link URL points
-              // at the frontend, not the backend API host. Ignored
-              // server-side when not on the CORS allowlist, so it
-              // can't be abused to redirect the link.
-              origin: window.location.origin,
-            })
-          }
-          onBack={() => {
-            setMagicChannel(null);
-            setMagicSent(false);
-            setMagicIdentifier('');
-          }}
-          onSwitchChannel={
-            showEmail && showSms
-              ? () => {
-                  setMagicChannel(magicChannel === 'email' ? 'sms' : 'email');
-                  setMagicIdentifier('');
-                }
-              : undefined
-          }
-          sent={magicSent}
-          pending={requestMagic.isPending}
-        />
-      ) : (
-        <>
-          <form
-            className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-            onSubmit={(e) => {
-              e.preventDefault();
-              login.mutate(form);
-            }}
-          >
-            <FormField
-              label="Email"
-              type="email"
-              autoComplete="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            />
-            <FormField
-              label="Password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-            />
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300"
-                checked={!!form.rememberDevice}
-                onChange={(e) => setForm((f) => ({ ...f, rememberDevice: e.target.checked }))}
-              />
-              Remember this device
-            </label>
-
-            {login.isError && (
-              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                {login.error instanceof ApiError
-                  ? login.error.message
-                  : 'Sign in failed — please retry.'}
-              </div>
-            )}
-
-            <Button type="submit" loading={login.isPending}>
-              Sign in
-            </Button>
-          </form>
-
-          {showAnyMagic && (
-            <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
-                Or sign in without a password
-              </p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                {showEmail && (
-                  <button
-                    type="button"
-                    onClick={() => startFlow('email', 'login')}
-                    className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-100"
-                  >
-                    Email me a login link
-                  </button>
-                )}
-                {showSms && (
-                  <button
-                    type="button"
-                    onClick={() => startFlow('sms', 'login')}
-                    className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-100"
-                  >
-                    Text me a login link
-                  </button>
-                )}
-              </div>
-
-              {/* Password reset rides the same transports. Offered only
-                  when at least one is configured — an appliance with
-                  neither has no way to prove mailbox control, so the
-                  only recovery path is an admin resetting it for them
-                  (documented in docs/admin-guide.md). */}
-              <div className="mt-1 border-t border-slate-200 pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={() => startFlow(showEmail ? 'email' : 'sms', 'password_reset')}
-                  className="text-sm text-slate-600 underline hover:text-slate-900"
-                >
-                  Forgot your password?
-                </button>
-              </div>
-            </div>
-          )}
-
-          {!showAnyMagic && (
-            <p className="text-center text-xs text-slate-500">
-              Forgot your password? Ask your administrator to reset it — this appliance has no email
-              or SMS transport configured for self-service recovery.
-            </p>
-          )}
-        </>
+      {ssoError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {ssoError}
+        </div>
       )}
+
+      <LoginPanel
+        basePath={SSO_BASE_PATH}
+        // Anywhere works — main.tsx reads the session off the fragment
+        // before routing — but /login is the one route guaranteed to
+        // render without a session if the hand-off fails.
+        returnTo={`${SSO_BASE_PATH}/login`}
+        breakglass={breakglass}
+        classNames={{
+          root: 'flex flex-col gap-6',
+          button:
+            'block rounded-md bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white shadow-sm hover:bg-slate-800 aria-disabled:opacity-60',
+          divider: 'text-center text-xs font-medium uppercase tracking-widest text-slate-400',
+          note: 'text-center text-xs text-slate-500',
+        }}
+      >
+        {localSignIn}
+      </LoginPanel>
     </main>
   );
 }
