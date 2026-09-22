@@ -7,6 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-09-22
+
 ### Added — Single sign-on (Vibe Auth)
 
 - **Sign in through the firm's identity provider** via the shared
