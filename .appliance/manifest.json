@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "slug": "vibe-payroll-time",
+  "slug": "vibe-payroll",
   "displayName": "Vibe Payroll Time",
   "description": "Employee time tracking with kiosk, PIN/QR auth, and payroll export",
   "logo": "payroll-time.svg",
@@ -14,11 +14,61 @@
       "client": "ghcr.io/kisaesdevlab/vibe-payroll-web"
     }
   },
-  "ports": { "server": 3000, "client": 80 },
+  "ports": { "server": 4000, "client": 8080 },
+  "pathPrefix": "time",
+  "requires": ["identity"],
+  "routing": {
+    "default_upstream": "vibe-payroll-web:8080",
+    "matchers": [
+      { "name": "api", "path": "/api/*", "upstream": "vibe-payroll-api:4000" },
+      { "name": "auth_oidc", "path": "/auth/oidc/*", "upstream": "vibe-payroll-api:4000" },
+      { "name": "auth_status", "path": "/auth/status", "upstream": "vibe-payroll-api:4000" },
+      { "name": "auth_me", "path": "/auth/me", "upstream": "vibe-payroll-api:4000" },
+      { "name": "auth_settings", "path": "/auth/settings", "upstream": "vibe-payroll-api:4000" },
+      {
+        "name": "auth_settings_sub",
+        "path": "/auth/settings/*",
+        "upstream": "vibe-payroll-api:4000"
+      }
+    ],
+    "_doc": "Single sign-on engine routes go to the API tier one path at a time, NOT as /auth/*: the SPA owns /auth/magic and /auth/reset (magic-link and password-reset landing pages), and a blanket matcher would break every emailed link. See docs/sso.md."
+  },
+  "sso": {
+    "capable": true,
+    "redirectPaths": ["/auth/oidc/callback"],
+    "logoutPaths": ["/auth/oidc/backchannel"],
+    "publicPaths": [
+      "/api/v1/ping",
+      "/api/v1/health",
+      "/api/v1/health/ready",
+      "/api/v1/version",
+      "/api/v1/appliance/info",
+      "/api/v1/setup/*",
+      "/api/v1/auth/*",
+      "/api/v1/kiosk/*",
+      "/auth/magic",
+      "/auth/reset",
+      "/login/local",
+      "/kiosk",
+      "/kiosk/*"
+    ],
+    "edgeGate": false,
+    "internalUrl": "http://vibe-payroll-api:4000",
+    "breakglassService": "vibe-payroll-api",
+    "breakglassCommand": [
+      "node",
+      "--import",
+      "tsx/esm",
+      "node_modules/@kisaesdevlab/vibe-auth/dist/cli.js",
+      "breakglass",
+      "ensure",
+      "--json"
+    ]
+  },
   "subdomains": [
     {
       "name": "time",
-      "target": "vibe-payroll-client:80",
+      "target": "vibe-payroll-web:8080",
       "audience": "default",
       "emergencyPort": 5192,
       "emergencyNote": "Staff-only emergency access. Kiosk mode does NOT work over emergency access — service workers require HTTPS. Wall-mounted kiosks must use the primary domain or Tailscale."
@@ -73,7 +123,7 @@
   "health": "/api/v1/health",
   "ping": "/api/v1/ping",
   "migrations": {
-    "command": ["node", "dist/migrate.js"],
+    "command": ["node", "--import", "tsx/esm", "backend/src/db/migrate.ts"],
     "autoEnvVar": "MIGRATIONS_AUTO"
   },
   "backup": {

@@ -10,6 +10,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { startSkewLoop } from './lib/clock-skew';
 import { startQueueFlusher } from './lib/offline-queue';
 import { refreshSessionUser } from './lib/refresh-session-user';
+import { consumeSsoHandoff } from './lib/sso';
 import { registerServiceWorker } from './lib/sw';
 import './index.css';
 
@@ -22,7 +23,12 @@ startQueueFlusher();
 // membership added) self-corrects on the next page load without
 // requiring the user to sign out. Fire-and-forget — failures fall
 // back to the cached session.
-void refreshSessionUser();
+//
+// A single sign-on redirect lands here with the session on the URL
+// fragment. It is consumed FIRST and awaited before the first render, so
+// the router sees a signed-in session instead of flashing the login form
+// (no fragment, no wait — this resolves immediately).
+const booted = consumeSsoHandoff().then(() => void refreshSessionUser());
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,14 +50,17 @@ if (!container) throw new Error('root element not found');
 // against the substring after the prefix.
 const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '');
 
-ReactDOM.createRoot(container).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter basename={routerBasename}>
-          <App />
-        </BrowserRouter>
-      </QueryClientProvider>
-    </ErrorBoundary>
-  </React.StrictMode>,
+const root = ReactDOM.createRoot(container);
+void booted.finally(() =>
+  root.render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter basename={routerBasename}>
+            <App />
+          </BrowserRouter>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </React.StrictMode>,
+  ),
 );

@@ -132,6 +132,18 @@ export default defineConfig(({ command }) => {
           target: devBackendOrigin,
           changeOrigin: true,
         },
+        // Single sign-on (Vibe Auth) engine routes. A regex, not a bare
+        // '/auth': the SPA itself owns /auth/magic and /auth/reset (the
+        // magic-link and password-reset landing pages), and proxying those
+        // would break every emailed link. Keep in step with the @vibeauth
+        // matcher in caddy/Caddyfile* and the appliance manifest.
+        '^/auth/(oidc/.*|status|me|settings(/.*)?)$': {
+          target: devBackendOrigin,
+          // The engine builds redirect URIs from the request origin when
+          // no public URL is configured; keep the browser's Host.
+          changeOrigin: false,
+          xfwd: true,
+        },
       },
     },
     build: {

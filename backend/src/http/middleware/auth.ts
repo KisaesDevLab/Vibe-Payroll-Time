@@ -4,7 +4,11 @@
 import type { CompanyRole } from '@vibept/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { db } from '../../db/knex.js';
-import { verifyAccessToken, type AuthMethod } from '../../services/tokens.js';
+import {
+  verifyAccessToken,
+  type AccessTokenClaims,
+  type AuthMethod,
+} from '../../services/tokens.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 
 export interface AuthenticatedUser {
@@ -24,17 +28,42 @@ declare module 'express-serve-static-core' {
 }
 
 /**
- * Extract + verify the bearer token. Populates `req.user` with the verified
- * claims. Emits 401 for missing/invalid/expired tokens. Does NOT check
- * role — pair with requireSuperAdmin / requireCompanyRole for scoping.
+ * Single sign-on revocation (Vibe Auth, D16). Access tokens are stateless,
+ * so an identity-provider back-channel logout cannot delete a session — it
+ * records "every token this user was issued up to NOW is dead" and this
+ * check honours it. One primary-key read per authenticated request; a
+ * fresh login (issued after the revocation moment) stays valid.
+ *
+ * Reached through a setter rather than an import so this middleware — and
+ * every test that mounts it — does not drag in the SSO engine. app.ts wires
+ * the real check; unset, nothing is ever revoked.
  */
-export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+export type RevocationCheck = (key: { userId: string }, issuedAtMs: number) => Promise<boolean>;
+let revocationCheck: RevocationCheck | null = null;
+export function setRevocationCheck(check: RevocationCheck | null): void {
+  revocationCheck = check;
+}
+
+/**
+ * Extract + verify the bearer token. Populates `req.user` with the verified
+ * claims. Emits 401 for missing/invalid/expired/revoked tokens. Does NOT
+ * check role — pair with requireSuperAdmin / requireCompanyRole for scoping.
+ */
+export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     return next(Unauthorized('Missing bearer token'));
   }
 
-  const claims = verifyAccessToken(header.slice('Bearer '.length).trim());
+  let claims: AccessTokenClaims;
+  try {
+    claims = verifyAccessToken(header.slice('Bearer '.length).trim());
+    if (await revocationCheck?.({ userId: claims.sub }, (claims.iat ?? 0) * 1000)) {
+      return next(Unauthorized('Session has been signed out'));
+    }
+  } catch (err) {
+    return next(err);
+  }
   req.user = {
     id: Number(claims.sub),
     email: claims.email,

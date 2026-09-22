@@ -19,16 +19,23 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package.json package-lock.json* tsconfig.base.json ./
+COPY package.json package-lock.json* .npmrc tsconfig.base.json ./
 COPY shared/package.json ./shared/
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 
+# @kisaesdevlab/vibe-auth (the SSO login + settings components) comes from
+# GitHub Packages, which wants a token even for reads. BuildKit secret,
+# throwaway user npmrc, never in a layer — same as backend/Dockerfile:
+#   docker build --secret id=NODE_AUTH_TOKEN,env=NODE_AUTH_TOKEN ...
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci \
+    --mount=type=secret,id=NODE_AUTH_TOKEN,required=true \
+    printf '//npm.pkg.github.com/:_authToken=%s\n' "$(cat /run/secrets/NODE_AUTH_TOKEN)" > /root/.npmrc \
+ && npm ci \
       --workspace=@vibept/frontend \
       --workspace=@vibept/shared \
-      --include-workspace-root
+      --include-workspace-root \
+ && rm -f /root/.npmrc
 
 COPY shared ./shared
 COPY frontend ./frontend

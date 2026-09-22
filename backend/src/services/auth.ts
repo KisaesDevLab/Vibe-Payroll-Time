@@ -15,6 +15,7 @@ import {
   markLoginSuccess,
   type UserRow,
 } from './users.js';
+import { emailForLoginIdentifier } from './vibe-auth/users.js';
 
 interface RequestContext {
   ip?: string | null;
@@ -67,7 +68,9 @@ export async function loginWithPassword(
   body: LoginRequest,
   ctx: RequestContext,
 ): Promise<AuthResponse> {
-  const user = await findActiveUserByEmail(body.email);
+  // The login form admits the bare break-glass username; map it to the
+  // address that account actually lives under.
+  const user = await findActiveUserByEmail(emailForLoginIdentifier(body.email));
 
   if (!user) {
     await recordAuthEvent({
@@ -183,6 +186,10 @@ export async function setPasswordAfterMagicLink(
   const newHash = await hashPassword(newPassword);
   await db('users').where({ id: userId }).update({
     password_hash: newHash,
+    // An SSO-provisioned account can only get here through a link an
+    // admin sent it (the self-service paths skip such accounts), so this
+    // is the admin-approved moment it gains a local credential.
+    sso_provisioned_at: null,
     updated_at: db.fn.now(),
   });
 

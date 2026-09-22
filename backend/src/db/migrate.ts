@@ -1,7 +1,8 @@
 // Copyright 2026 Kisaes LLC
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
-import { db } from './knex.js';
+import { pathToFileURL } from 'node:url';
+import { closeDb, db } from './knex.js';
 import { logger } from '../config/logger.js';
 
 export async function runMigrations(): Promise<void> {
@@ -31,4 +32,17 @@ export async function getMigrationStatus(): Promise<{
   const pendingNames = pending.map((p) => (typeof p === 'string' ? p : p.file));
 
   return { current, pending: pendingNames };
+}
+
+// The appliance manifest's one-shot migrate command runs this file
+// directly (`node --import tsx/esm backend/src/db/migrate.ts`). Imported
+// as a module — the server's MIGRATIONS_AUTO path — it does nothing here.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runMigrations()
+    .then(() => closeDb())
+    .catch(async (err) => {
+      logger.fatal({ err }, 'migration failure');
+      await closeDb();
+      process.exit(1);
+    });
 }

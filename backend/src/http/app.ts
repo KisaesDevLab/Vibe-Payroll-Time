@@ -9,7 +9,14 @@ import { API_PREFIX } from '@vibept/shared';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { parseAllowedOrigins } from '../config/public-url.js';
+import {
+  getVibeAuth,
+  isRateLimitedAuthPath,
+  vibeAuthMiddleware,
+} from '../services/vibe-auth/engine.js';
 import { errorHandler, notFoundHandler } from './errors.js';
+import { setRevocationCheck } from './middleware/auth.js';
+import { authRateLimiter } from './middleware/rate-limit.js';
 import { adminRouter } from './routes/admin.js';
 import { aiRouter } from './routes/ai.js';
 import { authRouter } from './routes/auth.js';
@@ -56,6 +63,18 @@ export function createApp(): Express {
       },
     }),
   );
+
+  // Single sign-on (Vibe Auth). The engine claims only /auth/* — never
+  // anything under /api — so the kiosk realm (/api/v1/kiosk/*, device
+  // token + PIN/badge) cannot pass through it in any mode. Mounted after
+  // the body parsers because the IdP's back-channel logout posts a form.
+  // The browser-driven OIDC steps share the auth limiter's budget.
+  app.use((req, res, next) =>
+    isRateLimitedAuthPath(req.path) ? authRateLimiter(req, res, next) : next(),
+  );
+  app.use(vibeAuthMiddleware());
+  // requireAuth honours IdP back-channel logouts through this check.
+  setRevocationCheck((key, issuedAtMs) => getVibeAuth().isRevoked(key, issuedAtMs));
 
   app.use(`${API_PREFIX}/ping`, pingRouter);
   app.use(`${API_PREFIX}/health`, healthRouter);

@@ -7,6 +7,72 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-09-22
+
+### Added — Single sign-on (Vibe Auth)
+
+- **Sign in through the firm's identity provider** via the shared
+  `@kisaesdevlab/vibe-auth` package (OIDC Authorization Code + PKCE). Three
+  modes — `local` (default, nothing changes), `both`, `oidc_only` — set from
+  the new **Appliance → Authentication** page, the Vibe Appliance console, or
+  `VIBE_AUTH_MODE`. Operator guide: [`docs/sso.md`](docs/sso.md).
+- **Staff realm only.** The kiosk realm (device token + PIN / QR badge) is
+  untouched in every mode; the engine handles only `/auth/*` and kiosk
+  traffic never passes through it.
+- **Group → role mapping onto the two-layer role model**, explicit rather than
+  the package's default guess (which would have made every `vibe-partner` an
+  appliance SuperAdmin): `vibe-admin`/`vibe-it` → `super_admin`,
+  `vibe-partner` → `company_admin`, `vibe-manager` → `supervisor`,
+  `vibe-staff` → `employee`. Re-synced on every sign-in; **the last
+  SuperAdmin is never demoted** by it.
+- **Sessions are the same tokens a password login mints**, handed to the SPA on
+  the URL fragment (`#sso_token=…&sso_refresh=…`, never a query string, never
+  logged). SSO access tokens carry a `sid` claim that survives refresh
+  rotation (`refresh_tokens.sso_sid`).
+- **IdP back-channel logout works on stateless tokens.** `requireAuth` now
+  checks a revocation list on every request (one primary-key read); a
+  signed-out user's access token dies on its next use instead of living out
+  its 15 minutes, and their refresh tokens are revoked.
+- **Break-glass account** `vibe-breakglass` — a local SuperAdmin that still
+  signs in (at `/login/local`, by password) under `oidc_only` when the IdP is
+  down. Provisioned by the package CLI inside the API container; every use
+  is audited (`vibe.auth.breakglass.used`). The login schema admits that bare
+  username as its one non-email identifier.
+- **An SSO-provisioned account cannot mail itself a local password.**
+  Self-service login links and password resets skip accounts with
+  `users.sso_provisioned_at` set (same silent 204). An admin can still grant
+  one deliberately by sending a reset link.
+- **Provisioning waits for first-run setup.** Break-glass and just-in-time
+  account creation refuse until `/setup` has run — a SuperAdmin row created
+  into an empty database would otherwise lock the setup wizard for ever.
+- Under `oidc_only`: password login (except break-glass), login-link and
+  password-reset requests, link consumption, and the three admin "send link"
+  actions all return `403 local_login_disabled`.
+- SSO events land in `auth_events` under the package's `vibe.auth.*` names.
+  A client secret saved in the settings page is AES-256-GCM-wrapped with
+  `SECRETS_ENCRYPTION_KEY`.
+- Migration `20260920000001_vibe_auth`: package tables (`auth_identities`,
+  `auth_settings`, `auth_revocations`), `auth_sessions_oidc`,
+  `refresh_tokens.sso_sid`, `users.sso_provisioned_at`.
+
+### Changed
+
+- **Routing: the SSO engine's paths go to the API one by one**
+  (`/auth/oidc/*`, `/auth/status`, `/auth/me`, `/auth/settings[/*]`) in both
+  Caddyfiles, the Vite dev proxy, and the appliance manifest — deliberately
+  not `/auth/*`, because the SPA owns `/auth/magic` and `/auth/reset`.
+- **Image builds need a `NODE_AUTH_TOKEN` BuildKit secret** (the package is
+  private on GitHub Packages); CI passes `GITHUB_TOKEN` with `packages: read`.
+  See `docs/sso.md` § Building.
+- `.appliance/manifest.json`: corrected stale ports / upstreams / migrate
+  command / slug, added `requires: ["identity"]`, `routing`, and `sso` blocks.
+
+### Fixed
+
+- `backend/src/db/migrate.ts` now runs migrations when executed directly. The
+  appliance manifest's one-shot migrate command invoked it that way, and it
+  silently did nothing (masked by `MIGRATIONS_AUTO=true`).
+
 ### Added — Account recovery: password reset + admin-initiated invite/resend
 
 - **Self-service password reset.** `POST /auth/password-reset/request` and a

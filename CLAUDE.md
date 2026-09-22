@@ -38,7 +38,7 @@ Identical to Vibe Trial Balance / Vibe MyBooks conventions unless noted.
 | Backend       | Node.js 20, Express, Knex.js (plain JS migrations for Windows compat), Zod                                                                                                                                                                                                                                                                                                  |
 | Database      | PostgreSQL 16                                                                                                                                                                                                                                                                                                                                                               |
 | Queue / cron  | BullMQ + Redis 7 for scheduled background jobs (auto-clock-out, missed-punch reminders, license heartbeat, retention sweep). Phase 14 reversed the v1 "no BullMQ" stance for parity with sibling Vibe apps and to enable horizontal scaling under the appliance overlay. Standalone runs scheduler+worker in-process (single container); the appliance compose splits them. |
-| Auth          | JWT (access + refresh), bcrypt for passwords, `otplib` for PIN TOTP rotation (kiosk)                                                                                                                                                                                                                                                                                        |
+| Auth          | JWT (access + refresh), bcrypt for passwords, `otplib` for PIN TOTP rotation (kiosk); optional OIDC single sign-on via `@kisaesdevlab/vibe-auth` (private, GitHub Packages — builds need a `NODE_AUTH_TOKEN`)                                                                                                                                                               |
 | AI            | Multi-provider LLM abstraction (ported from Vibe TB): Anthropic / Ollama / OpenAI-compatible                                                                                                                                                                                                                                                                                |
 | Email         | EmailIt.com transactional API (BYO API key per company, appliance-wide fallback)                                                                                                                                                                                                                                                                                            |
 | SMS           | Twilio SDK, BYO credentials per company                                                                                                                                                                                                                                                                                                                                     |
@@ -105,6 +105,8 @@ Three distinct login paths:
 3. **Kiosk mode** → device-paired kiosk token. Employee identifies with PIN (4–6 digits), QR badge scan, or both — admin picks `kiosk_auth_mode` per company. Badge payloads are HMAC-signed with an appliance-wide secret (derived from `SECRETS_ENCRYPTION_KEY` via HKDF, overridable with `BADGE_SIGNING_SECRET`) and verified server-side; raw payloads exist only on the printed badge.
 
 Admin toggles per-company: "personal device only", "kiosk only", "both allowed". Default for internal path = personal device; default for client-portal = both.
+
+**Single sign-on (optional, staff realm only).** Paths 1 and 2 can also sign in through the firm's identity provider via `@kisaesdevlab/vibe-auth` (`backend/src/services/vibe-auth/`, operator guide `docs/sso.md`). Modes `local` (default) / `both` / `oidc_only`, set by a SuperAdmin at Appliance → Authentication. An SSO login mints the same access + refresh pair a password login does and hands it to the SPA on the URL fragment; SSO access tokens carry a `sid` claim. Path 3 (kiosk) is never SSO's to gate. One local account, `vibe-breakglass`, survives `oidc_only` for IdP outages.
 
 ### Punch model
 
@@ -253,6 +255,11 @@ docker compose -f docker-compose.prod.yml build
 - **Don't round seconds to minutes on storage.** Storage is always exact seconds; only display rounds (to whole minutes for HH:MM, to configurable precision for decimal).
 - **Don't silently normalize ambiguous input.** `"5 48"` (whitespace-separated numbers) is ambiguous and must return an error. Guessing is how manual entries become wage-and-hour claims.
 - **Don't hard-delete a manual entry.** Soft-delete via `deleted_at`; restoration of superseded punches must happen in the same transaction so a crash between steps can't leave the punch dangling.
+- **Don't route `/auth/*` wholesale to the API.** The SSO engine lives at `/auth/oidc/*`, `/auth/status`, `/auth/me`, `/auth/settings[/*]` — but the SPA owns `/auth/magic` and `/auth/reset`, and a blanket matcher breaks every emailed login/reset link. The path list lives in both Caddyfiles, the Vite dev proxy, and the appliance manifest; change all four together.
+- **Don't add a local sign-in path that skips the SSO policy.** Anything that mints a session without the IdP (password, magic link, reset, a future passkey) must call `services/vibe-auth/policy.ts` — `assertLocalLoginAllowed` / `assertLinkSignInAllowed` before, `noteLocalLogin` after. A path that skips it is a hole in `oidc_only`.
+- **Don't let an SSO-provisioned account bootstrap a local credential.** `users.sso_provisioned_at` marks just-in-time accounts; the self-service link lookups in `magic-links.ts` filter on it. Only an admin-sent link may grant such an account a password.
+- **Don't trust the vibe-auth package's default role map.** It would make every `vibe-partner` an appliance `super_admin`. The map is explicit (`VIBE_PT_ROLE_MAP`), and `setRole` refuses to demote the last SuperAdmin.
+- **Don't provision accounts before first-run setup.** Any `super_admin` row locks `/setup` for ever; break-glass and JIT creation check `assertSetupComplete` first.
 - **Don't let a grid re-render without reading the user's current format preference.** Format is resolved server-side on every grid-payload response (`timeFormat` field) so client and server always agree.
 
 ---
@@ -267,7 +274,7 @@ docker compose -f docker-compose.prod.yml build
 
 1. `BUILD_PLAN.md` — the phased checklist; find the current phase and the specific item
 2. `CHANGELOG.md` — what v1.0.0 actually shipped with, grouped by phase
-3. `docs/` — operator + user-facing guides (`admin-guide`, `employee-guide`, `kiosk-setup`, `integrations`, `security`, `security-review`, `restore`, `troubleshooting`, `deployment`, `exports/`)
+3. `docs/` — operator + user-facing guides (`sso`, `admin-guide`, `employee-guide`, `kiosk-setup`, `integrations`, `security`, `security-review`, `restore`, `troubleshooting`, `deployment`, `exports/`)
 4. Vibe MyBooks source for: JWT enforcement, license state machine, company/employee data patterns
 5. Vibe TB source for: LLM abstraction, migrations style, TanStack Table patterns, four-level backup
 6. This file

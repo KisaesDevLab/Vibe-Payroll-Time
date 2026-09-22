@@ -13,7 +13,7 @@ import { env } from '../config/env.js';
 import { db } from '../db/knex.js';
 import { Unauthorized } from '../http/errors.js';
 
-export type AuthMethod = 'password' | 'magic_link';
+export type AuthMethod = 'password' | 'magic_link' | 'sso';
 
 export interface AccessTokenClaims {
   sub: string;
@@ -23,6 +23,11 @@ export interface AccessTokenClaims {
    *  password without knowing the old one" flow: only magic-link
    *  sessions are allowed to skip the current-password check. */
   authMethod?: AuthMethod;
+  /** Present only on single sign-on sessions: the key of the
+   *  `auth_sessions_oidc` row holding the IdP identity behind this
+   *  token, so logout can find it. Survives refresh rotation via
+   *  `refresh_tokens.sso_sid`. */
+  sid?: string;
   /** Issued at (seconds). */
   iat?: number;
   /** Expiry (seconds). */
@@ -35,7 +40,7 @@ export function issueAccessToken(
     email: string;
     roleGlobal: 'super_admin' | 'none';
   },
-  opts: { authMethod?: AuthMethod } = {},
+  opts: { authMethod?: AuthMethod; sid?: string } = {},
 ): { token: string; expiresAt: Date } {
   const expiresIn = ACCESS_TOKEN_TTL_SECONDS;
   const token = jwt.sign(
@@ -44,6 +49,7 @@ export function issueAccessToken(
       email: user.email,
       roleGlobal: user.roleGlobal,
       authMethod: opts.authMethod ?? 'password',
+      ...(opts.sid ? { sid: opts.sid } : {}),
     } satisfies AccessTokenClaims,
     env.JWT_SECRET,
     { algorithm: 'HS256', expiresIn },
@@ -68,6 +74,8 @@ export interface IssueRefreshTokenInput {
   remember?: boolean;
   ip?: string | null;
   userAgent?: string | null;
+  /** Set on single sign-on sessions — see AccessTokenClaims.sid. */
+  ssoSid?: string | null;
 }
 
 export async function issueRefreshToken(
@@ -85,6 +93,7 @@ export async function issueRefreshToken(
     expires_at: expiresAt,
     ip: input.ip ?? null,
     user_agent: input.userAgent?.slice(0, 512) ?? null,
+    sso_sid: input.ssoSid ?? null,
   });
 
   return { token, expiresAt };
@@ -99,20 +108,23 @@ export async function issueRefreshToken(
 export async function rotateRefreshToken(
   submittedToken: string,
   ctx: { ip?: string | null; userAgent?: string | null },
-): Promise<{ token: string; expiresAt: Date; userId: number }> {
+): Promise<{ token: string; expiresAt: Date; userId: number; ssoSid: string | null }> {
   return db.transaction(async (trx) => {
     const hash = sha256Hex(submittedToken);
-    const existing = await trx('refresh_tokens')
-      .where({ token_hash: hash })
-      .forUpdate()
-      .first<{ id: number; user_id: number; expires_at: Date; revoked_at: Date | null }>();
+    const existing = await trx('refresh_tokens').where({ token_hash: hash }).forUpdate().first<{
+      id: number;
+      user_id: number;
+      expires_at: Date;
+      revoked_at: Date | null;
+      sso_sid: string | null;
+    }>();
 
     if (!existing) throw Unauthorized('Invalid refresh token');
     if (existing.revoked_at) throw Unauthorized('Refresh token has been revoked');
     if (existing.expires_at.getTime() < Date.now()) throw Unauthorized('Refresh token expired');
 
     const { token, expiresAt } = await issueRefreshToken(
-      { userId: existing.user_id, ip: ctx.ip, userAgent: ctx.userAgent },
+      { userId: existing.user_id, ip: ctx.ip, userAgent: ctx.userAgent, ssoSid: existing.sso_sid },
       trx,
     );
 
@@ -124,7 +136,7 @@ export async function rotateRefreshToken(
       .where({ id: existing.id })
       .update({ revoked_at: trx.fn.now(), replaced_by_id: newRow?.id ?? null });
 
-    return { token, expiresAt, userId: existing.user_id };
+    return { token, expiresAt, userId: existing.user_id, ssoSid: existing.sso_sid };
   });
 }
 

@@ -63,6 +63,7 @@ import {
   updateMembershipRole,
 } from '../../services/memberships.js';
 import { db } from '../../db/knex.js';
+import { assertLinkSignInAllowed } from '../../services/vibe-auth/policy.js';
 import { BadRequest, Forbidden, NotFound, Unauthorized } from '../errors.js';
 import { originForRequest } from '../outbound-origin.js';
 import { requireAuth, requireCompanyRole, requireSuperAdmin } from '../middleware/auth.js';
@@ -311,6 +312,8 @@ companiesRouter.post(
         return next(NotFound('Membership not found'));
       }
       const body = sendAccountLinkRequestSchema.parse(req.body ?? {});
+      // Under oidc_only nobody can consume a link, so don't mint one.
+      assertLinkSignInAllowed();
 
       const membership = await db('company_memberships')
         .where({ id: membershipId, company_id: companyIdFromParams(req) })
@@ -363,6 +366,9 @@ companiesRouter.post(
         return next(NotFound('Employee not found'));
       }
       const body = sendEmployeeLinkRequestSchema.parse(req.body ?? {});
+      // Checked before createLogin can provision anything: under
+      // oidc_only nobody can consume a link, so don't mint one.
+      assertLinkSignInAllowed();
 
       const employee = await db('employees')
         .where({ id: employeeId, company_id: companyId })

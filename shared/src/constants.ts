@@ -51,6 +51,17 @@ export const FLSA_OT_THRESHOLD_HOURS = 40;
 export const PIN_MIN_LENGTH = 4;
 export const PIN_MAX_LENGTH = 6;
 
+/**
+ * The single sign-on break-glass account (Vibe Auth, D12): the one local
+ * login that keeps working when the firm has switched to SSO only. The
+ * appliance prints only the username, so the login form admits it as a
+ * literal; it maps to this address because `users.email` is NOT NULL and
+ * validated as an email everywhere else. The domain is deliberately
+ * undeliverable — nobody can mail themselves a link to this account.
+ */
+export const BREAKGLASS_USERNAME = 'vibe-breakglass';
+export const BREAKGLASS_EMAIL = 'vibe-breakglass@vibe-payroll.local';
+
 /** Rate limit budgets. */
 export const AUTH_RATE_LIMIT_PER_MINUTE = 10;
 export const NL_CORRECTION_LIMIT_PER_EMPLOYEE_PER_DAY = 20;

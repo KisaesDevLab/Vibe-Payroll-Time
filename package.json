@@ -45,6 +45,9 @@
     "prettier": "^3.4.0",
     "typescript": "^5.7.2"
   },
+  "vibeAuth": {
+    "adapter": "./backend/src/vibeAuthAdapter.ts"
+  },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": [
       "eslint --fix",

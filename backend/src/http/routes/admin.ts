@@ -34,6 +34,7 @@ import {
 } from '../../services/update-manager.js';
 import { aiMode, getRouterRegistrationState } from '../../services/ai/router-mode.js';
 import { VERSION, GIT_SHA, BUILD_DATE } from '../../version.js';
+import { assertLinkSignInAllowed } from '../../services/vibe-auth/policy.js';
 import { Conflict, HttpError, NotFound, Unauthorized } from '../errors.js';
 import { originForRequest } from '../outbound-origin.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
@@ -331,6 +332,8 @@ adminRouter.post(
       const userId = Number(req.params.userId);
       if (!Number.isFinite(userId) || userId <= 0) return next(NotFound('Bad userId'));
       const body = sendAccountLinkRequestSchema.parse(req.body ?? {});
+      // Under oidc_only nobody can consume a link, so don't mint one.
+      assertLinkSignInAllowed();
       const { sendAccountLink } = await import('../../services/magic-links.js');
       const result = await sendAccountLink({
         targetUserId: userId,
