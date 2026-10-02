@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
-    "@kisaesdevlab/vibe-auth": "^1.0.5",
+    "@kisaesdevlab/vibe-auth": "1.0.6",
     "@vibept/shared": "*",
     "archiver": "^7.0.1",
     "bcrypt": "^6.0.0",

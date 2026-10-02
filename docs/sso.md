@@ -53,15 +53,19 @@ a per-company membership role. The identity provider's groups map onto them:
 | anything else           | sign-in refused ("not assigned to a role") |
 
 The map is explicit in code (`VIBE_PT_ROLE_MAP`). Do **not** rely on the
-package's default guess: it would make every `vibe-partner` an appliance
-SuperAdmin and every `vibe-manager` a plain employee. Override per install
+package's default map: before 1.0.6 it guessed, making every `vibe-partner`
+an appliance SuperAdmin and every `vibe-manager` a plain employee; since
+1.0.6 it leaves those groups unmapped, which here would refuse them. Override per install
 with `VIBE_OIDC_ROLE_MAP` or in the settings page.
 
 Roles are re-synced from the IdP on every sign-in, with two safeguards:
 
 - **The last SuperAdmin is never demoted.** If the only active SuperAdmin
-  signs in through an IdP group that maps lower, their role is kept and a
-  warning is logged. The break-glass account does not count as "another
+  signs in through an IdP group that maps lower, their role is kept, a
+  warning is logged, and `auth_events` gets a `vibe.auth.role.changed` row
+  with `refused: true` (never a change that did not happen). The engine
+  asks `countOtherActiveAdmins` first; the adapter's `setRole` re-checks
+  under a row lock and returns `false`, which is the guard that holds. The break-glass account does not count as "another
   SuperAdmin" — it is an outage tool, not somebody's account.
 - Per-company memberships are only written when `TENANT_MODE=single` (the
   appliance default), where "the company" is unambiguous.
@@ -115,8 +119,16 @@ Provisioning runs inside the API container, from `/app`:
 
 ```bash
 node --import tsx/esm node_modules/@kisaesdevlab/vibe-auth/dist/cli.js \
-  breakglass ensure --json      # or: rotate | status
+  breakglass ensure --json      # or: rotate | status | verify
 ```
+
+- `status` reports `exists`, `active`, `admin` and `ready` (with
+  `problems[]` when not ready). There are no product-specific blockers to
+  add: no second factor, lockout or forced password change for staff.
+- `verify` reads a password on stdin and answers `{ checked: true,
+matches }` — a bare hash compare that touches neither `last_login_at`
+  nor `auth_events`. The appliance runs it before allowing `oidc_only`, to
+  catch a stored password that no longer matches the database.
 
 The image has no build step, hence `--import tsx/esm`; the CLI finds the
 adapter through `"vibeAuth"` in `/app/package.json`. On the appliance this
@@ -132,7 +144,8 @@ is `sudo vibe identity register vibe-payroll` (and
 
 > **After restoring an older database**, the stored break-glass password no
 > longer matches the restored hash, and `ensure` will not notice (the
-> account exists). Run `rotate-breakglass`.
+> account exists), but `breakglass verify` does — the appliance refuses
+> `oidc_only` until you run `rotate-breakglass`.
 
 ## Sessions, sign-out, revocation
 
@@ -214,6 +227,9 @@ lives in the repo.
   `NODE_AUTH_TOKEN` from the environment).
 - **CI:** `GITHUB_TOKEN` with `packages: read`. The Vibe-Auth package must
   grant this repository access (package settings → Manage Actions access).
+- **Pinned exactly** (`"1.0.6"`, not a caret range) in both workspaces. The
+  package's publish job stamps every Vibe-Auth tag, so `^1.0.6` would pull
+  1.0.14 and client features nobody has reviewed here. Bump deliberately.
 
 ## Audit
 
@@ -240,8 +256,10 @@ Recorded so the next reader of
    like a password session and sign-out cannot find its identity row.
 4. **Setup-first guard** on account provisioning (see Break-glass) — not in
    the plan; without it, registering before `/setup` bricks first-run.
-5. **Last-SuperAdmin guard lives in the adapter's `setRole`**, because the
-   package offers no way to refuse a role change (its follow-up D.3).
+5. **Last-SuperAdmin guard lives in the adapter's `setRole`**, under a row
+   lock. Since 1.0.6 it returns `false` so the refusal is audited, and
+   `countOtherActiveAdmins` lets the engine refuse first — but that check
+   runs outside the lock, so the adapter's stays authoritative.
 6. **Audit goes to `auth_events`**, the existing trail; no new table.
 7. **Secrets use the existing `services/crypto.ts`**; no new `secretWrap`.
 8. **Tests are a vitest integration suite** (`services/vibe-auth/__tests__/`)

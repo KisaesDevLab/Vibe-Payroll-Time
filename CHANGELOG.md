@@ -7,6 +7,24 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Single sign-on
+
+- **`@kisaesdevlab/vibe-auth` 1.0.6**, pinned exactly in both workspaces.
+- **Refused role changes are audited as refused.** When IdP role sync would
+  demote the last SuperAdmin, `auth_events` now records
+  `vibe.auth.role.changed` with `refused: true` instead of a change that
+  never happened.
+- **Break-glass `status` and `verify`.** `status` reports `admin` / `ready`;
+  the new `verify` lets the Vibe Appliance check its stored break-glass
+  password against the database (after a restore) before allowing
+  `oidc_only`. Verification never counts as a sign-in.
+- The break-glass address is handed to the engine explicitly, so the
+  package's new `vibe-breakglass@vibe-auth.local` default never applies.
+- Boot logs whether the identity provider was reachable on first discovery.
+- `.appliance/manifest.json`: `sso.recreate` (only the API restarts on
+  register / rotate / mode change) and `sso.minBroker: "1.0.4"` (older
+  brokers refuse every first sign-in while MFA-by-AMR is required).
+
 ## [1.1.0] — 2026-09-22
 
 ### Added — Single sign-on (Vibe Auth)

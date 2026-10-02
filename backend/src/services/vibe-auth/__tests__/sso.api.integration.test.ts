@@ -22,7 +22,12 @@
  */
 import crypto from 'node:crypto';
 import type { AddressInfo } from 'node:net';
-import { breakglassEnsure, makeAudit } from '@kisaesdevlab/vibe-auth';
+import {
+  breakglassEnsure,
+  breakglassStatus,
+  breakglassVerify,
+  makeAudit,
+} from '@kisaesdevlab/vibe-auth';
 import { BREAKGLASS_EMAIL, BREAKGLASS_USERNAME } from '@vibept/shared';
 import jwt from 'jsonwebtoken';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -386,6 +391,21 @@ describe.skipIf(!dbReachable)('single sign-on (Vibe Auth)', () => {
       expect((await userRow('owner@firm.test'))?.role_global).toBe('super_admin');
       // …and the session reflects what was actually kept, not the mapped role.
       expect(claims.roleGlobal).toBe('super_admin');
+      // The trail says the change was refused — never that it happened.
+      const changes = await db('auth_events')
+        .where({ user_id: superAdminId, event_type: 'vibe.auth.role.changed' })
+        .pluck('metadata');
+      expect(changes).toHaveLength(1);
+      expect(changes[0]).toMatchObject({ refused: true, to: 'employee' });
+    });
+
+    it('setRole itself refuses the last super_admin, under its own lock', async () => {
+      // The engine's countOtherActiveAdmins pre-check runs outside the
+      // transaction; the adapter's re-check is the one that holds.
+      const users = createVibeUsers();
+      expect(await users.setRole(String(superAdminId), 'employee')).toBe(false);
+      expect((await userRow('owner@firm.test'))?.role_global).toBe('super_admin');
+      expect(await users.countOtherActiveAdmins!(String(superAdminId))).toBe(0);
     });
 
     it('role sync does demote a super_admin when another one remains', async () => {
@@ -656,6 +676,48 @@ describe.skipIf(!dbReachable)('single sign-on (Vibe Auth)', () => {
         body: { refreshToken: session.refreshToken },
       });
       expect(refresh.status).toBe(401);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe('break-glass status and verify (what the appliance asks)', () => {
+    it('status reports an active, ready admin', async () => {
+      await ensureBreakglass();
+      const s = await breakglassStatus({
+        users: createVibeUsers(),
+        username: BREAKGLASS_USERNAME,
+        adminRole: VIBE_PT_ADMIN_ROLE,
+      });
+      expect(s).toMatchObject({ exists: true, active: true, admin: true, ready: true });
+      expect(s.problems).toEqual([]);
+    });
+
+    it('verify checks the stored password without counting as a sign-in', async () => {
+      const bgPassword = await ensureBreakglass();
+      const verify = (password: string) =>
+        breakglassVerify({ users: createVibeUsers(), username: BREAKGLASS_USERNAME, password });
+
+      expect(await verify(bgPassword)).toEqual({ exists: true, checked: true, matches: true });
+      expect(await verify('not-the-password')).toEqual({
+        exists: true,
+        checked: true,
+        matches: false,
+      });
+      const bg = await db('users')
+        .whereRaw('LOWER(email) = ?', [BREAKGLASS_EMAIL])
+        .first<{ id: number; last_login_at: Date | null }>('id', 'last_login_at');
+      expect(bg?.last_login_at).toBeNull();
+      expect(
+        await db('auth_events')
+          .where({ user_id: bg!.id })
+          .whereIn('event_type', ['login_failure', 'login_success']),
+      ).toHaveLength(0);
+    });
+
+    it('an SSO-provisioned account never verifies', async () => {
+      await ssoLogin(person('jit', ['vibe-staff']));
+      const row = await userRow('jit@firm.test');
+      expect(await createVibeUsers().verifyLocalPassword!(String(row!.id), PASSWORD)).toBe(false);
     });
   });
 

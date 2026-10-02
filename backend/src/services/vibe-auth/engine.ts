@@ -13,6 +13,7 @@ import {
   type VibeAuth,
   type VibeUser,
 } from '@kisaesdevlab/vibe-auth';
+import { BREAKGLASS_EMAIL } from '@vibept/shared';
 import type { Request, RequestHandler, Response } from 'express';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
@@ -170,7 +171,7 @@ async function mintSsoSession(
   return { accessToken: access.token, refreshToken: refresh.token };
 }
 
-const sessions: SessionAdapter = {
+const sessions: SessionAdapter<Request, Response> = {
   async create(req: Request, res: Response, user: VibeUser, identity: SessionIdentity) {
     // vibeAuthMiddleware() appends the pair to the engine's post-login redirect.
     res.locals.vibeAuthTokens = await mintSsoSession(user, identity, {
@@ -322,6 +323,10 @@ export function getVibeAuth(): VibeAuth {
       },
     },
     users: createVibeUsers(),
+    // Not the package default (vibe-breakglass@vibe-auth.local): the CLI
+    // adapter creates the account under this address, and the policy hooks
+    // must recognise it by email as well as by the bare username.
+    breakglassEmail: BREAKGLASS_EMAIL,
     session: sessions,
     identities: pgStores.identities,
     settings: pgStores.settings,
@@ -363,6 +368,17 @@ export async function startVibeAuth(): Promise<void> {
     { mode: s.mode, sso: s.oidc.enabled ? s.oidc.issuer : 'off', prefix: spaPrefix || '/' },
     'vibe-auth started',
   );
+  // First IdP discovery, logged when it settles. Never awaited: an
+  // unreachable IdP must not hold up the boot.
+  if (s.oidc.enabled) {
+    void auth.ready().then(
+      (ok) =>
+        ok
+          ? logger.info({ issuer: s.oidc.issuer }, 'vibe-auth: identity provider reachable')
+          : logger.warn({ issuer: s.oidc.issuer }, 'vibe-auth: identity provider unreachable'),
+      () => undefined,
+    );
+  }
 }
 
 export function stopVibeAuth(): void {

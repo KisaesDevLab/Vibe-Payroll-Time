@@ -63,7 +63,9 @@
       "breakglass",
       "ensure",
       "--json"
-    ]
+    ],
+    "recreate": ["vibe-payroll-api"],
+    "minBroker": "1.0.4"
   },
   "subdomains": [
     {
