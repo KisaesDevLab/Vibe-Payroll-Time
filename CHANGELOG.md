@@ -7,6 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-10-03
+
 ### Changed — Single sign-on
 
 - **`@kisaesdevlab/vibe-auth` 1.0.6**, pinned exactly in both workspaces.
