@@ -15,7 +15,7 @@ import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { db } from '../../db/knex.js';
 import { recordAuthEvent } from '../auth-events.js';
-import { hashPassword } from '../passwords.js';
+import { hashPassword, verifyPassword } from '../passwords.js';
 import { anySuperAdminHasExisted, healEmployeeLinksForUser, type UserRow } from '../users.js';
 
 /**
@@ -46,9 +46,10 @@ export const VIBE_PT_ROLES = ['super_admin', 'company_admin', 'supervisor', 'emp
 export const VIBE_PT_ADMIN_ROLE = 'super_admin';
 
 /**
- * Explicit, never the package's guess: `defaultRoleMapFor` would send every
- * `vibe-partner` to `super_admin` (appliance-wide) and every `vibe-manager`
- * to `employee`.
+ * Explicit, never the package's default. Before 1.0.6 `defaultRoleMapFor`
+ * guessed (every `vibe-partner` → `super_admin`, appliance-wide); it now
+ * leaves unmapped groups unmapped, but `vibe-partner` and `vibe-manager`
+ * only mean something here through this table.
  */
 export const VIBE_PT_ROLE_MAP: Record<string, string> = {
   'vibe-admin': 'super_admin',
@@ -149,19 +150,19 @@ async function assertSetupComplete(): Promise<void> {
 }
 
 /**
- * True when demoting `uid` would leave the appliance with no active
- * super_admin a person can actually sign in as. The break-glass row does
- * not count: it is an outage tool, not somebody's account.
+ * Active super_admins other than `uid` that a person can actually sign in
+ * as. The break-glass row does not count: it is an outage tool, not
+ * somebody's account.
  */
-async function isLastSuperAdmin(trx: Knex.Transaction, uid: number): Promise<boolean> {
-  const row = await trx('users')
+async function countOtherSuperAdmins(q: Knex | Knex.Transaction, uid: number): Promise<number> {
+  const row = await q('users')
     .where({ role_global: 'super_admin' })
     .whereNull('disabled_at')
     .whereNot({ id: uid })
     .whereRaw('LOWER(email) <> ?', [BREAKGLASS_EMAIL])
     .count<{ count: string }>('id as count')
     .first();
-  return Number(row?.count ?? 0) === 0;
+  return Number(row?.count ?? 0);
 }
 
 /** A bcrypt hash of random bytes nobody knows: satisfies NOT NULL (and
@@ -226,9 +227,15 @@ export function createVibeUsers(): UserAdapter {
       return toVibeUser(row);
     },
 
+    /** Lets the engine refuse a last-admin demotion before calling setRole. */
+    async countOtherActiveAdmins(excludeUserId) {
+      return countOtherSuperAdmins(db, userId(excludeUserId));
+    },
+
+    /** Returns false when the change is refused; the engine audits that. */
     async setRole(id, role) {
       const uid = userId(id);
-      await db.transaction(async (trx) => {
+      return db.transaction(async (trx) => {
         const user = await trx<UserRow>('users').where({ id: uid }).forUpdate().first();
         if (!user) throw new Error(`vibe-auth: user ${uid} not found`);
 
@@ -236,21 +243,21 @@ export function createVibeUsers(): UserAdapter {
           await trx('users')
             .where({ id: uid })
             .update({ role_global: 'super_admin', updated_at: trx.fn.now() });
-          return;
+          return true;
         }
         if (!isCompanyRole(role)) throw new Error(`vibe-auth: "${role}" is not a role here`);
 
         if (user.role_global === 'super_admin') {
-          // Role sync runs on the first SSO link of an EXISTING account.
-          // The package offers no way to refuse, so the guard is here: the
-          // IdP's group map must never be able to leave the appliance
-          // without an administrator.
-          if (await isLastSuperAdmin(trx, uid)) {
+          // Role sync runs on the first SSO link of an EXISTING account. The
+          // engine checks countOtherActiveAdmins first, but outside this
+          // lock — this re-check is the authority: the IdP's group map must
+          // never be able to leave the appliance without an administrator.
+          if ((await countOtherSuperAdmins(trx, uid)) === 0) {
             logger.warn(
               { userId: uid, mappedRole: role },
               'vibe-auth: role sync would demote the last super_admin — refused',
             );
-            return;
+            return false;
           }
           await trx('users')
             .where({ id: uid })
@@ -258,10 +265,23 @@ export function createVibeUsers(): UserAdapter {
         }
 
         const companyId = await singleCompanyId(trx);
-        if (!companyId) return; // TENANT_MODE=multi — companies are assigned by hand.
+        if (!companyId) return true; // TENANT_MODE=multi — companies are assigned by hand.
         await upsertMembership(trx, uid, companyId, role);
         await healEmployeeLinksForUser(uid, user.email, trx);
+        return true;
       });
+    },
+
+    /** For `vibe-auth breakglass verify` only: does the Appliance's stored
+     *  password still match this database (it won't after a restore)? A
+     *  bare hash compare — no lockout counter, no last_login_at, no
+     *  auth_events row. SSO-provisioned rows hold an unusable hash. */
+    async verifyLocalPassword(id, password) {
+      const row = await db<UserRow>('users')
+        .where({ id: userId(id) })
+        .first();
+      if (!row || row.sso_provisioned_at) return false;
+      return verifyPassword(password, row.password_hash);
     },
 
     /** Break-glass provisioning: an ACTIVE local super_admin with a real
