@@ -4,6 +4,28 @@
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
+// Punch location � a GPS fix the personal-device PWA captured at the moment
+// of a punch, when the company has `punchLocationMode` on. Client-supplied
+// metadata like `clientStartedAt`: recorded for attribution, never used to
+// accept or reject the punch.
+// ---------------------------------------------------------------------------
+
+export const punchLocationSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  /** Browser-reported 95% radius in metres. */
+  accuracyM: z.number().int().nonnegative().max(1_000_000).nullable(),
+});
+export type PunchLocation = z.infer<typeof punchLocationSchema>;
+
+export const punchLocationStatusSchema = z.enum(['captured', 'denied', 'unavailable', 'missing']);
+
+/** What a client may report when it could not produce a fix. `captured`
+ *  is implied by sending `location`; `missing` is only ever set by the
+ *  server. */
+export const clientLocationStatusSchema = z.enum(['denied', 'unavailable']);
+
+// ---------------------------------------------------------------------------
 // Time entry resource shape (used in every punch response + timesheet reads)
 // ---------------------------------------------------------------------------
 
@@ -24,6 +46,12 @@ export const timeEntrySchema = z.object({
    *  admin/supervisor-facing responses. */
   sourceIp: z.string().nullable(),
   sourceUserAgent: z.string().nullable(),
+  /** GPS fix recorded with the punch that opened this row, and with the
+   *  one that closed it. Null unless the company records locations. */
+  startedLocation: punchLocationSchema.nullable(),
+  startedLocationStatus: punchLocationStatusSchema.nullable(),
+  endedLocation: punchLocationSchema.nullable(),
+  endedLocationStatus: punchLocationStatusSchema.nullable(),
   approvedAt: z.string().datetime().nullable(),
   approvedBy: z.number().int().positive().nullable(),
   isAutoClosed: z.boolean(),
@@ -53,6 +81,10 @@ export type TimeEntry = z.infer<typeof timeEntrySchema>;
 const offlineMetaSchema = z.object({
   clientStartedAt: z.string().datetime().optional(),
   clientClockSkewMs: z.number().int().min(-86_400_000).max(86_400_000).optional(),
+  /** Present when the PWA captured a fix for this punch. */
+  location: punchLocationSchema.nullable().optional(),
+  /** Why no fix accompanies the punch, when the company asked for one. */
+  locationStatus: clientLocationStatusSchema.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -110,5 +142,8 @@ export const currentPunchResponseSchema = z.object({
   openEntry: timeEntrySchema.nullable(),
   /** Today's work-hours running total, in seconds, in the company TZ. */
   todayWorkSeconds: z.number().int().nonnegative(),
+  /** The company's location setting, so the PWA knows whether to ask the
+   *  browser for a fix before each punch. */
+  punchLocationMode: z.enum(['off', 'optional', 'required']),
 });
 export type CurrentPunchResponse = z.infer<typeof currentPunchResponseSchema>;

@@ -372,6 +372,43 @@ function PunchSection({
           </label>
         ))}
       </fieldset>
+      <fieldset className="rounded-md border border-slate-200 p-4">
+        <legend className="px-2 text-xs font-medium uppercase text-slate-500">
+          Punch location
+        </legend>
+        <p className="mb-3 text-xs text-slate-500">
+          Record a GPS fix from the employee's phone at the moment of each personal-device punch.
+          One fix per punch, nothing in between, and a punch is never rejected because of where it
+          happened. Kiosk punches are attributed to the tablet instead. Coordinates show on the
+          timesheet and in the Punch activity report.
+        </p>
+        {(['off', 'optional', 'required'] as const).map((mode) => (
+          <label key={mode} className="mt-2 flex items-start gap-3 text-sm text-slate-700">
+            <input
+              type="radio"
+              className="mt-1 h-4 w-4"
+              name="punchLocationMode"
+              value={mode}
+              defaultChecked={settings.punchLocationMode === mode}
+              onChange={() => setForm((f) => ({ ...f, punchLocationMode: mode }))}
+            />
+            <span>
+              <strong>
+                {mode === 'off' && 'Off'}
+                {mode === 'optional' && 'Optional'}
+                {mode === 'required' && 'Required'}
+              </strong>
+              <span className="ml-2 text-xs text-slate-500">
+                {mode === 'off' && 'The phone is never asked for its location.'}
+                {mode === 'optional' &&
+                  'Recorded when the employee allows it. A refused prompt is noted on the entry, and the punch still goes through.'}
+                {mode === 'required' &&
+                  'The app will not punch until the phone produces a fix. Tell employees before turning this on.'}
+              </span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
     </SectionShell>
   );
 }

@@ -8,6 +8,7 @@ import {
   clockOutRequestSchema,
   switchJobRequestSchema,
 } from '@vibept/shared';
+import type { PunchLocation } from '@vibept/shared';
 import { type Request, Router } from 'express';
 import { z } from 'zod';
 import { db } from '../../db/knex.js';
@@ -53,7 +54,13 @@ function sourceDeviceIdFromReq(req: Request): string {
 
 function baseCtx(
   req: Request,
-  body: { companyId: number; clientStartedAt?: string; clientClockSkewMs?: number },
+  body: {
+    companyId: number;
+    clientStartedAt?: string;
+    clientClockSkewMs?: number;
+    location?: PunchLocation | null;
+    locationStatus?: 'denied' | 'unavailable';
+  },
   employeeId: number,
 ): PunchContext {
   return {
@@ -66,6 +73,8 @@ function baseCtx(
     sourceUserAgent: req.headers['user-agent']?.slice(0, 512) ?? null,
     clientStartedAt: body.clientStartedAt,
     clientClockSkewMs: body.clientClockSkewMs,
+    location: body.location ?? null,
+    locationStatus: body.locationStatus,
   };
 }
 

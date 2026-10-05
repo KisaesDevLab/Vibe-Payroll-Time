@@ -51,6 +51,10 @@ export const companySettingsSchema = z.object({
   kioskEnabled: z.boolean(),
   personalDeviceEnabled: z.boolean(),
   kioskAuthMode: z.enum(['pin', 'qr', 'both']),
+  /** GPS capture on personal-device punches. `off` (default) never asks
+   *  the browser; `optional` records a fix when the employee allows it;
+   *  `required` makes the PWA refuse to punch without one. */
+  punchLocationMode: z.enum(['off', 'optional', 'required']),
   twilioAccountSid: z.string().nullable(),
   twilioFromNumber: z.string().nullable(),
   /** True iff the encrypted blob is populated. Plaintext is never returned. */
@@ -73,6 +77,7 @@ export const updateCompanySettingsRequestSchema = z
     kioskEnabled: z.boolean(),
     personalDeviceEnabled: z.boolean(),
     kioskAuthMode: z.enum(['pin', 'qr', 'both']),
+    punchLocationMode: z.enum(['off', 'optional', 'required']),
     twilioAccountSid: z.string().max(64).nullable(),
     /** Provide a new plaintext token; null clears the stored secret. Omit to
      *  leave the existing encrypted value untouched. */

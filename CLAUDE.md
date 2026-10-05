@@ -17,7 +17,7 @@ A self-hosted, multi-tenant **employee time tracking** application for hourly/sh
 
 - ❌ Payroll processing (gross-to-net, tax withholding, direct deposit, 941/940/W-2 filings) — export-only to Payroll Relief / Gusto / QBO Payroll / generic CSV
 - ❌ Scheduling (shifts, templates, trades, availability, time-off requests, PTO accruals)
-- ❌ GPS / geofencing / photo / biometric / device-binding — anti-buddy-punching is auth-based only
+- ❌ Geofencing / photo / biometric / device-binding — anti-buddy-punching is auth-based only. (Opt-in per-company **punch location logging** exists: one GPS fix recorded with each personal-device punch, never used to accept or reject one. See "Punch location" below.)
 - ❌ Rate/wage data — hours only, no dollars anywhere in the system
 - ❌ Professional-services billable-hours UX (timer-first, per-client billing) — this is a punch-in/out app
 - ❌ Native iOS/Android apps — PWA only
@@ -130,6 +130,15 @@ Mid-shift job switch: close current `work` entry (ended_at = now), open new `wor
 Only **one open entry** per employee may exist at any time — enforced with a partial unique index.
 
 Manual entries use `source = web_manual` and carry an `entry_reason`. A manual entry may supersede one or more punch entries for the same (employee, day, job); superseded entries remain in the DB with their `superseded_by_entry_id` set, never deleted. The "active" view of a timesheet is entries where `superseded_by_entry_id IS NULL`. Deleting a manual entry restores its superseded punches in the same transaction.
+
+### Punch location is attribution, not enforcement
+
+`company_settings.punch_location_mode` (`off` default | `optional` | `required`) decides whether the personal-device PWA asks the browser for a GPS fix at the moment of a punch. The fix travels in the punch body (and the offline queue payload) like `clientStartedAt` and lands on `time_entries` as `started_*` for the punch that opened the row and `ended_*` for the one that closed it, each with a `*_location_status` of `captured` / `denied` / `unavailable` / `missing` (NULL = never asked). `resolveLocation` in `services/punch.ts` is the one place that decides what to store.
+
+- The server never rejects a punch for a missing or distant location. `required` is enforced by the PWA refusing to send; a tampered client that omits the fix gets a `missing` status and a `no-location` flag in the Punch activity report, not a lost punch.
+- Kiosk, admin-created, and cron-closed entries always record NULL. A kiosk punch is already attributed to the paired tablet.
+- Edits never touch recorded coordinates. The create audit row carries `startedLocation`; the close writes an `ended_location` audit row.
+- Coordinates appear on timesheets and in the Punch activity report, never in payroll exports.
 
 ### Time format is always a display concern
 
@@ -260,6 +269,8 @@ docker compose -f docker-compose.prod.yml build
 - **Don't let an SSO-provisioned account bootstrap a local credential.** `users.sso_provisioned_at` marks just-in-time accounts; the self-service link lookups in `magic-links.ts` filter on it. Only an admin-sent link may grant such an account a password.
 - **Don't trust the vibe-auth package's default role map.** It would make every `vibe-partner` an appliance `super_admin`. The map is explicit (`VIBE_PT_ROLE_MAP`), and `setRole` refuses to demote the last SuperAdmin.
 - **Don't provision accounts before first-run setup.** Any `super_admin` row locks `/setup` for ever; break-glass and JIT creation check `assertSetupComplete` first.
+- **Don't make a punch depend on its location.** `required` mode lives in the PWA; the service records `missing` and moves on. A dropped punch is a wage claim, a flagged one is a conversation.
+- **Don't ask a personal device for location outside the moment of a punch.** No `watchPosition`, no fix on page load, no fix when the mode is `off`. The employee guide promises exactly one fix per punch.
 - **Don't let a grid re-render without reading the user's current format preference.** Format is resolved server-side on every grid-payload response (`timeFormat` field) so client and server always agree.
 
 ---

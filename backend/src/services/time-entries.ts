@@ -21,9 +21,12 @@ export async function getCurrentPunch(
     .first<{ id: number; first_name: string; last_name: string }>();
   if (!employee) throw NotFound('Employee not found');
 
-  const [openRow, todayWorkSeconds] = await Promise.all([
+  const [openRow, todayWorkSeconds, settings] = await Promise.all([
     getOpenEntry(companyId, employeeId),
     getTodayWorkSeconds(companyId, employeeId),
+    db('company_settings').where({ company_id: companyId }).first<{
+      punch_location_mode: CurrentPunchResponse['punchLocationMode'];
+    }>('punch_location_mode'),
   ]);
 
   return {
@@ -34,5 +37,6 @@ export async function getCurrentPunch(
     },
     openEntry: openRow ? rowToTimeEntry(openRow) : null,
     todayWorkSeconds,
+    punchLocationMode: settings?.punch_location_mode ?? 'off',
   };
 }

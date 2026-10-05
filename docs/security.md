@@ -190,8 +190,9 @@ Four levels, detailed in `docs/restore.md`:
 
 ## QR badge authentication
 
-Badges are an auth feature, not a surveillance feature — no GPS, no photo, no
-biometric, no location tracking.
+Badges are an auth feature, not a surveillance feature — no photo, no
+biometric, no location tracking. (Per-company punch location logging is a
+separate, off-by-default setting for personal-device punches only; see below.)
 
 ### Token format
 
@@ -249,6 +250,29 @@ badge is revoked or reissued. Nothing more. Badges cannot:
 The risk model for a stolen badge is the same as a stolen 4-6 digit PIN,
 except the PIN has ~1M possibilities and the badge is a 128-bit HMAC key
 scoped to one employee.
+
+## Punch location
+
+Off by default per company (`punch_location_mode`). When on, the personal-device
+PWA asks the browser for a single GPS fix at the moment of a punch and sends it
+in the request body alongside the other client-supplied metadata.
+
+- **Client-supplied, server-recorded, never trusted for a decision.** Like
+  `client_started_at`, the fix is attribution. The server does not reject,
+  move, or alter a punch for its location, and `required` mode is enforced only
+  by the PWA declining to send. An omitted fix under `optional` or `required`
+  is recorded as `denied` / `unavailable` / `missing` and flagged in the Punch
+  activity report.
+- **Scope.** Only `mobile_pwa` punches are asked. Kiosk, admin-created, and
+  cron-closed rows store NULL regardless of the setting. The PWA never calls
+  `watchPosition` and never asks for a fix while the mode is `off`.
+- **Storage.** `time_entries.started_{lat,lng,accuracy_m,location_status}` and
+  `ended_*`, decimal(9,6). Retained with the entry forever (time entries are
+  never pruned) and included in the per-company export ZIP. Not included in
+  payroll exports.
+- **Exposure.** Shown on timesheets to the employee and their supervisors, and
+  in the Punch activity report. Audit rows carry the fix as `startedLocation`
+  on create and `ended_location` on close.
 
 ## Reporting a vulnerability
 

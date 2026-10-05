@@ -8,7 +8,7 @@ internal use) and for CPA firms reselling it to their small-business clients
 (commercial tier). Narrower and simpler than QuickBooks Time, OnTheClock, or
 Homebase — punch-in/out, timesheet approval, payroll export, nothing more.
 
-**Explicit non-goals (v1):** payroll processing, scheduling, GPS/geofencing,
+**Explicit non-goals (v1):** payroll processing, scheduling, geofencing,
 rate or wage data, native mobile apps, state-specific overtime rules, GL
 integration. See [`CLAUDE.md`](./CLAUDE.md) for the full scope.
 
