@@ -256,6 +256,35 @@ Approved periods are always locked for employees regardless of mode. A
 supervisor can still post a manual entry after approval — the audit row
 makes the post-approval edit visible.
 
+## Punch location
+
+Off by default. **Settings → Punch rules → Punch location** records a GPS fix
+from the employee's phone at the moment of each personal-device punch.
+
+- **Off** — the phone is never asked.
+- **Optional** — recorded when the employee allows the browser prompt. A
+  refused prompt or a failed fix is noted on the entry as "no location"; the
+  punch still goes through.
+- **Required** — the My punch page refuses to punch until the phone produces a
+  fix. Tell employees before turning this on, and expect "no location" flags
+  from basements and older phones.
+
+What it is and is not:
+
+- One fix per punch, captured at the moment of the tap, including punches
+  queued while offline. Nothing is recorded between punches.
+- Attribution, not geofencing. A punch is never rejected or altered because of
+  where it happened. Treat a surprising location the way you treat a
+  surprising IP: ask.
+- Kiosk punches are attributed to the paired tablet and never carry a phone
+  location. Admin-created and auto-closed entries carry none either.
+- Coordinates show on the timesheet (📍 in / 📍 out badges link to a map) and
+  in the **Punch activity** report's Start location / End location columns.
+  The report's "Exceptions only" filter includes entries that were asked for a
+  location and got none. Payroll exports never include coordinates.
+- Recorded coordinates are part of the time entry's audit trail and are never
+  changed by a later edit.
+
 ## Time format preference
 
 **User menu → Preferences → Time format.** Either decimal (5.80) or HH:MM

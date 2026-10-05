@@ -7,6 +7,30 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Punch location (opt-in)
+
+- **Per-company `punch_location_mode`** (`off` default / `optional` /
+  `required`) under **Settings → Punch rules**. When on, the personal-device
+  PWA asks the browser for one GPS fix at the moment of each punch and sends
+  it with the request; the same fix rides in the offline queue payload.
+- **`time_entries` gains `started_{lat,lng,accuracy_m,location_status}` and
+  `ended_*`** (migration `20261005000001_punch_location.js`). Status is
+  `captured`, `denied`, `unavailable`, or `missing`; NULL means never asked.
+- **Attribution only.** The server never rejects or moves a punch for its
+  location. `required` is enforced by the PWA refusing to send; a silent
+  omission is stored as `missing`. Kiosk, admin-created, and cron-closed
+  entries never carry a location.
+- **Visible on the timesheet** (📍 in / 📍 out badges linking to OpenStreetMap,
+  "no location" when a fix was asked for and not produced) and in the **Punch
+  activity** report (Start location / End location columns, `no-location`
+  flag, included in the "Exceptions only" filter). Not in payroll exports.
+- **Audit trail**: the create row carries `startedLocation`; closing a row
+  writes an `ended_location` audit row.
+- `GET /api/v1/punch/current` now returns `punchLocationMode` so the PWA knows
+  whether to ask.
+- Scope note: `CLAUDE.md` non-goals now read "geofencing" rather than "GPS".
+  Geofencing, photo, biometric and device-binding remain out of scope.
+
 ## [1.1.1] — 2026-10-03
 
 ### Changed — Single sign-on

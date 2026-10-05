@@ -3,6 +3,7 @@
 // You may not distribute this software. See LICENSE for terms.
 import type { TimeEntry, TimesheetResponse } from '@vibept/shared';
 import { useMemo, useState } from 'react';
+import { formatCoords, mapLinkFor } from '../lib/punch-location';
 import { EntryAuditDrawer } from './EntryAuditDrawer';
 
 function formatHours(seconds: number): string {
@@ -27,6 +28,51 @@ function formatDate(iso: string, tz?: string): string {
     day: 'numeric',
     ...(tz ? { timeZone: tz } : {}),
   });
+}
+
+/**
+ * Where the punch that opened and the punch that closed this entry
+ * happened, when the company records locations. Captured fixes link to
+ * a map; a refused or failed fix shows as a muted status so a reviewer
+ * can tell "not asked" from "asked and got nothing".
+ */
+function LocationBadges({ entry }: { entry: TimeEntry }) {
+  const sides = [
+    { label: 'in', loc: entry.startedLocation, status: entry.startedLocationStatus },
+    { label: 'out', loc: entry.endedLocation, status: entry.endedLocationStatus },
+  ];
+  return (
+    <>
+      {sides.map(({ label, loc, status }) => {
+        if (loc) {
+          return (
+            <a
+              key={label}
+              href={mapLinkFor(loc)}
+              target="_blank"
+              rel="noreferrer"
+              title={formatCoords(loc)}
+              className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 hover:underline"
+            >
+              📍 {label}
+            </a>
+          );
+        }
+        if (status) {
+          return (
+            <span
+              key={label}
+              title={`No location recorded at clock-${label}: ${status}`}
+              className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
+            >
+              no location ({label})
+            </span>
+          );
+        }
+        return null;
+      })}
+    </>
+  );
 }
 
 export function TimesheetView({
@@ -184,6 +230,7 @@ export function TimesheetView({
                           auto-closed
                         </span>
                       )}
+                      <LocationBadges entry={e} />
                     </td>
                     <td className="px-5 py-2 text-right text-xs">
                       <div className="flex items-center justify-end gap-3">

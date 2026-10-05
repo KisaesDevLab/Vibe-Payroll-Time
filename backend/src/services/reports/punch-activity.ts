@@ -29,6 +29,24 @@ type Row = TimeEntryRow & {
   editor_email: string | null;
 };
 
+/** Location statuses that mean "the company asked and got nothing". */
+const NO_LOCATION_STATUSES = ['denied', 'unavailable', 'missing'];
+
+/** "40.712800, -74.006000 (±12 m)" — or the status when no fix was
+ *  recorded, or blank when the company never asked. */
+function formatLocation(
+  lat: string | number | null,
+  lng: string | number | null,
+  accuracyM: number | null,
+  status: string | null,
+): string {
+  if (lat != null && lng != null) {
+    const coords = `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
+    return accuracyM == null ? coords : `${coords} (±${accuracyM} m)`;
+  }
+  return status ?? '';
+}
+
 export const punchActivityReport: ReportHandler<typeof punchActivityParamsSchema> = {
   name: 'punch_activity',
   label: 'Punch activity (investigation)',
@@ -46,6 +64,8 @@ export const punchActivityReport: ReportHandler<typeof punchActivityParamsSchema
     { key: 'sourceDevice', label: 'Device', type: 'string' },
     { key: 'sourceIp', label: 'IP', type: 'string' },
     { key: 'userAgent', label: 'User agent', type: 'string' },
+    { key: 'startLocation', label: 'Start location', type: 'string' },
+    { key: 'endLocation', label: 'End location', type: 'string' },
     { key: 'flags', label: 'Flags', type: 'string' },
     { key: 'approved', label: 'Approved', type: 'boolean' },
     { key: 'editedBy', label: 'Edited by', type: 'string' },
@@ -85,7 +105,10 @@ export const punchActivityReport: ReportHandler<typeof punchActivityParamsSchema
       required: false,
       choices: [
         { value: 'all', label: 'All entries' },
-        { value: 'exceptions_only', label: 'Exceptions only (auto-closed / offline / edited)' },
+        {
+          value: 'exceptions_only',
+          label: 'Exceptions only (auto-closed / offline / edited / no location)',
+        },
       ],
     },
   ],
@@ -121,7 +144,9 @@ export const punchActivityReport: ReportHandler<typeof punchActivityParamsSchema
       q.where(function () {
         this.where('t.is_auto_closed', true)
           .orWhere('t.source_offline', true)
-          .orWhereNotNull('t.edit_reason');
+          .orWhereNotNull('t.edit_reason')
+          .orWhereIn('t.started_location_status', NO_LOCATION_STATUSES)
+          .orWhereIn('t.ended_location_status', NO_LOCATION_STATUSES);
       });
     }
 
@@ -140,6 +165,12 @@ export const punchActivityReport: ReportHandler<typeof punchActivityParamsSchema
       if (r.source === 'web' && r.source_device_id?.startsWith('web-admin-')) {
         flags.push('admin-created');
       }
+      if (
+        NO_LOCATION_STATUSES.includes(r.started_location_status ?? '') ||
+        NO_LOCATION_STATUSES.includes(r.ended_location_status ?? '')
+      ) {
+        flags.push('no-location');
+      }
 
       yield {
         date: r.started_at.toISOString().slice(0, 10),
@@ -155,6 +186,18 @@ export const punchActivityReport: ReportHandler<typeof punchActivityParamsSchema
         // Truncate UA in the report — full value is in the DB if anyone
         // needs it via SQL.
         userAgent: r.source_user_agent ? r.source_user_agent.slice(0, 80) : '',
+        startLocation: formatLocation(
+          r.started_lat,
+          r.started_lng,
+          r.started_accuracy_m,
+          r.started_location_status,
+        ),
+        endLocation: formatLocation(
+          r.ended_lat,
+          r.ended_lng,
+          r.ended_accuracy_m,
+          r.ended_location_status,
+        ),
         flags: flags.join(', '),
         approved: !!r.approved_at,
         editedBy: r.editor_email ?? '',

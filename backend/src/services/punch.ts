@@ -1,7 +1,13 @@
 // Copyright 2026 Kisaes LLC
 // Licensed under the PolyForm Internal Use License 1.0.0.
 // You may not distribute this software. See LICENSE for terms.
-import type { PunchSource, TimeEntry } from '@vibept/shared';
+import type {
+  PunchLocation,
+  PunchLocationMode,
+  PunchLocationStatus,
+  PunchSource,
+  TimeEntry,
+} from '@vibept/shared';
 import { OFFLINE_PUNCH_MAX_AGE_SECONDS } from '@vibept/shared';
 import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
@@ -26,6 +32,14 @@ export interface TimeEntryRow {
   source_offline: boolean;
   source_ip: string | null;
   source_user_agent: string | null;
+  started_lat: string | number | null;
+  started_lng: string | number | null;
+  started_accuracy_m: number | null;
+  started_location_status: PunchLocationStatus | null;
+  ended_lat: string | number | null;
+  ended_lng: string | number | null;
+  ended_accuracy_m: number | null;
+  ended_location_status: PunchLocationStatus | null;
   client_started_at: Date | null;
   client_clock_skew_ms: number | null;
   created_by: number | null;
@@ -43,6 +57,16 @@ export interface TimeEntryRow {
   updated_at: Date;
 }
 
+/** decimal(9,6) comes back from pg as a string; the API speaks numbers. */
+function rowLocation(
+  lat: string | number | null,
+  lng: string | number | null,
+  accuracyM: number | null,
+): PunchLocation | null {
+  if (lat == null || lng == null) return null;
+  return { lat: Number(lat), lng: Number(lng), accuracyM };
+}
+
 export function rowToTimeEntry(row: TimeEntryRow): TimeEntry {
   return {
     id: row.id,
@@ -58,6 +82,10 @@ export function rowToTimeEntry(row: TimeEntryRow): TimeEntry {
     sourceOffline: row.source_offline,
     sourceIp: row.source_ip,
     sourceUserAgent: row.source_user_agent,
+    startedLocation: rowLocation(row.started_lat, row.started_lng, row.started_accuracy_m),
+    startedLocationStatus: row.started_location_status,
+    endedLocation: rowLocation(row.ended_lat, row.ended_lng, row.ended_accuracy_m),
+    endedLocationStatus: row.ended_location_status,
     approvedAt: row.approved_at?.toISOString() ?? null,
     approvedBy: row.approved_by,
     isAutoClosed: row.is_auto_closed,
@@ -94,6 +122,72 @@ export interface PunchContext {
    *  client_started_at adjusted for skew. */
   clientStartedAt?: string | undefined;
   clientClockSkewMs?: number | undefined;
+  /** GPS fix the PWA captured for this punch, when the company records
+   *  them. Attribution only — never consulted to accept or reject. */
+  location?: PunchLocation | null | undefined;
+  /** Client's explanation for a missing fix. */
+  locationStatus?: 'denied' | 'unavailable' | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Punch location
+// ---------------------------------------------------------------------------
+
+interface ResolvedLocation {
+  lat: number | null;
+  lng: number | null;
+  accuracyM: number | null;
+  status: PunchLocationStatus | null;
+}
+
+const NO_LOCATION: ResolvedLocation = { lat: null, lng: null, accuracyM: null, status: null };
+
+/**
+ * Decide what to record for this punch's location. Only personal-device
+ * punches are ever asked for one; kiosk, admin and cron paths record
+ * NULL regardless of the setting. With the mode on and no fix supplied,
+ * the row is marked `missing` (or the client's own `denied` /
+ * `unavailable`) so the Punch activity report can flag it. The punch
+ * itself always goes through.
+ */
+async function resolveLocation(
+  trx: Knex.Transaction,
+  ctx: PunchContext,
+): Promise<ResolvedLocation> {
+  if (ctx.source !== 'mobile_pwa') return NO_LOCATION;
+  const settings = await trx('company_settings')
+    .where({ company_id: ctx.companyId })
+    .first<{ punch_location_mode: PunchLocationMode }>('punch_location_mode');
+  const mode = settings?.punch_location_mode ?? 'off';
+  if (mode === 'off') return NO_LOCATION;
+  if (ctx.location) {
+    return {
+      lat: ctx.location.lat,
+      lng: ctx.location.lng,
+      accuracyM: ctx.location.accuracyM == null ? null : Math.round(ctx.location.accuracyM),
+      status: 'captured',
+    };
+  }
+  return { ...NO_LOCATION, status: ctx.locationStatus ?? 'missing' };
+}
+
+function locationColumns(
+  loc: ResolvedLocation,
+  side: 'started' | 'ended',
+): Record<string, unknown> {
+  return {
+    [`${side}_lat`]: loc.lat,
+    [`${side}_lng`]: loc.lng,
+    [`${side}_accuracy_m`]: loc.accuracyM,
+    [`${side}_location_status`]: loc.status,
+  };
+}
+
+/** Audit-friendly view: coordinates when captured, otherwise the status. */
+function locationForAudit(loc: ResolvedLocation): unknown {
+  if (loc.status === null) return undefined;
+  if (loc.status === 'captured') return { lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM };
+  return { status: loc.status };
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +445,7 @@ export async function clockIn(
     if (open) throw Conflict('Employee already has an open entry');
 
     const { startedAt, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
+    const loc = await resolveLocation(trx, ctx);
 
     const [row] = await trx<TimeEntryRow>('time_entries')
       .insert({
@@ -365,6 +460,7 @@ export async function clockIn(
         source_offline: isOffline,
         source_ip: ctx.sourceIp ?? null,
         source_user_agent: ctx.sourceUserAgent ?? null,
+        ...locationColumns(loc, 'started'),
         client_started_at: rawClientStartedAt,
         client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
@@ -383,6 +479,7 @@ export async function clockIn(
         startedAt: row.started_at.toISOString(),
         source: row.source,
         sourceOffline: row.source_offline,
+        startedLocation: locationForAudit(loc),
       },
     });
 
@@ -395,6 +492,7 @@ async function closeOpen(
   ctx: PunchContext,
   requireType: 'work' | 'break' | 'any',
   endedAt: Date,
+  loc: ResolvedLocation,
 ): Promise<TimeEntryRow> {
   const open = await findOpenEntry(trx, ctx.companyId, ctx.employeeId);
   if (!open) throw Conflict('Employee has no open entry');
@@ -406,19 +504,36 @@ async function closeOpen(
     throw BadRequest('Close time precedes open time');
   }
   const duration = secondsBetween(open.started_at, endedAt);
-  await trx('time_entries').where({ id: open.id }).update({
-    ended_at: endedAt,
-    duration_seconds: duration,
-    updated_at: trx.fn.now(),
-  });
-  return { ...open, ended_at: endedAt, duration_seconds: duration };
+  const endedCols = locationColumns(loc, 'ended');
+  await trx('time_entries')
+    .where({ id: open.id })
+    .update({
+      ended_at: endedAt,
+      duration_seconds: duration,
+      ...endedCols,
+      updated_at: trx.fn.now(),
+    });
+  const endedLocation = locationForAudit(loc);
+  if (endedLocation !== undefined) {
+    await writeAudit(trx, {
+      timeEntryId: open.id,
+      companyId: ctx.companyId,
+      actorUserId: ctx.actorUserId,
+      action: 'edit',
+      field: 'ended_location',
+      oldValue: null,
+      newValue: endedLocation,
+    });
+  }
+  return { ...open, ended_at: endedAt, duration_seconds: duration, ...endedCols } as TimeEntryRow;
 }
 
 export async function clockOut(ctx: PunchContext): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
     await lockEmployee(trx, ctx.employeeId);
     const { startedAt: endedAt } = resolveStartedAt(ctx);
-    const closed = await closeOpen(trx, ctx, 'any', endedAt);
+    const loc = await resolveLocation(trx, ctx);
+    const closed = await closeOpen(trx, ctx, 'any', endedAt, loc);
 
     await writeAudit(trx, {
       timeEntryId: closed.id,
@@ -438,8 +553,9 @@ export async function breakIn(ctx: PunchContext): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
     await lockEmployee(trx, ctx.employeeId);
     const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
+    const loc = await resolveLocation(trx, ctx);
 
-    const closed = await closeOpen(trx, ctx, 'work', pivot);
+    const closed = await closeOpen(trx, ctx, 'work', pivot, loc);
     await writeAudit(trx, {
       timeEntryId: closed.id,
       companyId: ctx.companyId,
@@ -463,6 +579,7 @@ export async function breakIn(ctx: PunchContext): Promise<TimeEntry> {
         source_offline: isOffline,
         source_ip: ctx.sourceIp ?? null,
         source_user_agent: ctx.sourceUserAgent ?? null,
+        ...locationColumns(loc, 'started'),
         client_started_at: rawClientStartedAt,
         client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
@@ -475,7 +592,11 @@ export async function breakIn(ctx: PunchContext): Promise<TimeEntry> {
       companyId: ctx.companyId,
       actorUserId: ctx.actorUserId,
       action: 'create',
-      newValue: { entryType: 'break', shiftId: row.shift_id },
+      newValue: {
+        entryType: 'break',
+        shiftId: row.shift_id,
+        startedLocation: locationForAudit(loc),
+      },
     });
 
     return rowToTimeEntry(row);
@@ -486,8 +607,9 @@ export async function breakOut(ctx: PunchContext): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
     await lockEmployee(trx, ctx.employeeId);
     const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
+    const loc = await resolveLocation(trx, ctx);
 
-    const closed = await closeOpen(trx, ctx, 'break', pivot);
+    const closed = await closeOpen(trx, ctx, 'break', pivot, loc);
     await writeAudit(trx, {
       timeEntryId: closed.id,
       companyId: ctx.companyId,
@@ -514,6 +636,7 @@ export async function breakOut(ctx: PunchContext): Promise<TimeEntry> {
         source_offline: isOffline,
         source_ip: ctx.sourceIp ?? null,
         source_user_agent: ctx.sourceUserAgent ?? null,
+        ...locationColumns(loc, 'started'),
         client_started_at: rawClientStartedAt,
         client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
@@ -526,7 +649,12 @@ export async function breakOut(ctx: PunchContext): Promise<TimeEntry> {
       companyId: ctx.companyId,
       actorUserId: ctx.actorUserId,
       action: 'create',
-      newValue: { entryType: 'work', shiftId: row.shift_id, jobId: resumeJobId },
+      newValue: {
+        entryType: 'work',
+        shiftId: row.shift_id,
+        jobId: resumeJobId,
+        startedLocation: locationForAudit(loc),
+      },
     });
 
     return rowToTimeEntry(row);
@@ -538,8 +666,9 @@ export async function switchJob(ctx: PunchContext, newJobId: number): Promise<Ti
     await ensureJobBelongsToCompany(trx, ctx.companyId, newJobId);
     await lockEmployee(trx, ctx.employeeId);
     const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
+    const loc = await resolveLocation(trx, ctx);
 
-    const closed = await closeOpen(trx, ctx, 'work', pivot);
+    const closed = await closeOpen(trx, ctx, 'work', pivot, loc);
     await writeAudit(trx, {
       timeEntryId: closed.id,
       companyId: ctx.companyId,
@@ -563,6 +692,7 @@ export async function switchJob(ctx: PunchContext, newJobId: number): Promise<Ti
         source_offline: isOffline,
         source_ip: ctx.sourceIp ?? null,
         source_user_agent: ctx.sourceUserAgent ?? null,
+        ...locationColumns(loc, 'started'),
         client_started_at: rawClientStartedAt,
         client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
@@ -575,7 +705,12 @@ export async function switchJob(ctx: PunchContext, newJobId: number): Promise<Ti
       companyId: ctx.companyId,
       actorUserId: ctx.actorUserId,
       action: 'create',
-      newValue: { entryType: 'work', shiftId: row.shift_id, jobId: newJobId },
+      newValue: {
+        entryType: 'work',
+        shiftId: row.shift_id,
+        jobId: newJobId,
+        startedLocation: locationForAudit(loc),
+      },
     });
 
     return rowToTimeEntry(row);

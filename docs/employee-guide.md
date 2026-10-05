@@ -78,7 +78,15 @@ original request attached.
 
 ## Privacy
 
-- The app never tracks your location or photographs you.
+- The app never photographs you and never tracks your location between
+  punches.
+- If your company turns on **punch location**, your phone is asked for one
+  GPS fix at the moment you tap Clock in, Clock out, Start break or End break,
+  and that fix is stored with the punch. The My punch page tells you when this
+  is on. In _optional_ mode you can decline the browser's prompt and your
+  punch still goes through, marked "no location". In _required_ mode the app
+  will not punch until your phone produces a fix. Kiosk punches never use your
+  phone's location.
 - It does not identify your device to other employees.
 - Your PIN is hashed on the server; even the SuperAdmin cannot read it back.
 

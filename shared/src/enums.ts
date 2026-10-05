@@ -108,6 +108,26 @@ export const KioskAuthMode = {
 } as const;
 export type KioskAuthMode = (typeof KioskAuthMode)[keyof typeof KioskAuthMode];
 
+/** Company setting: whether the personal-device PWA records a GPS fix with
+ *  each punch. Attribution only � the server never rejects a punch for
+ *  its location. Kiosk punches never carry one. */
+export const PunchLocationMode = {
+  Off: 'off',
+  Optional: 'optional',
+  Required: 'required',
+} as const;
+export type PunchLocationMode = (typeof PunchLocationMode)[keyof typeof PunchLocationMode];
+
+/** What happened when the client was asked for a location. NULL on the
+ *  row means it was never asked (mode off, kiosk, admin, cron, legacy). */
+export const PunchLocationStatus = {
+  Captured: 'captured',
+  Denied: 'denied',
+  Unavailable: 'unavailable',
+  Missing: 'missing',
+} as const;
+export type PunchLocationStatus = (typeof PunchLocationStatus)[keyof typeof PunchLocationStatus];
+
 export const BadgeEventType = {
   Issue: 'issue',
   Revoke: 'revoke',

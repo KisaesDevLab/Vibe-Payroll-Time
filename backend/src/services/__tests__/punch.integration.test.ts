@@ -334,6 +334,120 @@ describe.skipIf(!dbReachable)('punch service (DB-backed)', () => {
     expect(entry.sourceUserAgent).toBe('Mozilla/5.0 (TestRunner)');
   });
 
+  // -------------------------------------------------------------------
+  // Punch location. Only personal-device punches are ever asked; the
+  // company setting gates it; the punch always goes through.
+  // -------------------------------------------------------------------
+
+  const NYC = { lat: 40.7128, lng: -74.006, accuracyM: 12 };
+  const BOS = { lat: 42.3601, lng: -71.0589, accuracyM: 30 };
+
+  async function setLocationMode(mode: 'off' | 'optional' | 'required') {
+    await db('company_settings')
+      .where({ company_id: companyId })
+      .update({ punch_location_mode: mode });
+  }
+
+  function pwaCtx() {
+    return { ...ctx(), source: 'mobile_pwa' as const };
+  }
+
+  it('records nothing about location while the company mode is off', async () => {
+    const entry = await clockIn({ ...pwaCtx(), location: NYC });
+    expect(entry.startedLocation).toBeNull();
+    expect(entry.startedLocationStatus).toBeNull();
+    const closed = await clockOut({ ...pwaCtx(), location: NYC });
+    expect(closed.endedLocation).toBeNull();
+    expect(closed.endedLocationStatus).toBeNull();
+  });
+
+  it('stores the clock-in fix on started_* and the clock-out fix on ended_*', async () => {
+    await setLocationMode('optional');
+    const entry = await clockIn({ ...pwaCtx(), location: NYC });
+    expect(entry.startedLocation).toEqual(NYC);
+    expect(entry.startedLocationStatus).toBe('captured');
+    expect(entry.endedLocation).toBeNull();
+
+    const closed = await clockOut({ ...pwaCtx(), location: BOS });
+    expect(closed.id).toBe(entry.id);
+    expect(closed.startedLocation).toEqual(NYC);
+    expect(closed.endedLocation).toEqual(BOS);
+    expect(closed.endedLocationStatus).toBe('captured');
+
+    // Round-trips through decimal(9,6) as numbers, not strings.
+    const row = await db('time_entries').where({ id: entry.id }).first();
+    expect(Number(row.started_lat)).toBe(NYC.lat);
+    expect(Number(row.ended_lng)).toBe(BOS.lng);
+    expect(row.ended_accuracy_m).toBe(30);
+  });
+
+  it('writes the fix into the audit trail for both the open and the close', async () => {
+    await setLocationMode('optional');
+    const entry = await clockIn({ ...pwaCtx(), location: NYC });
+    await clockOut({ ...pwaCtx(), location: BOS });
+
+    const audit = await db('time_entry_audit')
+      .where({ time_entry_id: entry.id })
+      .orderBy('id', 'asc');
+    // new_value is JSONB — pg hands it back parsed.
+    const create = audit.find((a) => a.action === 'create');
+    expect(create.new_value.startedLocation).toEqual(NYC);
+    const endedLoc = audit.find((a) => a.field === 'ended_location');
+    expect(endedLoc.new_value).toEqual(BOS);
+  });
+
+  it('keeps the client status when no fix came with the punch', async () => {
+    await setLocationMode('optional');
+    const entry = await clockIn({ ...pwaCtx(), locationStatus: 'denied' });
+    expect(entry.startedLocation).toBeNull();
+    expect(entry.startedLocationStatus).toBe('denied');
+    const closed = await clockOut({ ...pwaCtx(), locationStatus: 'unavailable' });
+    expect(closed.endedLocationStatus).toBe('unavailable');
+  });
+
+  it('marks a silent omission as missing but never rejects the punch', async () => {
+    await setLocationMode('required');
+    const entry = await clockIn(pwaCtx());
+    expect(entry.startedLocationStatus).toBe('missing');
+    const closed = await clockOut(pwaCtx());
+    expect(closed.endedAt).not.toBeNull();
+    expect(closed.endedLocationStatus).toBe('missing');
+  });
+
+  it('carries the fix across a break and a job switch on the same shift', async () => {
+    await setLocationMode('optional');
+    const work = await clockIn({ ...pwaCtx(), location: NYC }, { jobId: jobA });
+    const brk = await breakIn({ ...pwaCtx(), location: BOS });
+    expect(brk.shiftId).toBe(work.shiftId);
+    expect(brk.startedLocation).toEqual(BOS);
+    const closedWork = await db('time_entries').where({ id: work.id }).first();
+    expect(Number(closedWork.ended_lat)).toBe(BOS.lat);
+
+    const resumed = await breakOut({ ...pwaCtx(), location: NYC });
+    expect(resumed.startedLocation).toEqual(NYC);
+    const switched = await switchJob({ ...pwaCtx(), location: BOS }, jobB);
+    expect(switched.startedLocation).toEqual(BOS);
+    expect(switched.jobId).toBe(jobB);
+  });
+
+  it('never records a location for kiosk or admin punches, whatever the mode', async () => {
+    await setLocationMode('required');
+    const kiosk = await clockIn({ ...ctx(), source: 'kiosk' as const, location: NYC });
+    expect(kiosk.startedLocation).toBeNull();
+    expect(kiosk.startedLocationStatus).toBeNull();
+    await clockOut({ ...ctx(), source: 'kiosk' as const });
+
+    // Well before the kiosk entry above so the overlap check stays quiet.
+    const start = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
+    const end = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    const admin = await createEntryForEmployee(
+      { employeeId, startedAt: start, endedAt: end, entryType: 'work', reason: 'missed' },
+      { userId: actorUserId, companyId },
+    );
+    expect(admin.startedLocation).toBeNull();
+    expect(admin.startedLocationStatus).toBeNull();
+  });
+
   it('createEntryForEmployee captures admin IP/UA when supplied', async () => {
     const start = new Date(Date.now() - 3600 * 1000).toISOString();
     const end = new Date().toISOString();

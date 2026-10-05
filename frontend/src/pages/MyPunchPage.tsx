@@ -9,6 +9,7 @@ import { TopBar } from '../components/TopBar';
 import { useSession } from '../hooks/useSession';
 import { ApiError, apiFetch } from '../lib/api';
 import { enqueuePunch } from '../lib/offline-queue';
+import { PunchLocationRequiredError, capturePunchLocation } from '../lib/punch-location';
 
 /**
  * Personal-device punch interface. An employee with a user account hits
@@ -40,17 +41,27 @@ export function MyPunchPage() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['my-current-punch', companyId] });
 
+  const locationMode = current.data?.punchLocationMode ?? 'off';
+
   /**
    * Try the punch online first. If the network throws (TypeError from
    * fetch, or a 5xx from the server), enqueue for later. Permanent
    * failures (4xx from a reachable server) bubble up as an error the
    * UI shows — queuing a malformed punch would just fail again.
+   *
+   * When the company records locations, the browser is asked for one
+   * fix before the request goes out, and the same fix rides in the
+   * queued payload so an offline punch keeps the place it happened.
+   * In `required` mode a refused or failed fix throws before anything
+   * is sent or queued.
    */
   const post = async (endpoint: string) => {
+    const fields = await capturePunchLocation(locationMode);
+    const body = { companyId, ...fields };
     try {
       return await apiFetch(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ companyId }),
+        body: JSON.stringify(body),
       });
     } catch (err) {
       const isTransient =
@@ -58,7 +69,7 @@ export function MyPunchPage() {
         err.code === 'network_error' ||
         (err.status >= 500 && err.status < 600);
       if (isTransient && companyId != null) {
-        await enqueuePunch(endpoint, { companyId });
+        await enqueuePunch(endpoint, body);
         return { _queued: true };
       }
       throw err;
@@ -154,11 +165,22 @@ export function MyPunchPage() {
           />
         )}
 
+        {companyId != null && current.data && locationMode !== 'off' && (
+          <p className="text-xs text-slate-500">
+            {locationMode === 'required'
+              ? 'This company requires your location with each punch. '
+              : 'This company records your location with each punch when you allow it. '}
+            Your phone is asked for one fix at the moment you punch and never tracked in between.
+          </p>
+        )}
+
         {current.isPending && <p className="text-sm text-slate-500">Loading…</p>}
 
         {err && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {err instanceof ApiError ? err.message : 'Punch failed.'}
+            {err instanceof ApiError || err instanceof PunchLocationRequiredError
+              ? err.message
+              : 'Punch failed.'}
           </div>
         )}
       </main>
