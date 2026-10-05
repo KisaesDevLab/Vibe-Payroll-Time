@@ -7,6 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-10-05
+
 ### Added — Punch location (opt-in)
 
 - **Per-company `punch_location_mode`** (`off` default / `optional` /
