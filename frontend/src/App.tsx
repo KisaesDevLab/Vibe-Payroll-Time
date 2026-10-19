@@ -105,12 +105,18 @@ export function App() {
     <AppShell>
       <Routes>
         <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
+        {/* The firm's staff sign-in (single sign-on). Kept off /login so
+            client-company users never see the identity-provider button. */}
+        <Route
+          path="/firm"
+          element={session ? <Navigate to="/" replace /> : <LoginPage variant="firm" />}
+        />
         {/* Break-glass: the password form even when the firm has gone
             SSO-only. Unlisted on purpose — the appliance prints the URL
             alongside the break-glass credentials. */}
         <Route
           path="/login/local"
-          element={session ? <Navigate to="/" replace /> : <LoginPage breakglass />}
+          element={session ? <Navigate to="/" replace /> : <LoginPage variant="breakglass" />}
         />
         {/* Magic-link callback. Must run unauthenticated — the whole
             point is to MINT a session. Even if the user already has

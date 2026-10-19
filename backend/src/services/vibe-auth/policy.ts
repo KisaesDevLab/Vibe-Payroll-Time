@@ -30,7 +30,7 @@ export const LOCAL_LOGIN_DISABLED = 'local_login_disabled';
 const localLoginDisabled = (message: string) => new HttpError(403, LOCAL_LOGIN_DISABLED, message);
 
 const FIRM_PASSWORD_MESSAGE =
-  'Firm accounts sign in with single sign-on on this appliance. Use the single sign-on button.';
+  'Firm accounts sign in with single sign-on on this appliance, from the firm sign-in page (/firm).';
 const FIRM_LINK_MESSAGE =
   'Firm accounts sign in with single sign-on on this appliance, so sign-in links are not available to them.';
 

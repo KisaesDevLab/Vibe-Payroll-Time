@@ -49,6 +49,7 @@
       "/auth/magic",
       "/auth/reset",
       "/login/local",
+      "/firm",
       "/kiosk",
       "/kiosk/*"
     ],

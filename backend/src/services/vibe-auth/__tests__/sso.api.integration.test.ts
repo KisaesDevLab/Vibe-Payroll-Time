@@ -199,7 +199,7 @@ function stripPrefix(browserUrl: string): string {
 async function ssoFlow(user: FakeIdpUser): Promise<Res> {
   nextClient();
   idp.user = user;
-  const start = await app(`/auth/oidc/start?return_to=${encodeURIComponent(`${PREFIX}/login`)}`);
+  const start = await app(`/auth/oidc/start?return_to=${encodeURIComponent(`${PREFIX}/firm`)}`);
   expect(start.status).toBe(302);
   const authorize = await http(start.location!);
   expect(authorize.status).toBe(302);
@@ -214,7 +214,7 @@ async function ssoLogin(
   const cb = await ssoFlow(user);
   expect(cb.status).toBe(302);
   const [path, fragment] = cb.location!.split('#');
-  expect(path).toBe(`${PREFIX}/login`);
+  expect(path).toBe(`${PREFIX}/firm`);
   // The session rides the fragment, never the query string.
   expect(cb.location).not.toContain('?');
   const params = new URLSearchParams(fragment);
@@ -493,6 +493,9 @@ describe.skipIf(!dbReachable)('single sign-on (Vibe Auth)', () => {
       expect(cb.status).toBe(401);
       expect(cb.text).toContain(CLIENT_USER_SSO_MESSAGE);
       expect(cb.text).not.toContain('Your account is disabled');
+      // Sent back to the ordinary sign-in page, not the firm's.
+      expect(cb.text).toContain(`href="${PREFIX}/login"`);
+      expect(cb.text).not.toContain(`href="${PREFIX}/firm"`);
       // No identity linked, no role synced into the firm, still active.
       expect(await db('auth_identities').where({ user_id: String(clientUserId) })).toHaveLength(0);
       expect(await membershipsOf(clientUserId)).toEqual([
@@ -829,7 +832,7 @@ describe.skipIf(!dbReachable)('single sign-on (Vibe Auth)', () => {
 
       const out = await app('/auth/oidc/logout?local=1', { bearer: session.accessToken });
       expect(out.status).toBe(302);
-      expect(out.location).toBe(`${PREFIX}/login`);
+      expect(out.location).toBe(`${PREFIX}/firm`);
 
       expect(await db('auth_sessions_oidc')).toHaveLength(0);
       const refresh = await app('/api/v1/auth/refresh', {

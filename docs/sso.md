@@ -23,6 +23,19 @@ provider is the firm's directory, so:
   `/auth/*`; kiosk traffic lives under `/api/v1/kiosk/*` and cannot pass
   through it.
 
+**Two sign-in pages.** So end users are never confused by an identity-
+provider button, SSO lives on its own route:
+
+- **`/login`** — the ordinary page, for everyone: email + password and
+  emailed links. It never shows the SSO button. A firm user refused there
+  under `oidc_only` is pointed to `/firm`.
+- **`/firm`** — the firm's staff sign-in: the "Sign in with …" button, plus
+  the local forms while the mode is `local` / `both`. It is the engine's
+  `loginPath` (its error pages' "Back to sign-in", the post-sign-out
+  landing) and where the SSO hand-off redirect lands. A refused
+  client-company user's "Back to sign-in" is rewritten to `/login`.
+- **`/login/local`** — break-glass, unchanged.
+
 Who counts as which (`services/vibe-auth/realm.ts`):
 
 | User                                                                | Realm  |
@@ -39,11 +52,11 @@ still only touches their internal-company membership.
 
 ## Modes
 
-| Mode              | Firm users: password / login link      | Client-company users | "Firm staff — sign in with …" button |
-| ----------------- | -------------------------------------- | -------------------- | ------------------------------------ |
-| `local` (default) | yes                                    | password / link      | hidden                               |
-| `both`            | yes                                    | password / link      | shown                                |
-| `oidc_only`       | refused — except break-glass, password | password / link      | shown                                |
+| Mode              | Firm users: password / login link      | Client-company users | SSO button on `/firm` |
+| ----------------- | -------------------------------------- | -------------------- | --------------------- |
+| `local` (default) | yes                                    | password / link      | hidden                |
+| `both`            | yes                                    | password / link      | shown                 |
+| `oidc_only`       | refused — except break-glass, password | password / link      | shown                 |
 
 Set from **Appliance → Authentication** (SuperAdmin), from the Vibe
 Appliance console's Identity panel, or with `VIBE_AUTH_MODE`. A value saved
@@ -67,8 +80,8 @@ Under `oidc_only`, for **firm users** only (`services/vibe-auth/policy.ts`):
 - the three admin "send a sign-in link" actions refuse a firm user with 403
   (for a brand-new login, refused when the company is the internal one)
 
-The login page keeps the email / password and link forms in every mode,
-because client-company users need them.
+`/login` keeps the email / password and link forms in every mode, because
+client-company users need them; `/firm` hides them under `oidc_only`.
 
 ## Roles
 
@@ -188,7 +201,7 @@ Sessions are bearer tokens in the browser, not cookies. A successful SSO
 login ends with a redirect to
 
 ```
-<base>/login#sso_token=<access>&sso_refresh=<refresh>
+<base>/firm#sso_token=<access>&sso_refresh=<refresh>
 ```
 
 The pair rides the URL **fragment**, which is never sent to a server or
