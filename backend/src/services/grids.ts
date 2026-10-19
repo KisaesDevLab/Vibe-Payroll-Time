@@ -168,6 +168,7 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
     date: string;
     seconds: number;
     hadPunch: boolean;
+    punchIds: Set<number>;
     hadManual: boolean;
     manualEntryId: number | null;
     manualReason: string | null;
@@ -193,6 +194,7 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
         date: iso,
         seconds: 0,
         hadPunch: false,
+        punchIds: new Set<number>(),
         hadManual: false,
         manualEntryId: null,
         manualReason: null,
@@ -226,6 +228,7 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
           agg.manualReason = e.entryReason;
         } else {
           agg.hadPunch = true;
+          agg.punchIds.add(e.id);
         }
       }
       cursor = sliceEnd;
@@ -255,6 +258,7 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
       manualEntryId: agg.manualEntryId,
       entryReason: agg.manualReason,
       locked: false, // filled in below once we know approval state
+      punchEntryIds: [...agg.punchIds],
     });
     const timeOffCategory = agg.jobId != null ? timeOffJobIds.get(agg.jobId) : undefined;
     if (timeOffCategory) {

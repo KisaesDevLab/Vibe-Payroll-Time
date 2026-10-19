@@ -7,6 +7,16 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — Overriding a punch to 0 hours
+
+- The weekly grid refused 0 in the override popup, so a punched day couldn't be
+  zeroed out. 0 on a punched cell now offers **Remove punches** to company
+  admins (soft delete, kept in the audit trail) and **Request removal** to an
+  employee on their own grid (a delete correction request; the punches go when
+  approved). Supervisors are told only an admin can remove punches.
+- 0 on a manual entry now removes it, bringing back any punches it replaced.
+- Weekly grid cells carry `punchEntryIds`, the punches behind the cell.
+
 ### Added — "Add time" on My timesheet
 
 - Employees can type in a shift they forgot to punch: date, clock-in and

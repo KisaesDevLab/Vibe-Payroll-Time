@@ -73,7 +73,9 @@ export function WeeklyGridPage(): JSX.Element {
     manualEntryId: number | null;
     originalPunchText: string | null;
     timeOff: boolean;
+    punchEntryIds: number[];
   } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [lastSaveFailed, setLastSaveFailed] = useState(false);
@@ -202,6 +204,43 @@ export function WeeklyGridPage(): JSX.Element {
     },
     onError: (err) => {
       setErrorText(err instanceof ApiError ? err.message : 'Save failed');
+      setLastSaveFailed(true);
+    },
+  });
+
+  // Zero hours on a punched cell: admins remove the punches (soft delete,
+  // kept in the audit trail); an employee on their own grid asks for it with
+  // a delete correction request. Supervisors can't delete entries.
+  const isAdmin =
+    session?.user.roleGlobal === 'super_admin' || membership?.role === 'company_admin';
+  const removePunches = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!editing) return 'none' as const;
+      for (const id of editing.punchEntryIds) {
+        if (isAdmin) await timesheets.deleteEntry(companyId, id, reason);
+        else
+          await timesheets.createCorrection(companyId, {
+            requestType: 'delete',
+            timeEntryId: id,
+            proposedChanges: {},
+            reason,
+          });
+      }
+      return isAdmin ? ('removed' as const) : ('requested' as const);
+    },
+    onSuccess: (outcome) => {
+      setEditing(null);
+      setErrorText(null);
+      setNotice(
+        outcome === 'removed'
+          ? 'Punches removed. They are kept in the audit trail.'
+          : 'Sent to your supervisor. The punches are removed once they approve.',
+      );
+      setLastSavedAt(Date.now());
+      qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+    },
+    onError: (err) => {
+      setErrorText(err instanceof ApiError ? err.message : 'Could not remove the punches');
       setLastSaveFailed(true);
     },
   });
@@ -426,6 +465,7 @@ export function WeeklyGridPage(): JSX.Element {
               manualEntryId: null,
               entryReason: null,
               locked: false,
+              punchEntryIds: [],
             } satisfies WeeklyGridCell);
           return (
             <td
@@ -464,6 +504,7 @@ export function WeeklyGridPage(): JSX.Element {
                           originalPunchText:
                             cell.sourceTag === 'punched' ? formatHours(cell.seconds, format) : null,
                           timeOff: job.isTimeOff,
+                          punchEntryIds: cell.punchEntryIds,
                         });
                       }
                 }
@@ -581,6 +622,15 @@ export function WeeklyGridPage(): JSX.Element {
             </div>
           </div>
         </header>
+
+        {notice && (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <span>{notice}</span>
+            <button type="button" className="text-xs underline" onClick={() => setNotice(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {copyWeek.data && (
           <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -807,6 +857,34 @@ export function WeeklyGridPage(): JSX.Element {
           jobLabel={editing.jobLabel}
           originalPunchText={editing.originalPunchText}
           timeOff={editing.timeOff}
+          zero={
+            editing.mode === 'override' && editing.punchEntryIds.length > 0
+              ? isAdmin || !isManager
+                ? {
+                    label: isAdmin ? 'Remove punches' : 'Request removal',
+                    explain: isAdmin
+                      ? `0 hours removes the ${editing.punchEntryIds.length} punch${editing.punchEntryIds.length === 1 ? '' : 'es'} on this day and job. They are kept in the audit trail.`
+                      : '0 hours asks your supervisor to remove these punches. Nothing changes until they approve.',
+                    run: async (reason) => {
+                      await removePunches.mutateAsync(reason);
+                    },
+                  }
+                : {
+                    label: 'Remove punches',
+                    explain:
+                      'Only a company admin can remove punches. Ask an admin, or enter the hours actually worked.',
+                  }
+              : editing.mode === 'edit' && editing.manualEntryId
+                ? {
+                    label: 'Remove entry',
+                    explain:
+                      '0 hours removes this manual entry; any punches it replaced come back.',
+                    run: async () => {
+                      await deleteCell.mutateAsync();
+                    },
+                  }
+                : undefined
+          }
           onSave={async (input) => {
             await saveCell.mutateAsync(input);
           }}
@@ -817,7 +895,7 @@ export function WeeklyGridPage(): JSX.Element {
                 }
               : undefined
           }
-          saving={saveCell.isPending || deleteCell.isPending}
+          saving={saveCell.isPending || deleteCell.isPending || removePunches.isPending}
           errorText={errorText}
         />
       )}
@@ -856,6 +934,7 @@ export function WeeklyGridPage(): JSX.Element {
             manualEntryId: null,
             originalPunchText: null,
             timeOff: false,
+            punchEntryIds: [],
           });
         }}
         onClose={() => setAddJobOpen(false)}

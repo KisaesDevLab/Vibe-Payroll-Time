@@ -42,6 +42,9 @@ export const weeklyGridCellSchema = z.object({
   entryReason: z.string().nullable(),
   /** True if the cell sits in an already-approved pay period. */
   locked: z.boolean(),
+  /** Punch entries (kiosk / web / phone) contributing to this cell, so
+   *  overriding to 0 can remove exactly those. */
+  punchEntryIds: z.array(z.number().int().positive()),
 });
 export type WeeklyGridCell = z.infer<typeof weeklyGridCellSchema>;
 

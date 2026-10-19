@@ -31,6 +31,15 @@ export interface CellEditPopoverProps {
   /** A time-off code (PTO, sick, …): the reason becomes an optional
    *  note, since nobody should have to justify a day off. */
   timeOff?: boolean;
+  /** What saving 0 hours does on this cell. Absent → 0 can't be saved. */
+  zero?: {
+    /** Button label, e.g. "Remove punches". */
+    label: string;
+    /** One line shown while 0 is typed. */
+    explain: string;
+    /** Absent when the viewer can't do it; `explain` says why. */
+    run?: (reason: string) => Promise<void>;
+  };
 }
 
 export function CellEditPopover({
@@ -48,6 +57,7 @@ export function CellEditPopover({
   saving,
   errorText,
   timeOff = false,
+  zero,
 }: CellEditPopoverProps): JSX.Element {
   const [seconds, setSeconds] = useState<number | null>(initialSeconds);
   const [parseError, setParseError] = useState<ParseError | null>(null);
@@ -57,8 +67,12 @@ export function CellEditPopover({
   );
 
   const reasonRequired = !timeOff && mode !== 'add';
-  const canSave =
-    seconds != null && seconds > 0 && !parseError && (!reasonRequired || reason.trim().length > 0);
+  const reasonOk = !reasonRequired || reason.trim().length > 0;
+  // Zero isn't an entry: it removes what the cell holds, via `zero`.
+  const isZero = seconds === 0 && !parseError;
+  const canSave = isZero
+    ? !!zero?.run && reasonOk
+    : seconds != null && seconds > 0 && !parseError && reasonOk;
 
   const title = timeOff
     ? mode === 'add'
@@ -96,12 +110,16 @@ export function CellEditPopover({
             <Button
               onClick={() => {
                 if (!canSave || seconds == null) return;
+                if (isZero) {
+                  if (zero?.run) void zero.run(reason.trim());
+                  return;
+                }
                 void onSave({ seconds, reason: reason.trim(), typedInput });
               }}
               disabled={!canSave}
               loading={saving}
             >
-              Save
+              {isZero && zero ? zero.label : 'Save'}
             </Button>
           </div>
         </div>
@@ -146,6 +164,19 @@ export function CellEditPopover({
             }}
           />
         </label>
+
+        {isZero && (
+          <p
+            className={
+              'rounded-md border p-2 text-xs ' +
+              (zero
+                ? 'border-slate-200 bg-slate-50 text-slate-700'
+                : 'border-amber-200 bg-amber-50 text-amber-900')
+            }
+          >
+            {zero ? zero.explain : 'Enter more than 0 hours, or use Delete to remove this entry.'}
+          </p>
+        )}
 
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-slate-700">
