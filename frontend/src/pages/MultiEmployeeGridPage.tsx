@@ -163,7 +163,18 @@ export function MultiEmployeeGridPage(): JSX.Element {
               <span className="font-semibold text-amber-700">
                 {formatHours(grid.stats.overtimeSeconds, format)}
               </span>{' '}
-              OT · {grid.stats.cellsNeedingReview} cells need review
+              OT
+              {grid.stats.timeOffSeconds > 0 && (
+                <>
+                  {' '}
+                  ·{' '}
+                  <span className="font-semibold">
+                    {formatHours(grid.stats.timeOffSeconds, format)}
+                  </span>{' '}
+                  time off
+                </>
+              )}{' '}
+              · {grid.stats.cellsNeedingReview} cells need review
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -243,6 +254,12 @@ export function MultiEmployeeGridPage(): JSX.Element {
                 ))}
                 <th className="border-b border-l border-slate-200 px-3 py-3 text-right">Week</th>
                 <th className="border-b border-l border-slate-200 px-3 py-3 text-right">OT</th>
+                <th
+                  className="border-b border-l border-slate-200 px-3 py-3 text-right"
+                  title="Paid or unpaid time off. Not part of Week or OT."
+                >
+                  Time off
+                </th>
                 <th className="border-b border-l border-slate-200 px-3 py-3 text-center">Status</th>
               </tr>
             </thead>
@@ -276,6 +293,9 @@ export function MultiEmployeeGridPage(): JSX.Element {
                   <td className="border-b border-l border-slate-100 px-3 py-3 text-right font-mono text-sm text-amber-700">
                     {r.overtimeSeconds > 0 ? formatHours(r.overtimeSeconds, format) : '—'}
                   </td>
+                  <td className="border-b border-l border-slate-100 px-3 py-3 text-right font-mono text-sm text-slate-700">
+                    {r.timeOffSeconds > 0 ? formatHours(r.timeOffSeconds, format) : '—'}
+                  </td>
                   <td className="border-b border-l border-slate-100 px-3 py-3 text-center text-xs">
                     {r.allApproved ? (
                       <span className="rounded bg-emerald-100 px-2 py-0.5 text-emerald-800">
@@ -307,6 +327,11 @@ export function MultiEmployeeGridPage(): JSX.Element {
                   {formatHours(grid.grandTotalSeconds, format)}
                 </td>
                 <td className="border-l border-slate-200 bg-slate-50" />
+                <td className="border-l border-slate-200 bg-slate-50 px-3 py-3 text-right font-mono text-sm text-slate-900">
+                  {grid.stats.timeOffSeconds > 0
+                    ? formatHours(grid.stats.timeOffSeconds, format)
+                    : '—'}
+                </td>
                 <td className="border-l border-slate-200 bg-slate-50" />
               </tr>
             </tbody>
@@ -384,8 +409,13 @@ function DayCell({
               )}
             </div>
           </div>
-        ) : (
+        ) : day.timeOffSeconds > 0 ? null : (
           <span className="text-slate-300">—</span>
+        )}
+        {day.timeOffSeconds > 0 && (
+          <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+            off {formatHours(day.timeOffSeconds, format)}
+          </div>
         )}
       </button>
     </td>

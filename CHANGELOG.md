@@ -7,6 +7,38 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Time off (PTO, sick, holiday, unpaid)
+
+- **Per-company time-off types.** Settings → Time off switches PTO, Sick,
+  Holiday and Unpaid leave on or off. Each type is a job code marked as
+  time off; switching one off archives the code and keeps every hour
+  already recorded. Other kinds (bereavement, jury duty, …) are added on the
+  Jobs page as time-off codes with a category and a paid/unpaid flag.
+- **Who enters it.** "Employees can record their own time off" (on by
+  default); off means supervisors and admins only.
+- **Entry.** The weekly grid has a Time off section under the jobs, with
+  worked and time-off totals shown separately. Time off is entered as hours,
+  never punched, never supersedes a punch, and the note is optional.
+- **Overtime.** Time off never counts toward FLSA overtime: 38 worked + 8 PTO
+  is 46 paid hours and 0 OT.
+- **Reports.** New _Time off by period_ (hours used per employee by type)
+  and _Time off entries_ (every entry, who entered it, approval). Hours by
+  pay period gains PTO / Sick / Holiday / Other / Unpaid / Paid total
+  columns; the time card, hours by job and overtime reports show time off
+  separately.
+- **Payroll exports.** Gusto fills `pto_hours` / `holiday_hours` /
+  `sick_hours`; Payroll Relief appends PTO / Sick / Holiday / Other paid
+  leave columns after `PeriodEnd`; QBO gets one row per paid time-off code;
+  the generic CSV gains `pto_hours`, `sick_hours`, `holiday_hours`,
+  `other_time_off_hours`, `unpaid_hours`, `paid_time_off_hours` and
+  `total_paid_hours`. Unpaid leave stays out of vendor exports.
+- Timesheets, the multi-employee grid and the employee's own timesheet show
+  time off alongside worked hours. No balances or accruals anywhere.
+- Migration `20261019000004_time_off.js`: `jobs.is_time_off`,
+  `jobs.time_off_category`, `jobs.is_paid`, and
+  `company_settings.time_off_self_entry`. Nothing is seeded; existing
+  companies see no change until they turn a type on.
+
 ### Fixed — SMS
 
 - **A company's own Twilio settings were ignored.** Company settings have no

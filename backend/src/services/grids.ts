@@ -11,6 +11,7 @@ import type {
 import {
   addDaysInTz,
   buildTimesheetSummary,
+  emptyTimeOffTotals,
   isoDateInTz,
   resolveFormat,
   resolvePayPeriod,
@@ -19,6 +20,7 @@ import {
 import { db } from '../db/knex.js';
 import { NotFound } from '../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from './punch.js';
+import { loadTimeOffJobs } from './time-off.js';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -33,6 +35,7 @@ interface CompanyContext {
   timeFormatDefault: TimeFormat;
   roundingMode: 'none' | '1min' | '5min' | '6min' | '15min';
   roundingGraceMinutes: number;
+  timeOffSelfEntry: boolean;
 }
 
 async function loadCompany(companyId: number): Promise<CompanyContext> {
@@ -48,7 +51,8 @@ async function loadCompany(companyId: number): Promise<CompanyContext> {
       time_format_default: TimeFormat;
       punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
       punch_rounding_grace_minutes: number;
-    }>('c.id', 'c.timezone', 'c.week_start_day', 'c.pay_period_type', 'c.pay_period_anchor', 's.time_format_default', 's.punch_rounding_mode', 's.punch_rounding_grace_minutes');
+      time_off_self_entry: boolean;
+    }>('s.time_off_self_entry', 'c.id', 'c.timezone', 'c.week_start_day', 'c.pay_period_type', 'c.pay_period_anchor', 's.time_format_default', 's.punch_rounding_mode', 's.punch_rounding_grace_minutes');
   if (!row) throw NotFound('Company not found');
   return {
     id: row.id,
@@ -59,6 +63,7 @@ async function loadCompany(companyId: number): Promise<CompanyContext> {
     timeFormatDefault: row.time_format_default ?? 'decimal',
     roundingMode: row.punch_rounding_mode,
     roundingGraceMinutes: row.punch_rounding_grace_minutes,
+    timeOffSelfEntry: row.time_off_self_entry ?? true,
   };
 }
 
@@ -108,13 +113,38 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
   // All active jobs for the company; the grid shows every job as a row
   // so users can add entries on jobs that haven't been touched this
   // week yet.
+  // Archived time-off codes still show if this week has hours on them,
+  // so switching a type off never hides recorded time.
   const jobs = await db('jobs')
     .where({ company_id: input.companyId })
-    .whereNull('archived_at')
+    .where(function () {
+      this.whereNull('archived_at').orWhereIn(
+        'id',
+        db('time_entries')
+          .where({ company_id: input.companyId, employee_id: input.employeeId })
+          .whereNull('deleted_at')
+          .whereNull('superseded_by_entry_id')
+          .where('started_at', '<', weekEndUtc)
+          .where('started_at', '>=', weekStartUtc)
+          .whereNotNull('job_id')
+          .select('job_id'),
+      );
+    })
     .orderBy('code', 'asc')
     .select<
-      Array<{ id: number; code: string; name: string; archived_at: Date | null }>
-    >('id', 'code', 'name', 'archived_at');
+      Array<{
+        id: number;
+        code: string;
+        name: string;
+        archived_at: Date | null;
+        is_time_off: boolean;
+        time_off_category: import('@vibept/shared').TimeOffCategory | null;
+        is_paid: boolean;
+      }>
+    >('id', 'code', 'name', 'archived_at', 'is_time_off', 'time_off_category', 'is_paid');
+  const timeOffJobIds = new Map(
+    jobs.filter((j) => j.is_time_off).map((j) => [j.id, j.time_off_category!]),
+  );
 
   // All non-superseded, non-deleted entries that overlap the 7-day window.
   const rows = await db<TimeEntryRow>('time_entries')
@@ -204,7 +234,9 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
 
   const cells: WeeklyGridCell[] = [];
   const dayTotals = new Map<string, number>();
+  const dayTimeOff = new Map<string, number>();
   const jobTotals = new Map<number | null, number>();
+  const timeOffByCategory = emptyTimeOffTotals().byCategory;
 
   for (const agg of cellAggs.values()) {
     const sourceTag: WeeklyGridCell['sourceTag'] =
@@ -224,7 +256,13 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
       entryReason: agg.manualReason,
       locked: false, // filled in below once we know approval state
     });
-    dayTotals.set(agg.date, (dayTotals.get(agg.date) ?? 0) + agg.seconds);
+    const timeOffCategory = agg.jobId != null ? timeOffJobIds.get(agg.jobId) : undefined;
+    if (timeOffCategory) {
+      dayTimeOff.set(agg.date, (dayTimeOff.get(agg.date) ?? 0) + agg.seconds);
+      timeOffByCategory[timeOffCategory] += agg.seconds;
+    } else {
+      dayTotals.set(agg.date, (dayTotals.get(agg.date) ?? 0) + agg.seconds);
+    }
     jobTotals.set(agg.jobId, (jobTotals.get(agg.jobId) ?? 0) + agg.seconds);
   }
 
@@ -252,6 +290,7 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
     return {
       date: iso,
       totalSeconds: dayTotals.get(iso) ?? 0,
+      timeOffSeconds: dayTimeOff.get(iso) ?? 0,
       hasException,
       hasManual,
     };
@@ -274,6 +313,9 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
       code: j.code,
       name: j.name,
       archivedAt: j.archived_at?.toISOString() ?? null,
+      isTimeOff: j.is_time_off,
+      timeOffCategory: j.time_off_category,
+      isPaid: j.is_paid,
     })),
     days: daySummaries,
     cells,
@@ -283,6 +325,9 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
     })),
     entries,
     weekTotalSeconds: weekTotal,
+    weekTimeOffSeconds: Array.from(dayTimeOff.values()).reduce((s, v) => s + v, 0),
+    timeOffByCategory,
+    timeOffSelfEntry: company.timeOffSelfEntry,
     allApproved,
     timeFormat,
   };
@@ -331,6 +376,7 @@ export async function getMultiEmployeeGrid(
         employeeCount: 0,
         regularSeconds: 0,
         overtimeSeconds: 0,
+        timeOffSeconds: 0,
         cellsNeedingReview: 0,
       },
       timeFormat,
@@ -368,12 +414,14 @@ export async function getMultiEmployeeGrid(
       employeeCount: employees.length,
       regularSeconds: 0,
       overtimeSeconds: 0,
+      timeOffSeconds: 0,
       cellsNeedingReview: 0,
     },
     timeFormat: await resolveUserTimeFormat(input.actorUserId, company.timeFormatDefault),
   };
 
   const dayIsos = resp.dailyTotals.map((d) => d.date);
+  const timeOffJobs = await loadTimeOffJobs(input.companyId);
   const dayTotalsByDate = new Map(resp.dailyTotals.map((d) => [d.date, 0]));
 
   for (const emp of employees) {
@@ -395,6 +443,7 @@ export async function getMultiEmployeeGrid(
         roundingGraceMinutes: company.roundingGraceMinutes,
         periodStart: weekStartUtc,
         periodEnd: weekEndUtc,
+        timeOffJobs,
       },
     );
 
@@ -413,6 +462,7 @@ export async function getMultiEmployeeGrid(
         hasException,
         hasManual,
         contributesToOT: false, // set below
+        timeOffSeconds: d?.timeOffSeconds ?? 0,
       };
     });
 
@@ -444,6 +494,7 @@ export async function getMultiEmployeeGrid(
       weekSeconds,
       regularSeconds: regular,
       overtimeSeconds: ot,
+      timeOffSeconds: summary.timeOff.totalSeconds,
       allApproved,
       hasPending,
     });
@@ -454,6 +505,7 @@ export async function getMultiEmployeeGrid(
     }
     resp.stats.regularSeconds += regular;
     resp.stats.overtimeSeconds += ot;
+    resp.stats.timeOffSeconds += summary.timeOff.totalSeconds;
   }
 
   resp.dailyTotals = Array.from(dayTotalsByDate.entries()).map(([date, seconds]) => ({

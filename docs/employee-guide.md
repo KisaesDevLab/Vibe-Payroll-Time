@@ -112,6 +112,18 @@ jobs down. Tap any cell to edit or add time.
 If your company has set "override only" policy, you'll see a message
 when you try to add time on a day+job you didn't actually punch for.
 
+### Logging a day off
+
+If your company records time off, the grid has a **Time off** section
+under your jobs (PTO, Sick, Holiday, …). Tap the day and type the
+hours, e.g. `8` for a full vacation day. A note is optional. Time off
+is never clocked in and out, and it never counts toward overtime. Your
+timesheet shows worked hours and time off as separate totals.
+
+If the section says your supervisor records time off for you, ask them
+to enter it. Vibe PT doesn't track how much time off you have left;
+that stays with your employer's payroll.
+
 ### Accepted input formats
 
 Inputs accept any of these styles — the grid auto-detects:

@@ -16,6 +16,14 @@ worked multiple jobs in the period, they get multiple rows.
 | PayDate       | Period end (YYYY-MM-DD)                          |
 | Memo          | "Vibe PT pay period YYYY-MM-DD"                  |
 
+## Time off
+
+Each paid time-off code used in the period gets its own row:
+`ServiceItem` is the code (e.g. `PTO`, `SICK`, `HOLIDAY`), all hours
+are regular, and the memo names the type. Map those service items to
+the matching QBO pay types. Unpaid leave is not exported, and time off
+never counts toward overtime or the pro-ration below.
+
 ## Pro-ration
 
 Vibe PT attributes a worker's regular + overtime split at the

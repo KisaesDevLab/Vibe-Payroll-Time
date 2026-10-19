@@ -1,8 +1,8 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { TimeEntry, TimeFormat, WeeklyGridCell } from '@vibept/shared';
-import { formatHours } from '@vibept/shared';
+import type { TimeEntry, TimeFormat, WeeklyGridCell, WeeklyGridJob } from '@vibept/shared';
+import { TIME_OFF_CATEGORY_LABELS, formatHours } from '@vibept/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AddJobPicker } from '../components/AddJobPicker';
@@ -72,6 +72,7 @@ export function WeeklyGridPage(): JSX.Element {
     initialReason: string;
     manualEntryId: number | null;
     originalPunchText: string | null;
+    timeOff: boolean;
   } | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -156,7 +157,8 @@ export function WeeklyGridPage(): JSX.Element {
         return manualEntries.update(editing.manualEntryId, {
           companyId,
           durationSeconds: input.seconds,
-          reason: input.reason,
+          // A time-off note is optional; leave the stored one alone.
+          ...(input.reason ? { reason: input.reason } : {}),
           typedInput: input.typedInput,
         });
       }
@@ -349,6 +351,7 @@ export function WeeklyGridPage(): JSX.Element {
     dow: new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' }),
     dom: new Date(d.date + 'T00:00:00').getDate(),
     totalSeconds: d.totalSeconds,
+    timeOffSeconds: d.timeOffSeconds,
     hasException: d.hasException,
     hasManual: d.hasManual,
     isWeekend: [0, 6].includes(new Date(d.date + 'T00:00:00').getDay()),
@@ -361,17 +364,119 @@ export function WeeklyGridPage(): JSX.Element {
   // the fallback for "I worked something, not sure which job yet."
   const jobTotalsById = new Map(grid.jobTotals.map((t) => [t.jobId, t.seconds]));
   const searchLower = jobSearch.trim().toLowerCase();
+  // Time-off codes (PTO, sick, …) get their own section below the jobs.
+  // There are only a handful, so they always show; an archived one shows
+  // only when this week already has hours on it.
+  const workJobs = grid.jobs.filter((j) => !j.isTimeOff);
+  const timeOffJobs = grid.jobs.filter(
+    (j) => j.isTimeOff && (!j.archivedAt || (jobTotalsById.get(j.id) ?? 0) > 0),
+  );
+  // Employees enter their own time off only when the company allows it;
+  // supervisors and admins always can.
+  const canEditTimeOff = isManager || grid.timeOffSelfEntry;
   const baseSet =
     jobFilter === 'all'
-      ? grid.jobs
-      : grid.jobs.filter((j) => (jobTotalsById.get(j.id) ?? 0) > 0 || pinnedJobIds.has(j.id));
+      ? workJobs
+      : workJobs.filter((j) => (jobTotalsById.get(j.id) ?? 0) > 0 || pinnedJobIds.has(j.id));
   const visibleJobs = searchLower
     ? baseSet.filter(
         (j) =>
           j.code.toLowerCase().includes(searchLower) || j.name.toLowerCase().includes(searchLower),
       )
     : baseSet;
-  const jobRows = [...visibleJobs, { id: null, code: '—', name: 'No job', archivedAt: null }];
+  const noJobRow: Pick<WeeklyGridJob, 'code' | 'name' | 'isTimeOff' | 'timeOffCategory'> & {
+    id: number | null;
+  } = { id: null, code: '—', name: 'No job', isTimeOff: false, timeOffCategory: null };
+  const jobRows = [...visibleJobs, noJobRow];
+  const hasTimeOffWeek = grid.weekTimeOffSeconds > 0;
+  const timeOffSummary = Object.entries(grid.timeOffByCategory)
+    .filter(([, secs]) => (secs ?? 0) > 0)
+    .map(
+      ([cat, secs]) =>
+        `${TIME_OFF_CATEGORY_LABELS[cat as keyof typeof TIME_OFF_CATEGORY_LABELS]} ${formatHours(secs ?? 0, format)}`,
+    )
+    .join(' · ');
+
+  const renderRow = (
+    job: Pick<WeeklyGridJob, 'code' | 'name' | 'isTimeOff' | 'timeOffCategory'> & {
+      id: number | null;
+    },
+  ) => {
+    const jobTotal = grid.jobTotals.find((t) => t.jobId === job.id)?.seconds ?? 0;
+    const editable = !job.isTimeOff || canEditTimeOff;
+    return (
+      <tr key={String(job.id)} className="align-top">
+        <th
+          className={
+            'sticky left-0 z-10 border-b border-slate-100 px-4 py-3 text-left ' +
+            (job.isTimeOff ? 'bg-amber-50' : 'bg-white')
+          }
+        >
+          <div className="text-sm font-medium text-slate-900">{job.code}</div>
+          <div className="text-xs text-slate-500">{job.name}</div>
+        </th>
+        {dayHeaders.map((d) => {
+          const cell =
+            cellMap.get(cellKey(job.id, d.date)) ??
+            ({
+              jobId: job.id,
+              date: d.date,
+              seconds: 0,
+              sourceTag: 'none',
+              manualEntryId: null,
+              entryReason: null,
+              locked: false,
+            } satisfies WeeklyGridCell);
+          return (
+            <td
+              key={d.date}
+              className={
+                'border-b border-l border-slate-100 p-1 ' +
+                (job.isTimeOff ? 'bg-amber-50/40 ' : d.isWeekend ? 'bg-slate-50/60 ' : '')
+              }
+            >
+              <HoursCell
+                seconds={cell.seconds}
+                format={format}
+                sourceTag={cell.sourceTag}
+                locked={cell.locked}
+                onClick={
+                  cell.locked || !editable
+                    ? undefined
+                    : () => {
+                        setErrorText(null);
+                        setEditing({
+                          jobId: job.id,
+                          date: d.date,
+                          jobLabel: job.code + ' · ' + job.name,
+                          mode:
+                            cell.sourceTag === 'none'
+                              ? 'add'
+                              : cell.sourceTag === 'punched'
+                                ? 'override'
+                                : 'edit',
+                          initialSeconds: cell.seconds || null,
+                          initialReason:
+                            job.isTimeOff && cell.entryReason === 'Time off'
+                              ? ''
+                              : (cell.entryReason ?? ''),
+                          manualEntryId: cell.manualEntryId,
+                          originalPunchText:
+                            cell.sourceTag === 'punched' ? formatHours(cell.seconds, format) : null,
+                          timeOff: job.isTimeOff,
+                        });
+                      }
+                }
+              />
+            </td>
+          );
+        })}
+        <td className="border-b border-l border-slate-100 px-3 py-3 text-right font-mono text-sm text-slate-900">
+          {jobTotal > 0 ? formatHours(jobTotal, format) : '—'}
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <>
@@ -424,7 +529,17 @@ export function WeeklyGridPage(): JSX.Element {
               Week of <span className="font-mono">{grid.week.start}</span> —{' '}
               <span className="font-mono">{grid.week.end}</span> ·{' '}
               <span className="font-semibold">{formatHours(grid.weekTotalSeconds, format)}</span>{' '}
-              total
+              worked
+              {hasTimeOffWeek && (
+                <>
+                  {' '}
+                  +{' '}
+                  <span className="font-semibold">
+                    {formatHours(grid.weekTimeOffSeconds, format)}
+                  </span>{' '}
+                  time off ({timeOffSummary})
+                </>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -528,8 +643,8 @@ export function WeeklyGridPage(): JSX.Element {
             </Button>
           )}
           <span className="ml-auto text-xs text-slate-500">
-            {visibleJobs.length} of {grid.jobs.length} job
-            {grid.jobs.length === 1 ? '' : 's'}
+            {visibleJobs.length} of {workJobs.length} job
+            {workJobs.length === 1 ? '' : 's'}
           </span>
         </div>
 
@@ -601,77 +716,28 @@ export function WeeklyGridPage(): JSX.Element {
                   </td>
                 </tr>
               )}
-              {jobRows.map((job) => {
-                const jobTotal = grid.jobTotals.find((t) => t.jobId === job.id)?.seconds ?? 0;
-                return (
-                  <tr key={String(job.id)} className="align-top">
-                    <th className="sticky left-0 z-10 border-b border-slate-100 bg-white px-4 py-3 text-left">
-                      <div className="text-sm font-medium text-slate-900">{job.code}</div>
-                      <div className="text-xs text-slate-500">{job.name}</div>
+              {jobRows.map(renderRow)}
+              {timeOffJobs.length > 0 && (
+                <>
+                  <tr>
+                    <th
+                      colSpan={dayHeaders.length + 2}
+                      className="border-b border-slate-200 bg-amber-50 px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-amber-900"
+                    >
+                      Time off
+                      <span className="ml-2 font-normal normal-case tracking-normal text-amber-800">
+                        {canEditTimeOff
+                          ? 'Hours paid but not worked. Never counted toward overtime.'
+                          : 'Your supervisor records time off for you.'}
+                      </span>
                     </th>
-                    {dayHeaders.map((d) => {
-                      const cell =
-                        cellMap.get(cellKey(job.id, d.date)) ??
-                        ({
-                          jobId: job.id,
-                          date: d.date,
-                          seconds: 0,
-                          sourceTag: 'none',
-                          manualEntryId: null,
-                          entryReason: null,
-                          locked: false,
-                        } satisfies WeeklyGridCell);
-                      return (
-                        <td
-                          key={d.date}
-                          className={
-                            'border-b border-l border-slate-100 p-1 ' +
-                            (d.isWeekend ? 'bg-slate-50/60 ' : '')
-                          }
-                        >
-                          <HoursCell
-                            seconds={cell.seconds}
-                            format={format}
-                            sourceTag={cell.sourceTag}
-                            locked={cell.locked}
-                            onClick={
-                              cell.locked
-                                ? undefined
-                                : () => {
-                                    setErrorText(null);
-                                    setEditing({
-                                      jobId: job.id,
-                                      date: d.date,
-                                      jobLabel: job.code + ' · ' + job.name,
-                                      mode:
-                                        cell.sourceTag === 'none'
-                                          ? 'add'
-                                          : cell.sourceTag === 'punched'
-                                            ? 'override'
-                                            : 'edit',
-                                      initialSeconds: cell.seconds || null,
-                                      initialReason: cell.entryReason ?? '',
-                                      manualEntryId: cell.manualEntryId,
-                                      originalPunchText:
-                                        cell.sourceTag === 'punched'
-                                          ? formatHours(cell.seconds, format)
-                                          : null,
-                                    });
-                                  }
-                            }
-                          />
-                        </td>
-                      );
-                    })}
-                    <td className="border-b border-l border-slate-100 px-3 py-3 text-right font-mono text-sm text-slate-900">
-                      {jobTotal > 0 ? formatHours(jobTotal, format) : '—'}
-                    </td>
                   </tr>
-                );
-              })}
+                  {timeOffJobs.map(renderRow)}
+                </>
+              )}
               <tr>
                 <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Daily total
+                  {hasTimeOffWeek ? 'Worked' : 'Daily total'}
                 </th>
                 {dayHeaders.map((d) => (
                   <td
@@ -688,6 +754,24 @@ export function WeeklyGridPage(): JSX.Element {
                   {formatHours(grid.weekTotalSeconds, format)}
                 </td>
               </tr>
+              {hasTimeOffWeek && (
+                <tr>
+                  <th className="sticky left-0 z-10 bg-amber-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-amber-900">
+                    Time off
+                  </th>
+                  {dayHeaders.map((d) => (
+                    <td
+                      key={d.date}
+                      className="border-l border-slate-200 bg-amber-50 px-2 py-3 text-center font-mono text-sm text-slate-900"
+                    >
+                      {d.timeOffSeconds > 0 ? formatHours(d.timeOffSeconds, format) : '—'}
+                    </td>
+                  ))}
+                  <td className="border-l border-slate-200 bg-amber-50 px-3 py-3 text-right font-mono text-base font-semibold text-slate-900">
+                    {formatHours(grid.weekTimeOffSeconds, format)}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -722,6 +806,7 @@ export function WeeklyGridPage(): JSX.Element {
           })}
           jobLabel={editing.jobLabel}
           originalPunchText={editing.originalPunchText}
+          timeOff={editing.timeOff}
           onSave={async (input) => {
             await saveCell.mutateAsync(input);
           }}
@@ -739,7 +824,7 @@ export function WeeklyGridPage(): JSX.Element {
 
       <AddJobPicker
         open={addJobOpen}
-        jobs={grid.jobs}
+        jobs={workJobs}
         // Exclude every job already showing as a row — the user already
         // has a cell for them. Pinned jobs are part of visibleJobs too.
         excludedIds={new Set(visibleJobs.map((j) => j.id))}
@@ -770,6 +855,7 @@ export function WeeklyGridPage(): JSX.Element {
             initialReason: '',
             manualEntryId: null,
             originalPunchText: null,
+            timeOff: false,
           });
         }}
         onClose={() => setAddJobOpen(false)}

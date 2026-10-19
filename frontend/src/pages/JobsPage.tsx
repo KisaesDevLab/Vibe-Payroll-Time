@@ -1,7 +1,14 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateJobRequest, Job, UpdateJobRequest } from '@vibept/shared';
+import {
+  TIME_OFF_CATEGORIES,
+  TIME_OFF_CATEGORY_LABELS,
+  type CreateJobRequest,
+  type Job,
+  type TimeOffCategory,
+  type UpdateJobRequest,
+} from '@vibept/shared';
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
@@ -16,6 +23,7 @@ export function JobsPage() {
   const qc = useQueryClient();
 
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [kind, setKind] = useState<'all' | 'work' | 'timeOff'>('all');
   const [editing, setEditing] = useState<Job | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -37,16 +45,41 @@ export function JobsPage() {
 
   return (
     <>
-      <header className="mb-4 flex items-center justify-between">
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={includeArchived}
-            onChange={(e) => setIncludeArchived(e.target.checked)}
-          />
-          Show archived
-        </label>
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex gap-1" role="group" aria-label="Show">
+            {(
+              [
+                ['all', 'All'],
+                ['work', 'Jobs'],
+                ['timeOff', 'Time off'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setKind(value)}
+                className={
+                  'rounded-full px-3 py-1 text-xs font-medium ' +
+                  (kind === value
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200')
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={includeArchived}
+              onChange={(e) => setIncludeArchived(e.target.checked)}
+            />
+            Show archived
+          </label>
+        </div>
         <Button onClick={() => setCreateOpen(true)}>New job</Button>
       </header>
 
@@ -61,56 +94,69 @@ export function JobsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {list.data?.map((j) => (
-              <tr key={j.id}>
-                <td className="px-4 py-3 font-mono text-slate-900">{j.code}</td>
-                <td className="px-4 py-3">
-                  <div className="font-medium text-slate-900">{j.name}</div>
-                  {j.description && <div className="text-xs text-slate-500">{j.description}</div>}
-                </td>
-                <td className="px-4 py-3">
-                  {j.archivedAt ? (
-                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
-                      archived
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                      active
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-slate-700 hover:underline"
-                      onClick={() => setEditing(j)}
-                    >
-                      Edit
-                    </button>
+            {list.data
+              ?.filter((j) => kind === 'all' || (kind === 'timeOff') === j.isTimeOff)
+              .map((j) => (
+                <tr key={j.id}>
+                  <td className="px-4 py-3 font-mono text-slate-900">{j.code}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
+                      {j.name}
+                      {j.isTimeOff && j.timeOffCategory && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          time off · {TIME_OFF_CATEGORY_LABELS[j.timeOffCategory]}
+                          {!j.isPaid && j.timeOffCategory !== 'unpaid' ? ' · unpaid' : ''}
+                        </span>
+                      )}
+                    </div>
+                    {j.description && <div className="text-xs text-slate-500">{j.description}</div>}
+                  </td>
+                  <td className="px-4 py-3">
                     {j.archivedAt ? (
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">
+                        archived
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                        active
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-2">
                       <button
                         type="button"
                         className="text-sm font-medium text-slate-700 hover:underline"
-                        onClick={() => unarchive.mutate(j.id)}
+                        onClick={() => setEditing(j)}
                       >
-                        Unarchive
+                        Edit
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="text-sm font-medium text-red-700 hover:underline"
-                        onClick={() => {
-                          if (confirm(`Archive job ${j.code}?`)) archive.mutate(j.id);
-                        }}
-                      >
-                        Archive
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                      {j.archivedAt ? (
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-slate-700 hover:underline"
+                          onClick={() => unarchive.mutate(j.id)}
+                        >
+                          Unarchive
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-red-700 hover:underline"
+                          onClick={() => {
+                            const msg = j.isTimeOff
+                              ? `Archive time-off code ${j.code}? No new entries can use it; hours already recorded are kept.`
+                              : `Archive job ${j.code}?`;
+                            if (confirm(msg)) archive.mutate(j.id);
+                          }}
+                        >
+                          Archive
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
             {list.data?.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">
@@ -162,6 +208,9 @@ function JobEditorModal({
     code: job?.code ?? '',
     name: job?.name ?? '',
     ...(job?.description ? { description: job.description } : {}),
+    isTimeOff: job?.isTimeOff ?? false,
+    timeOffCategory: job?.timeOffCategory ?? null,
+    isPaid: job?.isPaid ?? true,
   });
 
   const submit = useMutation({
@@ -213,6 +262,62 @@ function JobEditorModal({
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value || undefined }))}
           />
         </label>
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            checked={!!form.isTimeOff}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                isTimeOff: e.target.checked,
+                timeOffCategory: e.target.checked ? (f.timeOffCategory ?? 'other') : null,
+              }))
+            }
+          />
+          <span>
+            This is a time-off code
+            <span className="block text-xs text-slate-500">
+              Hours on it are paid-but-not-worked (or unpaid) leave: entered on the timesheet, never
+              punched, never counted toward overtime.
+            </span>
+          </span>
+        </label>
+        {form.isTimeOff && (
+          <div className="flex flex-wrap gap-4 pl-6">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-slate-700">Category</span>
+              <select
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+                value={form.timeOffCategory ?? 'other'}
+                onChange={(e) => {
+                  const timeOffCategory = e.target.value as TimeOffCategory;
+                  setForm((f) => ({
+                    ...f,
+                    timeOffCategory,
+                    isPaid: timeOffCategory === 'unpaid' ? false : (f.isPaid ?? true),
+                  }));
+                }}
+              >
+                {TIME_OFF_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {TIME_OFF_CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={form.timeOffCategory !== 'unpaid' && !!form.isPaid}
+                disabled={form.timeOffCategory === 'unpaid'}
+                onChange={(e) => setForm((f) => ({ ...f, isPaid: e.target.checked }))}
+              />
+              Paid
+            </label>
+          </div>
+        )}
         {submit.isError && (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {submit.error instanceof ApiError ? submit.error.message : 'Save failed.'}

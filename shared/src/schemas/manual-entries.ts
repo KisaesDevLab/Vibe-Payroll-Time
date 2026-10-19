@@ -14,7 +14,10 @@ export const createManualEntryRequestSchema = z.object({
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'day must be YYYY-MM-DD'),
   jobId: z.number().int().positive().nullable(),
   durationSeconds: z.number().int().positive().max(86_400),
-  reason: z.string().min(1).max(500),
+  /** Required for worked time; optional on a time-off code (nobody
+   *  should have to justify a vacation day to type it in). The server
+   *  enforces the difference. */
+  reason: z.string().max(500).optional(),
   /** What the user typed before parsing; echoed into the audit row so
    *  "typed 5:48 · stored 20880s" is retrievable. */
   typedInput: z.string().max(32).optional(),

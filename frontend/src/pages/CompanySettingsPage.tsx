@@ -16,15 +16,21 @@ import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { TimezoneOptions } from '../components/TimezoneOptions';
 import { ApiError } from '../lib/api';
-import { ai, companies as companiesApi, companySettings as settingsApi } from '../lib/resources';
+import {
+  ai,
+  companies as companiesApi,
+  companySettings as settingsApi,
+  timeOff as timeOffApi,
+} from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
-type Section = 'general' | 'punch' | 'approval' | 'notifications' | 'ai';
+type Section = 'general' | 'punch' | 'approval' | 'timeOff' | 'notifications' | 'ai';
 
 const SECTIONS: Array<{ id: Section; label: string }> = [
   { id: 'general', label: 'General' },
   { id: 'punch', label: 'Punch rules' },
   { id: 'approval', label: 'Approval' },
+  { id: 'timeOff', label: 'Time off' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'ai', label: 'AI' },
 ];
@@ -103,6 +109,15 @@ export function CompanySettingsPage() {
         )}
         {section === 'approval' && (
           <ApprovalSection
+            settings={settingsQ.data}
+            onSubmit={updateSettings.mutate}
+            saving={updateSettings.isPending}
+            error={updateSettings.error}
+          />
+        )}
+        {section === 'timeOff' && (
+          <TimeOffSection
+            companyId={companyId}
             settings={settingsQ.data}
             onSubmit={updateSettings.mutate}
             saving={updateSettings.isPending}
@@ -457,6 +472,122 @@ function ApprovalSection({
         Allow company admin to self-approve (solo firm / internal use)
       </label>
     </SectionShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Time off
+// ---------------------------------------------------------------------------
+
+/**
+ * Which kinds of time off this company records. Each switch applies at
+ * once: on creates (or restores) the type's job code, off archives it,
+ * which stops new entries but keeps every hour already recorded. Hours
+ * are recorded only; there are no balances or accruals.
+ */
+function TimeOffSection({
+  companyId,
+  settings,
+  onSubmit,
+  saving,
+  error,
+}: {
+  companyId: number;
+  settings: CompanySettings;
+  onSubmit: (body: UpdateCompanySettingsRequest) => void;
+  saving: boolean;
+  error: unknown;
+}) {
+  const qc = useQueryClient();
+  const typesQ = useQuery({
+    queryKey: ['time-off-types', companyId],
+    queryFn: () => timeOffApi.listTypes(companyId),
+  });
+  const setType = useMutation({
+    mutationFn: (v: { category: string; enabled: boolean }) =>
+      timeOffApi.setType(companyId, v.category, v.enabled),
+    onSuccess: (types) => {
+      qc.setQueryData(['time-off-types', companyId], types);
+      qc.invalidateQueries({ queryKey: ['jobs', companyId] });
+    },
+  });
+  const [selfEntry, setSelfEntry] = useState(settings.timeOffSelfEntry);
+
+  return (
+    <>
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Time off</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Turn on the kinds of time off this company records. Hours are entered on the weekly
+          timesheet like any other hours, never punched, and never count toward overtime. Vibe PT
+          records time off; it doesn&apos;t track balances or accruals.
+        </p>
+        {typesQ.isLoading && <p className="mt-4 text-sm text-slate-500">Loading…</p>}
+        <ul className="mt-4 divide-y divide-slate-100 rounded-md border border-slate-200">
+          {typesQ.data?.map((t) => (
+            <li key={t.category} className="flex items-center justify-between gap-4 px-4 py-3">
+              <div>
+                <div className="text-sm font-medium text-slate-900">
+                  {t.name} <span className="font-mono text-xs text-slate-500">{t.code}</span>
+                </div>
+                <div className="text-xs text-slate-500">
+                  {t.isPaid
+                    ? 'Paid, not worked. Included in payroll exports.'
+                    : 'Unpaid. Recorded for attendance; left out of vendor payroll exports.'}
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={t.enabled}
+                  disabled={setType.isPending}
+                  aria-label={`Record ${t.name}`}
+                  onChange={(e) =>
+                    setType.mutate({ category: t.category, enabled: e.target.checked })
+                  }
+                />
+                {t.enabled ? 'On' : 'Off'}
+              </label>
+            </li>
+          ))}
+        </ul>
+        {setType.error ? (
+          <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {setType.error instanceof ApiError ? setType.error.message : 'Could not change it.'}
+          </div>
+        ) : null}
+        <p className="mt-3 text-xs text-slate-500">
+          Turning a type off hides it for new entries; hours already recorded stay on timesheets,
+          reports and exports. Other kinds (bereavement, jury duty, …) can be added on the Jobs page
+          as time-off codes.
+        </p>
+      </section>
+
+      <SectionShell
+        title="Who enters time off"
+        onSave={() => onSubmit({ timeOffSelfEntry: selfEntry })}
+        saving={saving}
+        error={error}
+        disabled={selfEntry === settings.timeOffSelfEntry}
+      >
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            checked={selfEntry}
+            onChange={(e) => setSelfEntry(e.target.checked)}
+          />
+          <span>
+            Employees can record their own time off
+            <span className="block text-xs text-slate-500">
+              Off: only supervisors and admins can enter it. Either way, time off goes through the
+              normal pay-period approval.
+            </span>
+          </span>
+        </label>
+      </SectionShell>
+    </>
   );
 }
 

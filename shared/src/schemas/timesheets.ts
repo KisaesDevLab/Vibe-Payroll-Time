@@ -1,6 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { z } from 'zod';
+import { timeOffCategorySchema } from './jobs.js';
 import { timeEntrySchema } from './punch.js';
 
 // ---------------------------------------------------------------------------
@@ -11,9 +12,20 @@ export const daySummarySchema = z.object({
   date: z.string(), // YYYY-MM-DD in company tz
   workSeconds: z.number().int().nonnegative(),
   breakSeconds: z.number().int().nonnegative(),
+  /** Time off recorded this day; not part of workSeconds. */
+  timeOffSeconds: z.number().int().nonnegative(),
   entryIds: z.array(z.number().int().positive()),
 });
 export type DaySummary = z.infer<typeof daySummarySchema>;
+
+/** Time off for a period. Never part of worked hours or overtime. */
+export const timeOffTotalsSchema = z.object({
+  totalSeconds: z.number().int().nonnegative(),
+  paidSeconds: z.number().int().nonnegative(),
+  unpaidSeconds: z.number().int().nonnegative(),
+  byCategory: z.record(timeOffCategorySchema, z.number().int().nonnegative()),
+});
+export type TimeOffTotalsResponse = z.infer<typeof timeOffTotalsSchema>;
 
 export const weekSummarySchema = z.object({
   weekStart: z.string().datetime(),
@@ -48,6 +60,15 @@ export const timesheetResponseSchema = z.object({
     z.object({
       jobId: z.number().int().positive().nullable(),
       workSeconds: z.number().int().nonnegative(),
+    }),
+  ),
+  timeOff: timeOffTotalsSchema,
+  timeOffBreakdown: z.array(
+    z.object({
+      jobId: z.number().int().positive(),
+      category: timeOffCategorySchema,
+      isPaid: z.boolean(),
+      seconds: z.number().int().nonnegative(),
     }),
   ),
   /** True if every entry in the period is approved. */

@@ -18,6 +18,7 @@ interface SettingsRow {
   personal_device_enabled: boolean;
   kiosk_auth_mode: CompanySettings['kioskAuthMode'];
   punch_location_mode: CompanySettings['punchLocationMode'];
+  time_off_self_entry: boolean;
   twilio_account_sid: string | null;
   twilio_auth_token_encrypted: string | null;
   twilio_from_number: string | null;
@@ -40,6 +41,7 @@ function rowToSettings(row: SettingsRow): CompanySettings {
     personalDeviceEnabled: row.personal_device_enabled,
     kioskAuthMode: row.kiosk_auth_mode,
     punchLocationMode: row.punch_location_mode,
+    timeOffSelfEntry: row.time_off_self_entry,
     twilioAccountSid: row.twilio_account_sid,
     twilioFromNumber: row.twilio_from_number,
     twilioAuthTokenConfigured: !!row.twilio_auth_token_encrypted,
@@ -94,6 +96,7 @@ export async function updateCompanySettings(
     if (patch.kioskAuthMode !== undefined) updates.kiosk_auth_mode = patch.kioskAuthMode;
     if (patch.punchLocationMode !== undefined)
       updates.punch_location_mode = patch.punchLocationMode;
+    if (patch.timeOffSelfEntry !== undefined) updates.time_off_self_entry = patch.timeOffSelfEntry;
 
     if (patch.twilioAccountSid !== undefined)
       updates.twilio_account_sid = cleanTwilioCredential(patch.twilioAccountSid);

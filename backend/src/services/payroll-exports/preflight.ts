@@ -5,6 +5,7 @@ import { buildTimesheetSummary } from '@vibept/shared';
 import { db } from '../../db/knex.js';
 import { NotFound } from '../../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from '../punch.js';
+import { loadTimeOffJobs } from '../time-off.js';
 
 /**
  * A payroll export must start from a clean state:
@@ -64,6 +65,7 @@ export async function runPreflight(
     >('employee_id', 'time_entry_id');
 
   const pendingByEmployee = new Set(pendingCorrections.map((c) => c.employee_id));
+  const timeOffJobs = await loadTimeOffJobs(companyId);
   const entriesByEmployee = new Map<number, TimeEntryRow[]>();
   for (const e of entries) {
     const arr = entriesByEmployee.get(e.employee_id) ?? [];
@@ -107,6 +109,7 @@ export async function runPreflight(
       roundingGraceMinutes: settings.punch_rounding_grace_minutes,
       periodStart,
       periodEnd,
+      timeOffJobs,
     });
 
     statuses.push({
@@ -203,6 +206,7 @@ export async function collectEmployeeSummaries(
     .where({ company_id: companyId })
     .select<Array<{ id: number; code: string }>>('id', 'code');
   const jobCode = new Map(jobs.map((j) => [j.id, j.code]));
+  const timeOffJobs = await loadTimeOffJobs(companyId);
 
   const byEmployee = new Map<number, TimeEntryRow[]>();
   for (const r of rows) {
@@ -236,6 +240,7 @@ export async function collectEmployeeSummaries(
       roundingGraceMinutes: settings.punch_rounding_grace_minutes,
       periodStart,
       periodEnd,
+      timeOffJobs,
     });
 
     let manualSeconds = 0;
@@ -264,6 +269,14 @@ export async function collectEmployeeSummaries(
       })),
       manualSeconds,
       overrideReasons: Array.from(manualReasons),
+      timeOff: summary.timeOff,
+      timeOffByJob: summary.timeOffBreakdown.map((t) => ({
+        jobId: t.jobId,
+        jobCode: jobCode.get(t.jobId) ?? null,
+        category: t.category,
+        isPaid: t.isPaid,
+        seconds: t.seconds,
+      })),
     });
   }
 

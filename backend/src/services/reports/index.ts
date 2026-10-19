@@ -7,6 +7,7 @@ import { hoursByPeriodReport } from './hours-by-period.js';
 import { overtimeReport } from './overtime.js';
 import { punchActivityReport } from './punch-activity.js';
 import { timeCardReport } from './time-card.js';
+import { timeOffEntriesReport, timeOffSummaryReport } from './time-off.js';
 import type { ReportHandler } from './types.js';
 
 // Type-erased registry so the HTTP layer can dispatch by name without
@@ -18,6 +19,8 @@ const handlers: Record<string, ReportHandler<any>> = {
   [hoursByPeriodReport.name]: hoursByPeriodReport,
   [hoursByJobReport.name]: hoursByJobReport,
   [overtimeReport.name]: overtimeReport,
+  [timeOffSummaryReport.name]: timeOffSummaryReport,
+  [timeOffEntriesReport.name]: timeOffEntriesReport,
   [auditTrailReport.name]: auditTrailReport,
 };
 

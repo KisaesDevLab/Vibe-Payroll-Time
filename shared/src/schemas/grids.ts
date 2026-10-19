@@ -1,6 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { z } from 'zod';
+import { timeOffCategorySchema } from './jobs.js';
 import { timeEntrySchema } from './punch.js';
 
 // ---------------------------------------------------------------------------
@@ -12,6 +13,10 @@ export const weeklyGridJobSchema = z.object({
   code: z.string(),
   name: z.string(),
   archivedAt: z.string().datetime().nullable(),
+  /** Time-off codes render in their own "Time off" section. */
+  isTimeOff: z.boolean(),
+  timeOffCategory: timeOffCategorySchema.nullable(),
+  isPaid: z.boolean(),
 });
 export type WeeklyGridJob = z.infer<typeof weeklyGridJobSchema>;
 
@@ -42,7 +47,9 @@ export type WeeklyGridCell = z.infer<typeof weeklyGridCellSchema>;
 
 export const weeklyGridDaySchema = z.object({
   date: z.string(), // YYYY-MM-DD
+  /** Worked seconds; time off is in `timeOffSeconds`. */
   totalSeconds: z.number().int().nonnegative(),
+  timeOffSeconds: z.number().int().nonnegative(),
   hasException: z.boolean(),
   hasManual: z.boolean(),
 });
@@ -72,7 +79,13 @@ export const weeklyGridResponseSchema = z.object({
   /** All non-superseded entries in the week, in case the UI needs full
    *  provenance (e.g. audit trail). */
   entries: z.array(timeEntrySchema),
+  /** Worked seconds for the week (time off excluded). */
   weekTotalSeconds: z.number().int().nonnegative(),
+  /** Time off for the week, all categories. */
+  weekTimeOffSeconds: z.number().int().nonnegative(),
+  timeOffByCategory: z.record(timeOffCategorySchema, z.number().int().nonnegative()),
+  /** May the viewer's employees enter their own time off here? */
+  timeOffSelfEntry: z.boolean(),
   /** True if every entry in the week is approved. */
   allApproved: z.boolean(),
   /** Effective format preference for the caller — server-resolved so
@@ -93,6 +106,8 @@ export const multiEmployeeDayCellSchema = z.object({
   /** Contribution to weekly OT; lets the UI paint brass for OT-bearing
    *  cells without recomputing client-side. */
   contributesToOT: z.boolean(),
+  /** Time off on this day; not part of `seconds`. */
+  timeOffSeconds: z.number().int().nonnegative(),
 });
 export type MultiEmployeeDayCell = z.infer<typeof multiEmployeeDayCellSchema>;
 
@@ -104,6 +119,8 @@ export const multiEmployeeRowSchema = z.object({
   weekSeconds: z.number().int().nonnegative(),
   regularSeconds: z.number().int().nonnegative(),
   overtimeSeconds: z.number().int().nonnegative(),
+  /** Time off this week; never part of weekSeconds or overtime. */
+  timeOffSeconds: z.number().int().nonnegative(),
   allApproved: z.boolean(),
   hasPending: z.boolean(),
 });
@@ -127,6 +144,7 @@ export const multiEmployeeGridResponseSchema = z.object({
     employeeCount: z.number().int().nonnegative(),
     regularSeconds: z.number().int().nonnegative(),
     overtimeSeconds: z.number().int().nonnegative(),
+    timeOffSeconds: z.number().int().nonnegative(),
     cellsNeedingReview: z.number().int().nonnegative(),
   }),
   timeFormat: z.enum(['decimal', 'hhmm']),

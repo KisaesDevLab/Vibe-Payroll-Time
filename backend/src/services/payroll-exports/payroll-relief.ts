@@ -1,7 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { csvLine, hoursDecimal } from './csv.js';
-import type { FormatFn } from './types.js';
+import { hasHours, paidTimeOff, type FormatFn } from './types.js';
 
 /**
  * Payroll Relief time import format.
@@ -13,6 +13,10 @@ import type { FormatFn } from './types.js';
  * Hours Import" template. Firms with custom earnings codes should
  * round-trip with the generic CSV exporter and a column-mapping
  * template (deferred to a later iteration).
+ *
+ * Paid time off is appended after PeriodEnd (PTOHours, SickHours,
+ * HolidayHours, OtherPaidLeaveHours) so a template mapped to the
+ * original seven columns keeps working. Unpaid leave is not exported.
  *
  * See docs/exports/payroll-relief.md for the specific columns.
  */
@@ -26,6 +30,10 @@ export const payrollRelief: FormatFn = (ctx) => {
       'OvertimeHours',
       'PeriodStart',
       'PeriodEnd',
+      'PTOHours',
+      'SickHours',
+      'HolidayHours',
+      'OtherPaidLeaveHours',
     ]),
   ];
 
@@ -33,7 +41,8 @@ export const payrollRelief: FormatFn = (ctx) => {
   const periodEnd = ctx.periodEnd.toISOString().slice(0, 10);
 
   for (const e of ctx.employees) {
-    if (e.workSeconds === 0) continue;
+    if (!hasHours(e)) continue;
+    const paid = paidTimeOff(e);
     rows.push(
       csvLine([
         e.employeeNumber ?? String(e.employeeId),
@@ -43,6 +52,10 @@ export const payrollRelief: FormatFn = (ctx) => {
         hoursDecimal(e.overtimeSeconds),
         periodStart,
         periodEnd,
+        hoursDecimal(paid.pto),
+        hoursDecimal(paid.sick),
+        hoursDecimal(paid.holiday),
+        hoursDecimal(paid.other),
       ]),
     );
   }

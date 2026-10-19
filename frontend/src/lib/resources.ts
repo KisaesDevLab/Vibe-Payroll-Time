@@ -43,6 +43,7 @@ import type {
   EmployeePreferences,
   InviteMembershipRequest,
   Job,
+  TimeOffTypeState,
   KioskDevice,
   KioskPairingCodeResponse,
   Membership,
@@ -308,6 +309,20 @@ export const jobs = {
   unarchive: (companyId: number, jobId: number) =>
     apiFetch<Job>(`/companies/${companyId}/jobs/${jobId}/unarchive`, {
       method: 'POST',
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Time off (Settings → Time off)
+// ---------------------------------------------------------------------------
+
+export const timeOff = {
+  listTypes: (companyId: number) =>
+    apiFetch<TimeOffTypeState[]>(`/companies/${companyId}/time-off-types`),
+  setType: (companyId: number, category: string, enabled: boolean) =>
+    apiFetch<TimeOffTypeState[]>(`/companies/${companyId}/time-off-types/${category}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
     }),
 };
 

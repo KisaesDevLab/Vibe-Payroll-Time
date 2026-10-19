@@ -15,6 +15,7 @@ import {
   sendAccountLinkRequestSchema,
   sendEmployeeLinkRequestSchema,
   setEmployeePinRequestSchema,
+  setTimeOffTypeRequestSchema,
   updateCompanyRequestSchema,
   updateCompanySettingsRequestSchema,
   updateEmployeeRequestSchema,
@@ -49,6 +50,7 @@ import {
   updateEmployee,
 } from '../../services/employees.js';
 import { archiveJob, createJob, listJobs, unarchiveJob, updateJob } from '../../services/jobs.js';
+import { listTimeOffTypes, setTimeOffType } from '../../services/time-off.js';
 import {
   issuePairingCode,
   listKioskDevices,
@@ -808,6 +810,40 @@ companiesRouter.delete(
     try {
       await archiveJob(companyIdFromParams(req), Number(req.params.jobId));
       res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Settings → Time off: the four standard time-off types (PTO, sick,
+// holiday, unpaid), each switched on or off per company.
+companiesRouter.get(
+  '/:companyId/time-off-types',
+  requireAuth,
+  assertCompanyAccess,
+  async (req, res, next) => {
+    try {
+      res.json({ data: await listTimeOffTypes(companyIdFromParams(req)) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.put(
+  '/:companyId/time-off-types/:category',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      const body = setTimeOffTypeRequestSchema.parse(req.body);
+      const types = await setTimeOffType(
+        companyIdFromParams(req),
+        String(req.params.category),
+        body.enabled,
+      );
+      res.json({ data: types });
     } catch (err) {
       next(err);
     }

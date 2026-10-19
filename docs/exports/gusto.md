@@ -13,11 +13,17 @@ or by name. Vibe PT emits both.
 | regular_hours         | Period regular hours (2 decimals)         |
 | overtime_hours        | Period overtime hours                     |
 | double_overtime_hours | `0.00` (Vibe PT has no double-OT concept) |
-| pto_hours             | `0.00` (no PTO accrual in v1)             |
-| holiday_hours         | `0.00`                                    |
-| sick_hours            | `0.00`                                    |
+| pto_hours             | Paid PTO + paid "other" time off          |
+| holiday_hours         | Paid holiday hours                        |
+| sick_hours            | Paid sick hours                           |
 
-Employees with zero work hours are omitted.
+Time-off hours come from time-off codes (Settings → Time off, or a
+code marked "time off" on the Jobs page). Paid codes in the "other"
+category (bereavement, jury duty, …) have no Gusto column of their
+own, so they are added to `pto_hours`. Unpaid leave is not exported.
+Time off never counts toward `overtime_hours`.
+
+Employees with no worked hours and no paid time off are omitted.
 
 ## Verification
 

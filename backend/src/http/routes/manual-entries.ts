@@ -48,7 +48,7 @@ manualEntriesRouter.post('/', requireAuth, async (req, res, next) => {
       day: body.day,
       jobId: body.jobId,
       durationSeconds: body.durationSeconds,
-      reason: body.reason,
+      reason: body.reason ?? '',
       ...(body.typedInput !== undefined ? { typedInput: body.typedInput } : {}),
       actor: {
         userId: req.user.id,

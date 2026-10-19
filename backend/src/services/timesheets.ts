@@ -12,6 +12,7 @@ import { buildTimesheetSummary, resolvePayPeriod } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { Forbidden, NotFound } from '../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from './punch.js';
+import { loadTimeOffJobs } from './time-off.js';
 
 interface CompanyCtx {
   id: number;
@@ -115,6 +116,7 @@ export async function getTimesheet(
     .orderBy('started_at', 'asc');
 
   const entries: TimeEntry[] = rows.map(rowToTimeEntry);
+  const timeOffJobs = await loadTimeOffJobs(companyId);
 
   const summary = buildTimesheetSummary(
     entries.map((e) => ({
@@ -133,6 +135,7 @@ export async function getTimesheet(
       roundingGraceMinutes: settings.roundingGraceMinutes,
       periodStart,
       periodEnd,
+      timeOffJobs,
     },
   );
 
@@ -167,6 +170,8 @@ export async function getTimesheet(
       overtimeSeconds: summary.periodTotal.overtimeSeconds,
     },
     jobBreakdown: summary.jobBreakdown,
+    timeOff: summary.timeOff,
+    timeOffBreakdown: summary.timeOffBreakdown,
     isApproved: allApproved,
     approvedAt,
   };

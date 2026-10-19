@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { FLSA_OT_THRESHOLD_HOURS } from '../constants.js';
 import type { RoundingMode } from '../enums.js';
+import type { TimeOffCategory } from '../schemas/jobs.js';
 import { roundedDurationSeconds } from './rounding.js';
 import { isoDateInTz } from './tz.js';
 import { resolveWorkWeek, type WorkWeek } from './week.js';
@@ -32,6 +33,32 @@ export interface SummaryOptions {
   /** If provided, the elapsed "live" time on an open entry is counted up
    *  to this instant. Defaults to `new Date()`. */
   now?: Date;
+  /** Time-off job codes, keyed by job id. Work entries on these jobs are
+   *  tallied as time off: never rounded, never part of worked hours, and
+   *  never counted toward FLSA overtime. Omit when the company has none. */
+  timeOffJobs?: ReadonlyMap<number, TimeOffJobInfo>;
+}
+
+export interface TimeOffJobInfo {
+  category: TimeOffCategory;
+  isPaid: boolean;
+}
+
+export interface TimeOffTotals {
+  /** All time off, paid and unpaid. */
+  totalSeconds: number;
+  paidSeconds: number;
+  unpaidSeconds: number;
+  byCategory: Record<TimeOffCategory, number>;
+}
+
+export function emptyTimeOffTotals(): TimeOffTotals {
+  return {
+    totalSeconds: 0,
+    paidSeconds: 0,
+    unpaidSeconds: 0,
+    byCategory: { pto: 0, sick: 0, holiday: 0, unpaid: 0, other: 0 },
+  };
 }
 
 export interface DaySummaryInternal {
@@ -39,6 +66,8 @@ export interface DaySummaryInternal {
   date: string;
   workSeconds: number;
   breakSeconds: number;
+  /** Time off recorded on this day (not part of workSeconds). */
+  timeOffSeconds: number;
   entryIds: number[];
 }
 
@@ -59,7 +88,15 @@ export interface TimesheetSummary {
     regularSeconds: number;
     overtimeSeconds: number;
   };
+  /** Worked jobs only; time-off codes are in `timeOffBreakdown`. */
   jobBreakdown: Array<{ jobId: number | null; workSeconds: number }>;
+  timeOff: TimeOffTotals;
+  timeOffBreakdown: Array<{
+    jobId: number;
+    category: TimeOffCategory;
+    isPaid: boolean;
+    seconds: number;
+  }>;
 }
 
 function toDate(v: string | Date): Date {
@@ -90,6 +127,7 @@ function clip(
  *   - per-work-week totals (FLSA 7-day, independent of pay period)
  *   - overall period totals
  *   - per-job work breakdown
+ *   - time off (entries on time-off job codes), kept apart from work
  *
  * FLSA OT is computed per work-week then clipped to the pay period: if a
  * week straddles the period, each day's OT contribution is proportional
@@ -115,12 +153,42 @@ export function buildTimesheetSummary(
     }
   >();
   const jobMap = new Map<number | null, number>();
+  const timeOff = emptyTimeOffTotals();
+  const timeOffJobMap = new Map<number, number>();
 
   for (const entry of entries) {
     const entryStart = toDate(entry.startedAt);
     const entryEnd = entry.endedAt ? toDate(entry.endedAt) : now;
     const clipped = clip(entryStart, entryEnd, periodStart, periodEnd);
     if (!clipped) continue;
+
+    const timeOffInfo =
+      entry.entryType === 'work' && entry.jobId != null
+        ? opts.timeOffJobs?.get(entry.jobId)
+        : undefined;
+    if (timeOffInfo && entry.jobId != null) {
+      // Time off is recorded as a duration, so it is never rounded, and
+      // FLSA overtime is based on hours actually worked: it never joins
+      // the work-week tally below.
+      const secs = secondsBetween(clipped.start, clipped.end);
+      const dayKey = isoDateInTz(clipped.start, tz);
+      const day = dayMap.get(dayKey) ?? {
+        date: dayKey,
+        workSeconds: 0,
+        breakSeconds: 0,
+        timeOffSeconds: 0,
+        entryIds: [],
+      };
+      day.timeOffSeconds += secs;
+      day.entryIds.push(entry.id);
+      dayMap.set(dayKey, day);
+      timeOff.totalSeconds += secs;
+      if (timeOffInfo.isPaid) timeOff.paidSeconds += secs;
+      else timeOff.unpaidSeconds += secs;
+      timeOff.byCategory[timeOffInfo.category] += secs;
+      timeOffJobMap.set(entry.jobId, (timeOffJobMap.get(entry.jobId) ?? 0) + secs);
+      continue;
+    }
 
     // Rounded duration for work entries; break entries are unrounded (raw
     // duration is what we care about for the employee's visibility).
@@ -142,6 +210,7 @@ export function buildTimesheetSummary(
       date: dayKey,
       workSeconds: 0,
       breakSeconds: 0,
+      timeOffSeconds: 0,
       entryIds: [],
     };
     if (entry.entryType === 'work') day.workSeconds += secs;
@@ -218,6 +287,13 @@ export function buildTimesheetSummary(
       overtimeSeconds: periodOvertimeSeconds,
     },
     jobBreakdown,
+    timeOff,
+    timeOffBreakdown: [...timeOffJobMap.entries()]
+      .map(([jobId, seconds]) => {
+        const info = opts.timeOffJobs!.get(jobId)!;
+        return { jobId, category: info.category, isPaid: info.isPaid, seconds };
+      })
+      .sort((a, b) => b.seconds - a.seconds),
   };
 }
 
