@@ -23,6 +23,7 @@ import {
   timeOff as timeOffApi,
 } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
+import { deliveryLabel } from '../lib/sms-delivery';
 
 type Section = 'general' | 'punch' | 'approval' | 'timeOff' | 'notifications' | 'ai';
 
@@ -870,7 +871,7 @@ function TestSmsRow({ companyId }: { companyId: number }) {
       <p className="text-xs text-slate-500">Uses the saved settings — save changes first.</p>
       {send.data?.ok && (
         <p className="text-sm text-emerald-700">
-          Sent via {send.data.provider}
+          {deliveryLabel(send.data.provider, send.data.delivery)}
           {send.data.providerMessageId ? ` (${send.data.providerMessageId})` : ''}.
         </p>
       )}

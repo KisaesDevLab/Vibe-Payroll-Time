@@ -14,6 +14,7 @@ import { Button } from '../components/Button';
 import { TopBar } from '../components/TopBar';
 import { admin } from '../lib/resources';
 import { ApiError } from '../lib/api';
+import { deliveryLabel } from '../lib/sms-delivery';
 
 /**
  * SuperAdmin appliance settings. Every operator-editable setting that
@@ -503,6 +504,7 @@ function TestResultBanner({
     error: string | null;
     provider: string | null;
     providerMessageId: string | null;
+    delivery?: { status: string; final: boolean } | null;
   } | null;
   disabled: boolean;
 }) {
@@ -517,7 +519,7 @@ function TestResultBanner({
   if (result.ok) {
     return (
       <p className="mt-2 rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-900">
-        Sent via {result.provider ?? 'provider'}
+        {deliveryLabel(result.provider, result.delivery)}
         {result.providerMessageId ? ` · ${result.providerMessageId}` : ''}
       </p>
     );

@@ -64,8 +64,78 @@ const TWILIO_HINTS: Record<number, string> = {
   21608: 'trial accounts can only text numbers verified in the Twilio console',
   21610: 'the recipient replied STOP; they must text START to receive messages',
   21614: 'the recipient number is not a mobile number',
+  30003: 'the recipient phone is off or unreachable',
+  30004: 'the recipient has blocked messages from this number',
+  30005: 'the recipient number does not exist or is not in service',
+  30006: 'the recipient is a landline or cannot receive texts',
+  30007:
+    'the carrier filtered the message as spam — register the number (A2P 10DLC) or change the wording',
+  30008: 'the carrier failed to deliver for an unknown reason; try again',
+  30032: 'toll-free numbers must be verified with Twilio before they can text',
   30034: 'US carriers block unregistered senders — register the number for A2P 10DLC',
 };
+
+export function twilioHint(code: number | null | undefined): string | null {
+  return code ? (TWILIO_HINTS[code] ?? null) : null;
+}
+
+export interface TwilioDelivery {
+  /** Twilio's message status: queued, sending, sent, delivered,
+   *  undelivered, failed (… or still in flight when we stopped waiting). */
+  status: string;
+  errorCode: number | null;
+  /** "Twilio 30034: … (hint)" when the carrier rejected it. */
+  detail: string | null;
+  /** True once Twilio has a final answer. */
+  final: boolean;
+}
+
+const FINAL_STATUSES = new Set(['delivered', 'undelivered', 'failed', 'read']);
+
+/**
+ * Twilio accepting a message only means it was queued. Carrier rejections
+ * (unregistered A2P 10DLC numbers, spam filtering, trial-account limits)
+ * arrive seconds later, so a diagnostic send polls the message until it
+ * settles. Used by the test-SMS buttons, never on the regular send path.
+ */
+export async function waitForTwilioDelivery(
+  config: TwilioConfig,
+  messageSid: string,
+  opts: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<TwilioDelivery> {
+  const client = twilio(config.accountSid.trim(), config.authToken.trim());
+  const deadline = Date.now() + (opts.timeoutMs ?? 15_000);
+  const interval = opts.intervalMs ?? 1_500;
+  let last: TwilioDelivery = { status: 'queued', errorCode: null, detail: null, final: false };
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, interval));
+    try {
+      // Bound each lookup by the time left, so a slow Twilio API can't
+      // hold the test send past its deadline.
+      const remaining = Math.max(0, deadline - Date.now());
+      const m = await Promise.race([
+        client.messages(messageSid).fetch(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('lookup timed out')), remaining),
+        ),
+      ]);
+      const code = m.errorCode ?? null;
+      const hint = twilioHint(code);
+      last = {
+        status: m.status,
+        errorCode: code,
+        detail: code
+          ? `Twilio ${code}${m.errorMessage ? `: ${m.errorMessage}` : ''}${hint ? ` (${hint})` : ''}`
+          : null,
+        final: FINAL_STATUSES.has(m.status),
+      };
+      if (last.final) return last;
+    } catch {
+      // A transient lookup failure isn't the send failing; keep waiting.
+    }
+  }
+  return last;
+}
 
 /**
  * Per-send client — instantiate with decrypted credentials, send, let
@@ -103,7 +173,7 @@ export async function sendViaTwilio(
     return { messageId: message.sid };
   } catch (err) {
     const e = err as { status?: number; code?: number; message?: string };
-    const hint = e.code ? TWILIO_HINTS[e.code] : undefined;
+    const hint = twilioHint(e.code);
     const msg = [
       e.code ? `Twilio ${e.code}` : 'Twilio',
       e.message ?? 'send failed',
