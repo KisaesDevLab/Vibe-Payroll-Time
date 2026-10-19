@@ -7,6 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-10-19
+
 ### Changed — Client-company sign-in links follow the company
 
 - Under `oidc_only`, a sign-in or reset link an admin sends from a **client
