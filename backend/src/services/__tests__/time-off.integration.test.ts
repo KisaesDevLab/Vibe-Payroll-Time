@@ -108,7 +108,11 @@ describe.skipIf(!dbReachable)('time off (DB-backed)', () => {
       enabled: true,
       jobId: pto.jobId,
     });
-    expect(await db('jobs').where({ company_id: companyId }).count('* as n')).toEqual([{ n: '1' }]);
+    const [{ n }] = await db('jobs')
+      .where({ company_id: companyId })
+      .count<Array<{ n: string | number }>>('* as n');
+    // One code, restored rather than duplicated.
+    expect(Number(n)).toBe(1);
 
     const unpaid = await setTimeOffType(companyId, 'unpaid', true);
     expect(unpaid.find((t) => t.category === 'unpaid')?.isPaid).toBe(false);
