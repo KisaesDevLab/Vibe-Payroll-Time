@@ -3,6 +3,7 @@
 import type { CompanyRole } from '@vibept/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { db } from '../../db/knex.js';
+import { isCompanyLoginBlocked } from '../../services/employee-login.js';
 import {
   verifyAccessToken,
   type AccessTokenClaims,
@@ -114,6 +115,9 @@ export function requireCompanyRole(
         .first<{ role: CompanyRole }>();
 
       if (!membership) return next(Forbidden('Not a member of this company'));
+      if (await isCompanyLoginBlocked(req.user.id, raw)) {
+        return next(Forbidden('Your sign-in to this company has been turned off'));
+      }
       if (!allowed.has(membership.role)) return next(Forbidden('Insufficient role'));
 
       next();

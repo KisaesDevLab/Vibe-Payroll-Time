@@ -9,6 +9,7 @@ import type {
 import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { Conflict, NotFound } from '../http/errors.js';
+import { isCompanyLoginBlocked } from './employee-login.js';
 
 interface CompanyRow {
   id: number;
@@ -188,6 +189,7 @@ export async function userCanAccessCompany(
     .where({ user_id: userId, company_id: companyId })
     .first<{ role: CompanyRole }>();
   if (!m) return false;
+  if (await isCompanyLoginBlocked(userId, companyId)) return false;
   if (!minRole) return true;
 
   const rank: Record<CompanyRole, number> = {

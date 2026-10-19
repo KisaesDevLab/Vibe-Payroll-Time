@@ -7,6 +7,18 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Per-employee sign-in switch
+
+- Employee record → Web login → **Allow sign-in**. Off closes this company
+  to the person: it drops out of their session, company-scoped requests are
+  refused, personal-device punching stops, and links can't be sent. Password,
+  magic-link, single sign-on and refresh sign-in are refused once every
+  company they belong to has them switched off. Kiosk punching, timesheets and
+  the record itself are untouched. Admins can't switch off their own sign-in;
+  SuperAdmins are never affected. Migration
+  `20261019000005_employee_login_switch.js` (`employees.login_disabled_at`,
+  `login_disabled_by`).
+
 ### Added — Time off (PTO, sick, holiday, unpaid)
 
 - **Per-company time-off types.** Settings → Time off switches PTO, Sick,

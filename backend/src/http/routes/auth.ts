@@ -30,6 +30,7 @@ import {
   revokeRefreshToken,
   rotateRefreshToken,
 } from '../../services/tokens.js';
+import { assertSignInAllowed } from '../../services/employee-login.js';
 import { findUserById, healEmployeeLinksForUser } from '../../services/users.js';
 import {
   assertLinkSignInAllowed,
@@ -67,6 +68,13 @@ authRouter.post('/refresh', authRateLimiter, async (req, res, next) => {
 
     const user = await findUserById(rotated.userId);
     if (!user) throw NotFound('User no longer exists');
+    try {
+      await assertSignInAllowed(user);
+    } catch (err) {
+      // Every company switched this person's sign-in off: end the session.
+      await revokeAllForUser(user.id);
+      throw err;
+    }
 
     // Self-heal link between this user and any employees rows with a
     // matching email but no user_id. Same helper as /auth/login and

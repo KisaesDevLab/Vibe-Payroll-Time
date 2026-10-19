@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
+import { loginBlockedCompanyIds } from './employee-login.js';
 
 export interface UserRow {
   id: number;
@@ -120,6 +121,9 @@ export interface MembershipSummary {
 }
 
 export async function listMemberships(userId: number): Promise<MembershipSummary[]> {
+  // A company where this person's sign-in is switched off is not theirs
+  // to open (services/employee-login.ts).
+  const blocked = await loginBlockedCompanyIds(userId);
   const rows = await db('company_memberships as cm')
     .join('companies as c', 'c.id', 'cm.company_id')
     .leftJoin('employees as e', function () {
@@ -145,11 +149,13 @@ export async function listMemberships(userId: number): Promise<MembershipSummary
       'e.id as employee_id',
     );
 
-  return rows.map((r) => ({
-    companyId: r.company_id,
-    companyName: r.company_name,
-    companySlug: r.company_slug,
-    role: r.role as MembershipSummary['role'],
-    isEmployee: r.employee_id !== null,
-  }));
+  return rows
+    .filter((r) => !blocked.has(Number(r.company_id)))
+    .map((r) => ({
+      companyId: r.company_id,
+      companyName: r.company_name,
+      companySlug: r.company_slug,
+      role: r.role as MembershipSummary['role'],
+      isEmployee: r.employee_id !== null,
+    }));
 }

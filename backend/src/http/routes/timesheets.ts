@@ -37,6 +37,7 @@ import {
 } from '../../services/timesheets.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth, requireCompanyRole } from '../middleware/auth.js';
+import { isCompanyLoginBlocked } from '../../services/employee-login.js';
 
 export const timesheetsRouter: Router = Router();
 
@@ -57,6 +58,9 @@ async function assertCallerOwnsCompany(
     .where({ user_id: userId, company_id: companyId })
     .first<{ role: 'company_admin' | 'supervisor' | 'employee' }>();
   if (!membership) throw Forbidden('Not a member of this company');
+  if (await isCompanyLoginBlocked(userId, companyId)) {
+    throw Forbidden('Your sign-in to this company has been turned off');
+  }
   if (minRole) {
     const rank = { employee: 1, supervisor: 2, company_admin: 3 };
     if (rank[membership.role] < rank[minRole]) throw Forbidden('Insufficient role');

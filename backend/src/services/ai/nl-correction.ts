@@ -19,6 +19,7 @@ import {
 import { complete, type ProviderConfig, type ToolDef } from './provider.js';
 import { aiMode, completeViaRouter, ROUTER_TASK_CLASSES } from './router-mode.js';
 import { sanitizeUserInput, detectInjectionHeuristic } from './sanitize.js';
+import { isCompanyLoginBlocked } from '../employee-login.js';
 
 // ---------------------------------------------------------------------------
 // Tool schemas — the ONLY actions the LLM can propose.
@@ -145,6 +146,9 @@ async function authorizeForEmployee(
     .where({ user_id: actor.userId, company_id: actor.companyId })
     .first<{ role: 'company_admin' | 'supervisor' | 'employee' }>();
   if (!membership) throw Forbidden('Not a member of this company');
+  if (await isCompanyLoginBlocked(actor.userId, actor.companyId)) {
+    throw Forbidden('Your sign-in to this company has been turned off');
+  }
 
   if (membership.role === 'employee') {
     if (employee.user_id !== actor.userId) {

@@ -8,6 +8,7 @@ import type {
   UpdateEmployeeRequest,
 } from '@vibept/shared';
 import type { Knex } from 'knex';
+import { logger } from '../config/logger.js';
 import { db } from '../db/knex.js';
 import { pinFingerprint } from './crypto.js';
 import { decryptSecret, encryptSecret } from './crypto.js';
@@ -31,6 +32,7 @@ interface EmployeeRow {
   status: Employee['status'];
   hired_at: string | null;
   terminated_at: Date | null;
+  login_disabled_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -50,6 +52,8 @@ function rowToEmployee(row: EmployeeRow, opts: { includePin?: boolean } = {}): E
     terminatedAt: row.terminated_at?.toISOString() ?? null,
     hasPin: !!row.pin_hash,
     pin: null,
+    loginEnabled: row.login_disabled_at === null,
+    loginDisabledAt: row.login_disabled_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -258,6 +262,42 @@ export async function updateEmployee(
 
     await trx('employees').where({ id: employeeId }).update(updates);
 
+    const fresh = await trx<EmployeeRow>('employees').where({ id: employeeId }).first();
+    if (!fresh) throw new Error('employee vanished');
+    return rowToEmployee(fresh);
+  });
+}
+
+/**
+ * The per-employee sign-in switch (services/employee-login.ts). Off
+ * blocks this person's sign-in to this company; kiosk punching keeps
+ * working. An admin can't switch off their own sign-in.
+ */
+export async function setEmployeeLogin(
+  companyId: number,
+  employeeId: number,
+  enabled: boolean,
+  actorUserId: number,
+): Promise<Employee> {
+  return db.transaction(async (trx) => {
+    const existing = await trx<EmployeeRow>('employees')
+      .where({ company_id: companyId, id: employeeId })
+      .forUpdate()
+      .first();
+    if (!existing) throw NotFound('Employee not found');
+    if (!enabled && existing.user_id === actorUserId) {
+      throw BadRequest("You can't turn off your own sign-in");
+    }
+    if (enabled === (existing.login_disabled_at === null)) return rowToEmployee(existing);
+
+    await trx('employees')
+      .where({ id: employeeId, company_id: companyId })
+      .update({
+        login_disabled_at: enabled ? null : trx.fn.now(),
+        login_disabled_by: enabled ? null : actorUserId,
+        updated_at: trx.fn.now(),
+      });
+    logger.info({ companyId, employeeId, enabled, actorUserId }, 'employee sign-in switched');
     const fresh = await trx<EmployeeRow>('employees').where({ id: employeeId }).first();
     if (!fresh) throw new Error('employee vanished');
     return rowToEmployee(fresh);

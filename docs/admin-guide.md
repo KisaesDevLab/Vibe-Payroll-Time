@@ -114,6 +114,17 @@ cause and re-send; the notification log under **Settings → Notifications** has
 the full history (message bodies for links are deliberately redacted so nobody
 can copy someone else's sign-in link out of the log).
 
+### Turning someone's sign-in off
+
+On the employee record, **Web login → Allow sign-in** switches that
+person's sign-in to this company on or off. Off signs them out of this
+company on the web and the phone app and refuses password, link and
+single sign-on sign-in. Their record, timesheets and **kiosk punching
+are unchanged**. Someone who works for several companies keeps the
+others; if every company has them switched off, they can't sign in at
+all. You can't switch off your own sign-in, and SuperAdmins are never
+affected. The Employees list marks them **sign-in off**.
+
 ### Employees who can't self-serve
 
 If the appliance has no email and no SMS transport at all, there is no

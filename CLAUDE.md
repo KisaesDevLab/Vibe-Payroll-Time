@@ -270,6 +270,7 @@ docker compose -f docker-compose.prod.yml build
 - **Don't let an SSO-provisioned account bootstrap a local credential.** `users.sso_provisioned_at` marks just-in-time accounts; the self-service link lookups in `magic-links.ts` filter on it. Only an admin-sent link may grant such an account a password.
 - **Don't trust the vibe-auth package's default role map.** It would make every `vibe-partner` an appliance `super_admin`. The map is explicit (`VIBE_PT_ROLE_MAP`), and `setRole` refuses to demote the last SuperAdmin.
 - **Don't provision accounts before first-run setup.** Any `super_admin` row locks `/setup` for ever; break-glass and JIT creation check `assertSetupComplete` first.
+- **Don't grant company access without the sign-in switch.** `employees.login_disabled_at` closes a company to that person. Company-scoped checks go through `isCompanyLoginBlocked` and every session mint through `assertSignInAllowed` (`services/employee-login.ts`); a new access path that reads `company_memberships` directly must call it too. Kiosk punching is not a login and ignores it.
 - **Don't compute OT on total hours.** OT is `max(0, worked − 40)`. Time off is paid-but-not-worked; a summary built without `timeOffJobs` would count PTO as work.
 - **Don't flip a job between work and time off once it has approved entries.** Totals are derived on read, so the flip would restate approved periods; `updateJob` refuses it.
 - **Don't show balances.** Vibe PT records time off used; it never shows "remaining" or accruals.

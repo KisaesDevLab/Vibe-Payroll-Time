@@ -12,6 +12,7 @@ import { db } from '../db/knex.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from './punch.js';
 import { isTimeOffJob } from './time-off.js';
+import { isCompanyLoginBlocked } from './employee-login.js';
 
 // ---------------------------------------------------------------------------
 // Pure authorization function (unit-testable without touching the DB).
@@ -133,9 +134,11 @@ async function loadActorContext(
     .where({ id: employeeId, company_id: companyId })
     .first<{ user_id: number | null; status: string }>();
   if (!employee) throw NotFound('Employee not found');
+  // Sign-in switched off for this company: no company role here.
+  const blocked = await isCompanyLoginBlocked(actor.userId, companyId, trx);
   return {
     roleGlobal: actor.roleGlobal,
-    companyRole: membership?.role ?? null,
+    companyRole: blocked ? null : (membership?.role ?? null),
     isOwnEntry: employee.user_id === actor.userId,
   };
 }

@@ -22,6 +22,7 @@ import type { NotificationType } from './notifications/templates.js';
 import { issueAccessToken, issueRefreshToken } from './tokens.js';
 import { findUserById, healEmployeeLinksForUser, type UserRow } from './users.js';
 import { linkSignInAllowedFor } from './vibe-auth/policy.js';
+import { assertSignInAllowed } from './employee-login.js';
 
 /**
  * Single-use link tokens. One table backs three flows:
@@ -622,6 +623,7 @@ export async function consumeMagicLink(input: ConsumeMagicLinkInput): Promise<Au
 
     const user = await findUserById(row.user_id);
     if (!user) throw Unauthorized('Invalid or expired login link');
+    await assertSignInAllowed(user, trx);
 
     // Same self-heal as password login — any employees row that
     // matches this user by email but was inserted without a user_id

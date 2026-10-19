@@ -185,6 +185,11 @@ export const employees = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  setLogin: (companyId: number, employeeId: number, enabled: boolean) =>
+    apiFetch<Employee>(`/companies/${companyId}/employees/${employeeId}/login`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
   regeneratePin: (companyId: number, employeeId: number, length = 6) =>
     apiFetch<EmployeeWithPinResponse>(
       `/companies/${companyId}/employees/${employeeId}/regenerate-pin`,
