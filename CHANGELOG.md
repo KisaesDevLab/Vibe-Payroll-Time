@@ -7,6 +7,23 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Performance
+
+- **Weekly grid no longer re-renders every second.** The "Saved 4s ago"
+  ticker lived in the page and redrew the whole grid once a second (typing lag
+  on slow tablets); it now lives in the indicator, and only while counting.
+- **Smaller first load.** Admin, settings, report and grid pages load on
+  demand, and the QR decoder (zxing) loads only on the kiosk, which preloads
+  it so offline badge scanning still works. Employee and kiosk pages stay in
+  the main bundle for offline use.
+- **One query instead of two before every company-scoped request:** the
+  membership check and the employee sign-in switch are a single join.
+- **Indexes** (migration `20261019000007_performance_indexes.js`) for the
+  per-request "which employee am I here" lookup, the punch page's 30-second
+  "previous event" query, and the missed-punch reminder check.
+- My timesheet loads company, settings and time-off codes in parallel;
+  Settings → Time off reads its four types in one query.
+
 ### Fixed — Grid views drew a page inside a page
 
 - The weekly grid and the all-employees grid render inside the company layout,

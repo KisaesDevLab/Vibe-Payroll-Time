@@ -74,8 +74,13 @@ export async function getTimesheet(
     .first<{ id: number; first_name: string; last_name: string; timezone: string | null }>();
   if (!employee) throw NotFound('Employee not found');
 
-  const company = await loadCompanyCtx(companyId);
-  const settings = await loadSettings(companyId);
+  // Independent loads, in parallel: this backs My timesheet and every
+  // supervisor timesheet view.
+  const [company, settings, timeOffJobs] = await Promise.all([
+    loadCompanyCtx(companyId),
+    loadSettings(companyId),
+    loadTimeOffJobs(companyId),
+  ]);
 
   // Phase 14.2 — `employee.timezone` exists on the row (introduced by
   // migration 20260420000037) so we read it here, but we deliberately
@@ -120,7 +125,6 @@ export async function getTimesheet(
     .orderBy('started_at', 'asc');
 
   const entries: TimeEntry[] = rows.map(rowToTimeEntry);
-  const timeOffJobs = await loadTimeOffJobs(companyId);
 
   const summary = buildTimesheetSummary(
     entries.map((e) => ({

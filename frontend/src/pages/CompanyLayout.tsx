@@ -1,6 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { useQuery } from '@tanstack/react-query';
+import { Suspense } from 'react';
 import { Outlet, useParams } from 'react-router-dom';
 import { CompanyTabs } from '../components/CompanyTabs';
 import { TopBar } from '../components/TopBar';
@@ -36,7 +37,11 @@ export function CompanyLayout() {
         <CompanyTabs companyId={companyId} />
       </div>
       <main className="mx-auto max-w-7xl px-6 py-8">
-        <Outlet context={{ companyId }} />
+        {/* Company pages load on demand (App.tsx lazyPage); keep the
+            header and tabs on screen while one loads. */}
+        <Suspense fallback={<p className="text-sm text-slate-500">Loading…</p>}>
+          <Outlet context={{ companyId }} />
+        </Suspense>
       </main>
     </>
   );

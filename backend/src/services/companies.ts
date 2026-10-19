@@ -9,7 +9,6 @@ import type {
 import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { Conflict, NotFound } from '../http/errors.js';
-import { isCompanyLoginBlocked } from './employee-login.js';
 
 interface CompanyRow {
   id: number;
@@ -185,11 +184,16 @@ export async function userCanAccessCompany(
   minRole?: CompanyRole,
 ): Promise<boolean> {
   if (roleGlobal === 'super_admin') return true;
-  const m = await db('company_memberships')
-    .where({ user_id: userId, company_id: companyId })
-    .first<{ role: CompanyRole }>();
+  // Membership and the employee sign-in switch in one round trip.
+  const m = await db('company_memberships as cm')
+    .leftJoin('employees as e', function () {
+      this.on('e.user_id', '=', 'cm.user_id').andOn('e.company_id', '=', 'cm.company_id');
+    })
+    .where({ 'cm.user_id': userId, 'cm.company_id': companyId })
+    .orderByRaw('e.login_disabled_at IS NULL') // any switched-off record wins
+    .first<{ role: CompanyRole; login_disabled_at: Date | null }>('cm.role', 'e.login_disabled_at');
   if (!m) return false;
-  if (await isCompanyLoginBlocked(userId, companyId)) return false;
+  if (m.login_disabled_at) return false;
   if (!minRole) return true;
 
   const rank: Record<CompanyRole, number> = {

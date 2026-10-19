@@ -1,6 +1,8 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
+import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
+import { loadZxing } from '../../components/BadgeScanner';
 import { useKiosk } from '../../hooks/useKiosk';
 import { isSecureContext } from '../../lib/secure-context';
 import { KioskPinPage } from './KioskPinPage';
@@ -23,6 +25,11 @@ export function KioskRoot() {
   // hook's reads are cheap (sessionStorage), so doing them in the
   // insecure-context case is fine.
   const kiosk = useKiosk();
+  // Fetch the badge decoder while the tablet is online so the service
+  // worker caches it; badge scanning must still work after a Wi-Fi drop.
+  useEffect(() => {
+    void loadZxing().catch(() => undefined);
+  }, []);
   if (!isSecureContext()) return <KioskInsecureContextPage />;
   if (!kiosk) return <Navigate to="/kiosk/pair" replace />;
   return <KioskPinPage />;

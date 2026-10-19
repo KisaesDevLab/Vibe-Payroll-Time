@@ -70,19 +70,27 @@ async function findTypeJob(
 }
 
 export async function listTimeOffTypes(companyId: number): Promise<TimeOffTypeState[]> {
-  const out: TimeOffTypeState[] = [];
-  for (const t of DEFAULT_TIME_OFF_TYPES) {
-    const job = await findTypeJob(db, companyId, t.category);
-    out.push({
+  // One query for every standard type, grouped here, instead of one per type.
+  const jobs = await db('jobs')
+    .where({ company_id: companyId, is_time_off: true })
+    .whereIn(
+      'time_off_category',
+      DEFAULT_TIME_OFF_TYPES.map((t) => t.category),
+    )
+    .orderByRaw('archived_at IS NOT NULL, id')
+    .select<TimeOffJobRow[]>('id', 'code', 'time_off_category', 'is_paid', 'archived_at');
+  return DEFAULT_TIME_OFF_TYPES.map((t) => {
+    // Same pick as findTypeJob: the first active code, else the oldest.
+    const job = jobs.find((j) => j.time_off_category === t.category);
+    return {
       category: t.category,
       code: job?.code ?? t.code,
       name: t.name,
       isPaid: job?.is_paid ?? t.isPaid,
       enabled: !!job && job.archived_at === null,
       jobId: job?.id ?? null,
-    });
-  }
-  return out;
+    };
+  });
 }
 
 export async function setTimeOffType(

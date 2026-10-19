@@ -78,7 +78,6 @@ export function WeeklyGridPage(): JSX.Element {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [lastSaveFailed, setLastSaveFailed] = useState(false);
-  const [tickTock, setTickTock] = useState(0);
 
   // Job-row filtering. At a company with 30+ active jobs the default
   // "render every job as a row" makes the grid a long, sparse,
@@ -122,13 +121,6 @@ export function WeeklyGridPage(): JSX.Element {
       }
     | null
   >(null);
-
-  // 1-second ticker so the "Saved 4s ago" indicator counts up without
-  // re-fetching anything.
-  useEffect(() => {
-    const id = window.setInterval(() => setTickTock((t) => t + 1), 1000);
-    return () => window.clearInterval(id);
-  }, []);
 
   const gridQ = useQuery({
     queryKey: ['weekly-grid', companyId, employeeId, weekStart],
@@ -574,7 +566,7 @@ export function WeeklyGridPage(): JSX.Element {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <SaveIndicator lastSavedAt={lastSavedAt} failed={lastSaveFailed} tick={tickTock} />
+            <SaveIndicator lastSavedAt={lastSavedAt} failed={lastSaveFailed} />
             <FormatToggle
               value={format}
               onChange={(next) => updatePref.mutate(next)}
@@ -937,15 +929,25 @@ function cellKey(jobId: number | null, date: string): string {
   return `${jobId ?? '_'}|${date}`;
 }
 
+/**
+ * "Saved 4s ago". The 1-second ticker lives here, not in the page, so the
+ * count-up re-renders this pill only — a ticker in the page re-rendered
+ * the whole grid every second, which is typing lag on a slow tablet. It
+ * runs only while there is something to count.
+ */
 function SaveIndicator({
   lastSavedAt,
   failed,
-  tick: _tick,
 }: {
   lastSavedAt: number | null;
   failed: boolean;
-  tick: number;
 }): JSX.Element | null {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (lastSavedAt == null || failed) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [lastSavedAt, failed]);
   if (lastSavedAt == null && !failed) return null;
   if (failed) {
     return (
