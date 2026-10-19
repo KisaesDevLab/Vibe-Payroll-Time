@@ -13,6 +13,8 @@
  *   - role sync cannot demote the last super_admin
  *   - an SSO-provisioned account cannot mail itself a local credential
  *   - accounts cannot be provisioned ahead of the first-run wizard
+ *   - SSO is for firm users only: a client company's users are refused at
+ *     the IdP door, and keep every local door, oidc_only included
  *
  * The app is reached the way the appliance reaches it: the browser-facing
  * URL carries a `/time` prefix that the ingress strips, so every redirect
@@ -38,7 +40,7 @@ import { createApp } from '../../../http/app.js';
 import { requestMagicLink } from '../../magic-links.js';
 import { hashPassword } from '../../passwords.js';
 import { issueAccessToken, type AccessTokenClaims } from '../../tokens.js';
-import { _resetVibeAuth, startVibeAuth } from '../engine.js';
+import { CLIENT_USER_SSO_MESSAGE, _resetVibeAuth, startVibeAuth } from '../engine.js';
 import { VIBE_PT_ADMIN_ROLE, createVibeUsers, vibeAuditSink } from '../users.js';
 import { FakeIdp, type FakeIdpUser } from './fake-idp.js';
 
@@ -240,6 +242,50 @@ async function userRow(email: string) {
   }>();
 }
 
+/** A client company (not internal) with one admin who has a password. */
+async function seedClientCompany(): Promise<{ clientCompanyId: number; clientUserId: number }> {
+  const [co] = await db('companies')
+    .insert({
+      name: 'Acme Plumbing',
+      slug: 'acme',
+      timezone: 'UTC',
+      pay_period_type: 'bi_weekly',
+      is_internal: false,
+      license_state: 'trial',
+    })
+    .returning<Array<{ id: number }>>('id');
+  const clientCompanyId = Number(co!.id);
+  await db('company_settings').insert({ company_id: clientCompanyId });
+  const [u] = await db('users')
+    .insert({
+      email: 'boss@acme.test',
+      password_hash: await hashPassword(PASSWORD),
+      role_global: 'none',
+    })
+    .returning<Array<{ id: number }>>('id');
+  const clientUserId = Number(u!.id);
+  await db('company_memberships').insert({
+    user_id: clientUserId,
+    company_id: clientCompanyId,
+    role: 'company_admin',
+  });
+  return { clientCompanyId, clientUserId };
+}
+
+/** Mint a sign-in link row directly; returns the raw token. */
+async function linkFor(userId: number, identifier: string): Promise<string> {
+  const token = crypto.randomBytes(32).toString('base64url');
+  await db('magic_links').insert({
+    token_hash: sha256Hex(token),
+    user_id: userId,
+    channel: 'email',
+    purpose: 'login',
+    identifier,
+    expires_at: new Date(Date.now() + 15 * 60_000),
+  });
+  return token;
+}
+
 const membershipsOf = (userId: number) =>
   db('company_memberships')
     .where({ user_id: userId })
@@ -435,6 +481,55 @@ describe.skipIf(!dbReachable)('single sign-on (Vibe Auth)', () => {
       expect(await userRow('mallory@firm.test')).toBeUndefined();
     });
 
+    it('refuses a client-company user, writing nothing', async () => {
+      const { clientCompanyId, clientUserId } = await seedClientCompany();
+      const cb = await ssoFlow({
+        sub: 'sub-boss',
+        email: 'boss@acme.test',
+        email_verified: true,
+        name: 'boss',
+        groups: ['vibe-partner'],
+      });
+      expect(cb.status).toBe(401);
+      expect(cb.text).toContain(CLIENT_USER_SSO_MESSAGE);
+      expect(cb.text).not.toContain('Your account is disabled');
+      // No identity linked, no role synced into the firm, still active.
+      expect(await db('auth_identities').where({ user_id: String(clientUserId) })).toHaveLength(0);
+      expect(await membershipsOf(clientUserId)).toEqual([
+        { company_id: clientCompanyId, role: 'company_admin' },
+      ]);
+      const refused = await db('auth_events')
+        .where({ user_id: clientUserId, event_type: 'login_failure' })
+        .pluck('metadata');
+      expect(refused).toEqual([expect.objectContaining({ reason: 'sso_client_company_user' })]);
+    });
+
+    it('admits a firm user who also belongs to a client company, syncing only the firm role', async () => {
+      const { clientCompanyId } = await seedClientCompany();
+      const [u] = await db('users')
+        .insert({
+          email: 'eve@firm.test',
+          password_hash: await hashPassword(PASSWORD),
+          role_global: 'none',
+        })
+        .returning<Array<{ id: number }>>('id');
+      const eveId = Number(u!.id);
+      await db('company_memberships').insert([
+        { user_id: eveId, company_id: companyId, role: 'employee' },
+        { user_id: eveId, company_id: clientCompanyId, role: 'company_admin' },
+      ]);
+
+      await ssoLogin(person('eve', ['vibe-manager']));
+      const memberships = await membershipsOf(eveId);
+      expect(memberships).toHaveLength(2);
+      expect(memberships).toEqual(
+        expect.arrayContaining([
+          { company_id: companyId, role: 'supervisor' },
+          { company_id: clientCompanyId, role: 'company_admin' },
+        ]),
+      );
+    });
+
     it('refuses a user in no mapped group', async () => {
       const cb = await ssoFlow(person('stranger', ['some-other-group']));
       expect(cb.status).toBe(401);
@@ -546,27 +641,54 @@ describe.skipIf(!dbReachable)('single sign-on (Vibe Auth)', () => {
       const bgPassword = await ensureBreakglass();
       await configure('oidc_only');
 
-      // Password login: an ordinary account is refused before any bcrypt work.
+      // Password login: a firm account with the right password is refused…
       const owner = await app('/api/v1/auth/login', {
         method: 'POST',
         body: { email: 'owner@firm.test', password: PASSWORD },
       });
       expect(owner.status).toBe(403);
       expect(owner.json).toMatchObject({ error: { code: 'local_login_disabled' } });
+      // …and a wrong one is just a wrong password: nothing about the realm
+      // leaks to someone without the credential.
+      const ownerWrong = await app('/api/v1/auth/login', {
+        method: 'POST',
+        body: { email: 'owner@firm.test', password: 'not-the-password-123' },
+      });
+      expect(ownerWrong.status).toBe(401);
 
-      // Links are local credentials too.
+      // Links are local credentials too: requests answer the usual 204 but
+      // mint nothing for a firm user…
       for (const path of ['/api/v1/auth/magic/request', '/api/v1/auth/password-reset/request']) {
         const r = await app(path, {
           method: 'POST',
           body: { identifier: 'owner@firm.test', channel: 'email' },
         });
-        expect(r.status).toBe(403);
+        expect(r.status).toBe(204);
       }
+      expect(await db('magic_links').where({ user_id: superAdminId })).toHaveLength(0);
+      // …and a link issued before the switch is refused without being burned.
+      const token = await linkFor(superAdminId, 'owner@firm.test');
       const consume = await app('/api/v1/auth/magic/consume', {
         method: 'POST',
-        body: { token: 'x'.repeat(43) },
+        body: { token },
       });
       expect(consume.status).toBe(403);
+      expect(consume.json).toMatchObject({ error: { code: 'local_login_disabled' } });
+      const row = await db('magic_links').where({ user_id: superAdminId }).first();
+      expect(row?.consumed_at).toBeNull();
+
+      // Nor will an admin send a firm user one.
+      const bearer = issueAccessToken({
+        id: superAdminId,
+        email: 'owner@firm.test',
+        roleGlobal: 'super_admin',
+      }).token;
+      const send = await app(`/api/v1/admin/users/${superAdminId}/send-link`, {
+        method: 'POST',
+        bearer,
+        body: { channel: 'email' },
+      });
+      expect(send.status).toBe(403);
 
       // Break-glass signs in by the bare USERNAME the appliance prints…
       const byName = await app('/api/v1/auth/login', {
@@ -595,6 +717,45 @@ describe.skipIf(!dbReachable)('single sign-on (Vibe Auth)', () => {
 
       // SSO itself keeps working.
       await ssoLogin(person('mia', ['vibe-manager']));
+    });
+
+    it('keeps every local door open for client-company users', async () => {
+      await ensureBreakglass();
+      await configure('oidc_only');
+      const { clientUserId } = await seedClientCompany();
+
+      const login = await app('/api/v1/auth/login', {
+        method: 'POST',
+        body: { email: 'boss@acme.test', password: PASSWORD },
+      });
+      expect(login.status).toBe(200);
+
+      const ask = await app('/api/v1/auth/magic/request', {
+        method: 'POST',
+        body: { identifier: 'boss@acme.test', channel: 'email' },
+      });
+      expect(ask.status).toBe(204);
+      expect(await db('magic_links').where({ user_id: clientUserId })).toHaveLength(1);
+
+      const token = await linkFor(clientUserId, 'boss@acme.test');
+      const consume = await app('/api/v1/auth/magic/consume', {
+        method: 'POST',
+        body: { token },
+      });
+      expect(consume.status).toBe(200);
+      expect(consume.json).toMatchObject({ data: { user: { email: 'boss@acme.test' } } });
+
+      const bearer = issueAccessToken({
+        id: superAdminId,
+        email: 'owner@firm.test',
+        roleGlobal: 'super_admin',
+      }).token;
+      const send = await app(`/api/v1/admin/users/${clientUserId}/send-link`, {
+        method: 'POST',
+        bearer,
+        body: { channel: 'email' },
+      });
+      expect(send.status).toBe(200);
     });
 
     it('leaves the kiosk realm alone', async () => {

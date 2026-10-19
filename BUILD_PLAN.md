@@ -459,14 +459,14 @@ Goal: same GHCR images run cleanly in two deployment modes — today's standalon
 
 Requirement (from Kurt): logins for **client-company admins and employees must not flow through Vibe Auth**. Only the **firm's** users — SuperAdmins and members of the internal company (`companies.is_internal = true`) — sign in through the IdP to access the companies they serve.
 
-- [ ] Define "firm user" in code (super_admin, or any membership in an `is_internal` company) — one helper used by every check below
-- [ ] `oidc_only` policy (`services/vibe-auth/policy.ts`): refuse local sign-in only for firm users; client-company users keep password / magic link / reset in every mode
-- [ ] SSO callback: refuse a sign-in that resolves to a non-firm user (linked by email to a client-company-only account) with a clear message pointing to local sign-in
-- [ ] JIT provisioning + role sync write memberships only in the internal company, never in a client company (`services/vibe-auth/users.ts`)
-- [ ] Login page: "Sign in with …" presented as the firm sign-in path; client users see the local form regardless of mode
-- [ ] Admin "send a sign-in link" actions stay available for client-company users under `oidc_only`
-- [ ] Integration tests in `services/vibe-auth/__tests__/` covering firm vs client users in `local` / `both` / `oidc_only`
-- [ ] Update `docs/sso.md` (Scope, Modes, Roles) and the CLAUDE.md auth-surfaces note; remove the "pending" callouts
+- [x] Define "firm user" in code (super_admin, or any tie to an `is_internal` company) — `services/vibe-auth/realm.ts`, one helper used by every check below
+- [x] `oidc_only` policy (`services/vibe-auth/policy.ts`): refuse local sign-in only for firm users; client-company users keep password / magic link / reset in every mode. Checked on the known user (after the password verifies; against the link's user) so refusals leak nothing
+- [x] SSO callback: refuse a sign-in that resolves to a client-company user (reported to the engine as inactive — nothing linked or synced), with a message pointing to local sign-in and a `login_failure` / `sso_client_company_user` audit row
+- [x] JIT provisioning + role sync write memberships only in the internal company, never in a client company (`services/vibe-auth/users.ts`)
+- [x] Login page: SSO button labelled "Firm staff — sign in with …"; local forms shown in every mode
+- [x] Admin "send a sign-in link" actions stay available for client-company users under `oidc_only`
+- [x] Integration tests in `services/vibe-auth/__tests__/` covering firm vs client users in `both` / `oidc_only`
+- [x] Update `docs/sso.md` (Scope, Modes, Roles) and the CLAUDE.md auth-surfaces note; remove the "pending" callouts
 
 ---
 

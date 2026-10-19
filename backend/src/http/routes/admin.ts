@@ -332,8 +332,8 @@ adminRouter.post(
       const userId = Number(req.params.userId);
       if (!Number.isFinite(userId) || userId <= 0) return next(NotFound('Bad userId'));
       const body = sendAccountLinkRequestSchema.parse(req.body ?? {});
-      // Under oidc_only nobody can consume a link, so don't mint one.
-      assertLinkSignInAllowed();
+      // Under oidc_only a firm user cannot consume a link, so don't mint one.
+      await assertLinkSignInAllowed(userId);
       const { sendAccountLink } = await import('../../services/magic-links.js');
       const result = await sendAccountLink({
         targetUserId: userId,

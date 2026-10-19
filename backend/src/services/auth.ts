@@ -67,6 +67,11 @@ async function mintSession(
 export async function loginWithPassword(
   body: LoginRequest,
   ctx: RequestContext,
+  opts: {
+    /** Runs once the password has verified, before any session is minted;
+     *  throw to refuse (the single sign-on policy). */
+    authorize?: (user: UserRow) => Promise<void>;
+  } = {},
 ): Promise<AuthResponse> {
   // The login form admits the bare break-glass username; map it to the
   // address that account actually lives under.
@@ -92,6 +97,21 @@ export async function loginWithPassword(
       metadata: { reason: 'bad_password' },
     });
     throw Unauthorized('Invalid email or password');
+  }
+
+  if (opts.authorize) {
+    try {
+      await opts.authorize(user);
+    } catch (err) {
+      await recordAuthEvent({
+        eventType: 'login_failure',
+        userId: user.id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        metadata: { reason: 'local_login_disabled' },
+      });
+      throw err;
+    }
   }
 
   // Self-heal any employees rows that match this user by email but

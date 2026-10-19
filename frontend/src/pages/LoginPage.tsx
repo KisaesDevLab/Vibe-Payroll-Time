@@ -28,15 +28,18 @@ import { SSO_BASE_PATH, takeSsoHandoffError } from '../lib/sso';
  * authenticated) and returns `{ emailEnabled, smsEnabled }`.
  *
  * Single sign-on (Vibe Auth) wraps all of it in <LoginPanel>, which reads
- * GET /auth/status: it adds the "Sign in with …" button when SSO is on and
- * hides the local forms entirely once the firm has gone SSO-only. The SSO
+ * GET /auth/status and adds the "Firm staff — sign in with …" button when
+ * SSO is on. SSO is for the firm's users only: a client company's admins,
+ * supervisors and employees sign in locally in every mode, so the local
+ * forms stay on the page even when the firm has gone SSO-only (the panel's
+ * `breakglass` flag is what keeps them; the server refuses a firm user's
+ * password or link there with a message pointing at the button). The SSO
  * flow ends on a redirect carrying the session in the URL fragment, which
  * main.tsx consumes before this page ever renders (lib/sso.ts).
  *
- * `/login/local` renders this page with `breakglass`: the password form
- * even in SSO-only mode, for the one account that may still use it. The
- * magic-link options are dropped there — the server refuses them in that
- * mode, and the break-glass address is undeliverable by design.
+ * `/login/local` renders this page with `breakglass`: the password form for
+ * the break-glass account. The magic-link options are dropped there — the
+ * break-glass address is undeliverable by design.
  */
 
 type MagicChannel = 'email' | 'sms';
@@ -266,7 +269,10 @@ export function LoginPage({ breakglass = false }: { breakglass?: boolean }) {
         // before routing — but /login is the one route guaranteed to
         // render without a session if the hand-off fails.
         returnTo={`${SSO_BASE_PATH}/login`}
-        breakglass={breakglass}
+        // Always: client-company users sign in with these forms in every
+        // mode, oidc_only included (see the docblock).
+        breakglass
+        label={(idp: string) => `Firm staff — sign in with ${idp}`}
         classNames={{
           root: 'flex flex-col gap-6',
           button:
