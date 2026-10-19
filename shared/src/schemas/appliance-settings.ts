@@ -162,6 +162,17 @@ export const testSendResponseSchema = z.object({
   providerMessageId: z.string().nullable(),
   error: z.string().nullable(),
   provider: z.enum(['emailit', 'twilio', 'textlinksms']).nullable(),
+  /** Twilio only: what happened after Twilio accepted the message — the
+   *  carrier's verdict, which is where most "it never arrived" lives. */
+  delivery: z
+    .object({
+      status: z.string(),
+      errorCode: z.number().int().nullable(),
+      detail: z.string().nullable(),
+      final: z.boolean(),
+    })
+    .nullable()
+    .optional(),
 });
 export type TestSendResponse = z.infer<typeof testSendResponseSchema>;
 

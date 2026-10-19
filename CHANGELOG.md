@@ -7,6 +7,46 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — SMS delivery
+
+- **Test SMS now reports the carrier's verdict.** Twilio accepting a message
+  only means it was queued; carrier rejections arrive seconds later and were
+  invisible. Both "Send a test SMS" buttons now wait up to 15 s for Twilio's
+  final status and report _Delivered_, or the failure with its code and a hint
+  (30034 unregistered A2P 10DLC number, 30007 carrier spam filter, 21608 trial
+  account, 30003–30006 unreachable/landline, 30032 unverified toll-free).
+- **Phone numbers are stored and sent as E.164.** New employees and CSV
+  imports saved numbers as typed (`414-555-1212`); TextLinkSMS sends didn't
+  add the `+1`, so its paired phone couldn't route them. Create/import now
+  normalize, TextLinkSMS normalizes at send like Twilio, and migration
+  `20261019000006_normalize_phone_numbers.js` converts stored employee and user
+  numbers (unparseable ones are left for an admin).
+
+### Added — Report PDFs
+
+- Reports gain a **PDF** button: a real PDF built in the browser with jsPDF +
+  jspdf-autotable (as in Vibe MyBooks), opened in a new tab. Letter size, with
+  the company name, report title and period/filter line on top; a ruled table
+  with only the columns shown on screen; TOTAL / TIME OFF rows in bold;
+  landscape and smaller type for wide reports; report name, generated time
+  and page numbers in every footer. No server-side rendering or headless
+  Chromium. jsPDF loads only when a PDF is made.
+
+### Fixed — Printing reports
+
+- Print cut reports down to a narrow column with a scrollbar: the hidden
+  sidebar still took its grid track. Printed reports now use the full page.
+
+### Fixed — Overriding a punch to 0 hours
+
+- The weekly grid refused 0 in the override popup, so a punched day couldn't be
+  zeroed out. 0 on a punched cell now offers **Remove punches** to company
+  admins (soft delete, kept in the audit trail) and **Request removal** to an
+  employee on their own grid (a delete correction request; the punches go when
+  approved). Supervisors are told only an admin can remove punches.
+- 0 on a manual entry now removes it, bringing back any punches it replaced.
+- Weekly grid cells carry `punchEntryIds`, the punches behind the cell.
+
 ### Added — "Add time" on My timesheet
 
 - Employees can type in a shift they forgot to punch: date, clock-in and

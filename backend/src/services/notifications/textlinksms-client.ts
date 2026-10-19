@@ -24,6 +24,7 @@
  */
 import crypto from 'node:crypto';
 import { logger } from '../../config/logger.js';
+import { normalizeToE164 } from './phone-number.js';
 import { SmsDeliveryError, type SmsPayload, type SmsSendResult } from './twilio-client.js';
 
 export interface TextLinkSmsConfig {
@@ -83,7 +84,18 @@ export async function sendViaTextLinkSms(
   // failed-message webhook if they enable it. Short random suffix
   // keeps the identifier compact but collision-resistant.
   const customId = `vpt-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-  const { url, init } = buildRequest(config, payload, customId);
+  // The paired Android can't route a number without its country code, so
+  // a stored "4145551212" must go out as "+14145551212".
+  let to: string;
+  try {
+    to = normalizeToE164(payload.to);
+  } catch (err) {
+    throw new SmsDeliveryError(
+      `TextLinkSMS not attempted: ${err instanceof Error ? err.message : 'invalid number'}`,
+      400,
+    );
+  }
+  const { url, init } = buildRequest(config, { ...payload, to }, customId);
 
   let res: Response;
   try {

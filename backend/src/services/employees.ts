@@ -160,7 +160,8 @@ export async function createEmployee(
       last_name: body.lastName,
       employee_number: body.employeeNumber ?? null,
       email: body.email ?? null,
-      phone: body.phone ?? null,
+      // E.164 on write, as on update, so every send path sees "+1…".
+      phone: body.phone ? normalizeToE164(body.phone) : null,
       hired_at: body.hiredAt ?? null,
       status: 'active',
       // Auto-link when email matches an existing user. The row stays

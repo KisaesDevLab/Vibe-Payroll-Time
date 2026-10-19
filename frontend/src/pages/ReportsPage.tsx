@@ -7,7 +7,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
-import { employees as employeesApi, reports } from '../lib/resources';
+import { companies as companiesApi, employees as employeesApi, reports } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
 export function ReportsPage() {
@@ -22,11 +22,11 @@ export function ReportsPage() {
   const effective = selected ?? catalog.data?.[0] ?? null;
 
   return (
-    <div className="grid gap-6 md:grid-cols-[280px_1fr]">
+    <div className="report-layout grid gap-6 md:grid-cols-[280px_1fr]">
       <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold text-slate-900">Reports</h2>
         <p className="mb-3 text-xs text-slate-500">
-          Run + export to CSV, or <strong>Print</strong> → "Save as PDF" for a shareable copy.
+          Run a report, then download it as a <strong>PDF</strong> or <strong>CSV</strong>.
         </p>
         {catalog.isPending && <p className="text-xs text-slate-500">Loading…</p>}
         <ul className="flex flex-col gap-1">
@@ -95,6 +95,62 @@ function ReportRunner({ companyId, report }: { companyId: number; report: Report
 
   const canRun = report.params.every((p) => !p.required || !!form[p.key]);
 
+  const company = useQuery({
+    queryKey: ['company', companyId],
+    queryFn: () => companiesApi.get(companyId),
+  });
+
+  /** "10/01/2026 to 10/31/2026 · Employee: Alberto, Ana" from the params
+   *  the report was run with. */
+  const metaLine = (): string => {
+    const parts: string[] = [];
+    const dates = report.params.filter((p) => p.type === 'date' && form[p.key]);
+    if (dates.length === 2) {
+      parts.push(dates.map((p) => formatDay(form[p.key]!)).join(' to '));
+    } else {
+      for (const p of dates) parts.push(`${p.label}: ${formatDay(form[p.key]!)}`);
+    }
+    for (const p of report.params) {
+      const v = form[p.key];
+      if (!v || p.type === 'date') continue;
+      if (p.type === 'companyScoped') {
+        const e = roster.data?.find((x) => String(x.id) === v);
+        parts.push(
+          `${p.label.replace(/\s*\(optional\)/i, '')}: ${e ? `${e.lastName}, ${e.firstName}` : v}`,
+        );
+      } else {
+        const choice = p.choices?.find((c) => c.value === v);
+        parts.push(`${p.label}: ${choice?.label ?? v}`);
+      }
+    }
+    return parts.join(' · ') || ' ';
+  };
+
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const downloadPdf = async () => {
+    if (!run.data) return;
+    const result = run.data;
+    setPdfError(null);
+    // Open the tab inside the click, before any await, so it isn't
+    // blocked; jsPDF loads on first use to keep it out of the main bundle.
+    const tab = window.open('', '_blank');
+    try {
+      const { buildReportPdf, reportPdfFilename, showPdf } = await import('../lib/report-pdf');
+      const doc = buildReportPdf({
+        companyName: company.data?.name ?? '',
+        title: report.label,
+        meta: metaLine(),
+        result,
+        columns: result.columns.filter((c) => !hiddenColumns.has(c.key)),
+        formatCell,
+      });
+      showPdf(tab, doc, reportPdfFilename(report.label, form.periodStart));
+    } catch {
+      tab?.close();
+      setPdfError('Could not build the PDF. Try again, or use Print.');
+    }
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-3">
@@ -103,8 +159,11 @@ function ReportRunner({ companyId, report }: { companyId: number; report: Report
           <p className="mt-1 text-sm text-slate-600">{report.description}</p>
         </div>
         <div className="flex gap-2">
+          <Button disabled={!run.data} onClick={() => void downloadPdf()}>
+            PDF
+          </Button>
           <Button variant="secondary" disabled={!run.data} onClick={() => window.print()}>
-            Print / PDF
+            Print
           </Button>
           <CsvDownloadButton
             companyId={companyId}
@@ -135,6 +194,12 @@ function ReportRunner({ companyId, report }: { companyId: number; report: Report
           Run report
         </Button>
       </form>
+
+      {pdfError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {pdfError}
+        </div>
+      )}
 
       {run.isError && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -283,7 +348,7 @@ function ResultTable({
         </details>
       </header>
 
-      <div className="overflow-x-auto">
+      <div className="report-scroll overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-white text-xs uppercase text-slate-500">
             <tr>
@@ -333,6 +398,14 @@ function ResultTable({
       </div>
     </section>
   );
+}
+
+function formatDay(isoDay: string): string {
+  return new Date(isoDay + 'T12:00:00Z').toLocaleDateString(undefined, {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  });
 }
 
 function formatCell(v: unknown, column: ReportColumn): string {

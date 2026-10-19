@@ -10,7 +10,13 @@ import { EmailDeliveryError, sendViaEmailIt } from './emailit-client.js';
 import { normalizeToE164 } from './phone-number.js';
 import { resolveSmsConfig, sendSmsWithConfig } from './service.js';
 import { sendViaTextLinkSms } from './textlinksms-client.js';
-import { SmsDeliveryError, sendViaTwilio } from './twilio-client.js';
+import {
+  SmsDeliveryError,
+  sendViaTwilio,
+  waitForTwilioDelivery,
+  type TwilioConfig,
+  type TwilioDelivery,
+} from './twilio-client.js';
 
 /**
  * SuperAdmin-facing diagnostic sends. These exist so an operator can
@@ -29,6 +35,30 @@ export interface TestSendResult {
   error: string | null;
   /** Provider name actually used, so the UI can render "sent via twilio". */
   provider: 'emailit' | 'twilio' | 'textlinksms' | null;
+  delivery?: TwilioDelivery | null;
+}
+
+/**
+ * After Twilio accepts a test message, wait for the carrier's answer so
+ * the test reports what really happened. An undelivered or failed
+ * message turns the result into a failure carrying Twilio's error code
+ * and a hint (e.g. 30034: unregistered A2P 10DLC number).
+ */
+async function withTwilioDelivery(
+  twilioConfig: TwilioConfig,
+  result: TestSendResult,
+): Promise<TestSendResult> {
+  if (!result.ok || !result.providerMessageId) return result;
+  const delivery = await waitForTwilioDelivery(twilioConfig, result.providerMessageId);
+  if (delivery.status === 'undelivered' || delivery.status === 'failed') {
+    return {
+      ...result,
+      ok: false,
+      delivery,
+      error: `Twilio accepted the message but it was not delivered${delivery.detail ? `: ${delivery.detail}` : ''}.`,
+    };
+  }
+  return { ...result, delivery };
 }
 
 export async function sendTestEmail(to: string): Promise<TestSendResult> {
@@ -101,7 +131,13 @@ export async function sendCompanyTestSms(companyId: number, to: string): Promise
       to: normalized,
       body: `${appName} — test SMS. Receiving this confirms this company's SMS settings work.`,
     });
-    return { ok: true, providerMessageId: res.messageId, error: null, provider: config.provider };
+    const sent: TestSendResult = {
+      ok: true,
+      providerMessageId: res.messageId,
+      error: null,
+      provider: config.provider,
+    };
+    return config.provider === 'twilio' ? withTwilioDelivery(config, sent) : sent;
   } catch (err) {
     const msg = err instanceof SmsDeliveryError ? err.message : (err as Error).message;
     logger.warn({ err, companyId, provider: config.provider }, 'company test sms failed');
@@ -137,12 +173,12 @@ export async function sendTestSms(to: string): Promise<TestSendResult> {
         return fail('Twilio selected but credentials are incomplete', 'twilio');
       }
       const res = await sendViaTwilio(resolved.twilio, { to: normalized, body });
-      return {
+      return withTwilioDelivery(resolved.twilio, {
         ok: true,
         providerMessageId: res.messageId,
         error: null,
         provider: 'twilio',
-      };
+      });
     }
     // textlinksms
     if (!resolved.textlinksms) {

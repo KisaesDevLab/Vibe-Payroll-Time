@@ -44,6 +44,21 @@ body,
   table {
     page-break-inside: auto;
   }
+  /* Reports: the sidebar is hidden, so drop its grid track and let the
+     table use the full page instead of scrolling inside a 280px column. */
+  .report-layout {
+    display: block !important;
+  }
+  .report-scroll {
+    overflow: visible !important;
+  }
+  .report-scroll table {
+    font-size: 9pt;
+  }
+  .report-scroll th,
+  .report-scroll td {
+    padding: 3px 6px !important;
+  }
   tr {
     page-break-inside: avoid;
     page-break-after: auto;
