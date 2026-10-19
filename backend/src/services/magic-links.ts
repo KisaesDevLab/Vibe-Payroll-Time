@@ -368,14 +368,16 @@ async function issueAndDeliver(input: IssueInput): Promise<IssueOutcome> {
   const origin = input.origin.replace(/\/+$/, '');
   const url = `${origin}${LANDING_PATH[purpose]}?token=${encodeURIComponent(token)}`;
 
-  // Pick a company for notification routing. Prefer one the user is a
-  // member of (uses that company's provider config first); fall back to
-  // the oldest company on the appliance so the appliance EmailIt
-  // fallback still kicks in.
-  const membership = await db('company_memberships')
-    .where({ user_id: user.id })
-    .first<{ company_id: number }>();
-  let companyId = membership?.company_id ?? null;
+  // Pick a company for notification routing: the company the admin sent
+  // this from, else one the user is a member of — either way that
+  // company's provider config applies first (`companyScoped`). Fall back
+  // to the oldest company on the appliance so the appliance-wide
+  // provider still kicks in.
+  const membership = input.companyId
+    ? null
+    : await db('company_memberships').where({ user_id: user.id }).first<{ company_id: number }>();
+  let companyId = input.companyId ?? membership?.company_id ?? null;
+  const companyScoped = companyId !== null;
   if (!companyId) {
     const anyCo = await db('companies').orderBy('created_at', 'asc').first<{ id: number }>();
     companyId = anyCo?.id ?? null;
@@ -395,6 +397,7 @@ async function issueAndDeliver(input: IssueInput): Promise<IssueOutcome> {
       email: user.email,
       phone: recipient.phone,
       phoneVerified: recipient.phoneVerified,
+      companyScoped,
     },
     channels: [channel],
     vars: {

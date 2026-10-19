@@ -52,6 +52,11 @@ export type Recipient =
        *  appliance-wide phone and can't receive SMS notifications. */
       phone?: string | null;
       phoneVerified?: boolean;
+      /** True when `companyId` is a company this user genuinely belongs
+       *  to (or was sent from), so that company's own SMS provider may
+       *  carry the message before the appliance-wide one. Unset for
+       *  appliance-scoped sends routed through an arbitrary company. */
+      companyScoped?: boolean;
     };
 
 export interface NotifyInput {
@@ -391,12 +396,15 @@ async function sendSms(input: NotifyInput, to: string, payload: SmsPayload): Pro
   if (isDisabledForType(input.type)) {
     return { status: 'disabled', providerMessageId: null, error: null };
   }
-  // User-level recipients (SuperAdmin magic-link, admin notifications)
-  // are appliance-scoped — they don't belong to any particular company,
-  // so a company-specific provider config shouldn't route their SMS.
-  // Bypass the per-company resolver and go straight to the appliance.
+  // A user-level recipient routed through an arbitrary company (an
+  // appliance-scoped send) must not borrow that company's provider, so it
+  // goes straight to the appliance one. When the company is genuinely
+  // theirs — a sign-in link sent from that company, or the company they
+  // belong to — its own provider applies first, exactly as for an
+  // employee; resolveSmsConfig falls back to the appliance one.
+  const r = input.recipient;
   const config =
-    input.recipient.kind === 'user'
+    r.kind === 'user' && !r.companyScoped
       ? await resolveApplianceSmsConfig()
       : await resolveSmsConfig(input.companyId);
   if (!config) {

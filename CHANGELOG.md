@@ -27,6 +27,16 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   can only be changed on the Groups page (editing or removing it there
   answers 409).
 
+### Fixed — SMS sign-in links ignored the company's Twilio settings
+
+- A sign-in or reset link sent by SMS to a user account only ever used the
+  appliance-wide SMS provider, so with Twilio configured on a company (and
+  not appliance-wide) every SMS link was skipped as "No appliance-level SMS
+  provider configured" — while the login page and Send-link menu offered SMS
+  because a company had it. Links now go through the provider of the company
+  they were sent from (or the user's company), falling back to the
+  appliance-wide one.
+
 ### Changed — Client-company sign-in links follow the company
 
 - Under `oidc_only`, a sign-in or reset link an admin sends from a **client
