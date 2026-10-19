@@ -1,10 +1,11 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CurrentPunchResponse } from '@vibept/shared';
-import { useEffect, useMemo, useState } from 'react';
+import type { CurrentPunchResponse, OpenShift } from '@vibept/shared';
+import { useEffect, useRef } from 'react';
 import { Button } from '../components/Button';
 import { TopBar } from '../components/TopBar';
+import { usePunchCompany } from '../hooks/usePunchCompany';
 import { useSession } from '../hooks/useSession';
 import { ApiError, apiFetch } from '../lib/api';
 import { enqueuePunch } from '../lib/offline-queue';
@@ -14,6 +15,11 @@ import { PunchLocationRequiredError, capturePunchLocation } from '../lib/punch-l
  * Personal-device punch interface. An employee with a user account hits
  * this page on their phone PWA to clock in/out. Company is selected from
  * their memberships — a user with exactly one company skips the picker.
+ *
+ * Someone who works for more than one company lands on the company they
+ * are clocked in at, else the one they used last (usePunchCompany). One
+ * shift at a time: while they are on the clock elsewhere the page says
+ * where, and the server refuses a second clock-in (open_shift_elsewhere).
  */
 export function MyPunchPage() {
   const session = useSession();
@@ -21,15 +27,24 @@ export function MyPunchPage() {
   // Only memberships where the user actually has an employees row — a
   // supervisor-only or admin-only membership can't clock a shift here,
   // so showing it in the picker produces a guaranteed 403.
-  const memberships = useMemo(
-    () => session?.user.memberships.filter((m) => m.isEmployee) ?? [],
-    [session],
-  );
+  const { memberships, companyId, setCompanyId, company } = usePunchCompany();
 
-  const [companyId, setCompanyId] = useState<number | null>(memberships[0]?.companyId ?? null);
+  const openShifts = useQuery({
+    queryKey: ['my-open-shifts'],
+    queryFn: () => apiFetch<OpenShift[]>('/punch/open-shifts'),
+    enabled: memberships.length > 1,
+    refetchInterval: 30_000,
+  });
+  // Opening the page while clocked in somewhere: go straight there, once.
+  const autoSelected = useRef(false);
   useEffect(() => {
-    if (!companyId && memberships[0]) setCompanyId(memberships[0].companyId);
-  }, [memberships, companyId]);
+    if (autoSelected.current || !openShifts.data) return;
+    autoSelected.current = true;
+    const open = openShifts.data.find((s) => memberships.some((m) => m.companyId === s.companyId));
+    if (open && open.companyId !== companyId) setCompanyId(open.companyId);
+  }, [openShifts.data, memberships, companyId, setCompanyId]);
+  const openElsewhere =
+    openShifts.data?.find((s) => s.companyId !== companyId && companyId != null) ?? null;
 
   const current = useQuery({
     queryKey: ['my-current-punch', companyId],
@@ -38,7 +53,10 @@ export function MyPunchPage() {
     refetchInterval: 30_000,
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['my-current-punch', companyId] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['my-current-punch', companyId] });
+    qc.invalidateQueries({ queryKey: ['my-open-shifts'] });
+  };
 
   const locationMode = current.data?.punchLocationMode ?? 'off';
 
@@ -104,8 +122,33 @@ export function MyPunchPage() {
       <main className="mx-auto flex max-w-md flex-col gap-8 px-6 py-10">
         <header>
           <p className="text-xs uppercase tracking-widest text-slate-500">My time</p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">{session.user.email}</h1>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+            {company?.companyName ?? 'No company'}
+          </h1>
+          <p className="mt-0.5 text-sm text-slate-500">{session.user.email}</p>
         </header>
+
+        {openElsewhere && (
+          <section className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-medium">
+              You&apos;re {openElsewhere.entryType === 'break' ? 'on break' : 'clocked in'} at{' '}
+              {openElsewhere.companyName} since{' '}
+              {new Date(openElsewhere.startedAt).toLocaleTimeString([], {
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
+              .
+            </p>
+            <p className="mt-1">Clock out there before starting a shift here.</p>
+            <button
+              type="button"
+              className="mt-2 font-medium underline"
+              onClick={() => setCompanyId(openElsewhere.companyId)}
+            >
+              Go to {openElsewhere.companyName}
+            </button>
+          </section>
+        )}
 
         {memberships.length === 0 && (
           <section className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -207,11 +250,28 @@ function PunchCard({
 
   const todayHours = (snapshot.todayWorkSeconds / 3600).toFixed(2);
 
+  // The last event, so the person can see when they clocked in / went on
+  // break / clocked out without opening the timesheet.
+  const lastEvent =
+    type === 'work'
+      ? `Clocked in at ${eventTime(snapshot.shiftStartedAt ?? snapshot.openEntry!.startedAt)}`
+      : type === 'break'
+        ? `On break since ${eventTime(snapshot.openEntry!.startedAt)}`
+        : snapshot.lastEndedAt
+          ? `Clocked out at ${eventTime(snapshot.lastEndedAt)}`
+          : null;
+  const clockedInAt =
+    type === 'break' && snapshot.shiftStartedAt
+      ? `Clocked in at ${eventTime(snapshot.shiftStartedAt)}`
+      : null;
+
   return (
     <section className="flex flex-col items-center gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="text-center">
         <p className="text-xs uppercase tracking-widest text-slate-500">Status</p>
         <p className="mt-1 text-lg font-medium text-slate-800">{statusLabel}</p>
+        {lastEvent && <p className="mt-1 text-sm text-slate-700">{lastEvent}</p>}
+        {clockedInAt && <p className="text-xs text-slate-500">{clockedInAt}</p>}
         <p className="mt-1 text-xs text-slate-500">Today: {todayHours} hrs worked</p>
       </div>
 
@@ -237,4 +297,13 @@ function PunchCard({
       )}
     </section>
   );
+}
+
+/** "9:02 AM" today; "Mon 9:02 AM" on another day, so an overnight or
+ *  forgotten shift reads unambiguously. Browser-local time. */
+function eventTime(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${time}`;
 }

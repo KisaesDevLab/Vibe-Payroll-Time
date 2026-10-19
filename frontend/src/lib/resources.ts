@@ -489,6 +489,8 @@ export const notifications = {
 
 export const ai = {
   getSettings: (companyId: number) => apiFetch<AISettings>(`/companies/${companyId}/ai/settings`),
+  availability: (companyId: number) =>
+    apiFetch<{ available: boolean }>(`/companies/${companyId}/ai/availability`),
   updateSettings: (companyId: number, body: UpdateAISettingsRequest) =>
     apiFetch<AISettings>(`/companies/${companyId}/ai/settings`, {
       method: 'PATCH',

@@ -3,6 +3,7 @@
 import { useMutation } from '@tanstack/react-query';
 import type { NLCorrectionPreview } from '@vibept/shared';
 import { useState } from 'react';
+import { useAIAvailable } from '../hooks/useAIAvailable';
 import { ApiError } from '../lib/api';
 import { ai } from '../lib/resources';
 import { Button } from './Button';
@@ -23,7 +24,7 @@ interface Props {
  *
  * Nothing applies without a human confirming. Rate-limited per
  * employee per day; the remaining quota is surfaced after each
- * preview.
+ * preview. Hidden entirely when AI isn't enabled for the company.
  */
 export function NLCorrectionWidget({
   companyId,
@@ -32,6 +33,7 @@ export function NLCorrectionWidget({
   periodEnd,
   onApplied,
 }: Props) {
+  const aiAvailable = useAIAvailable(companyId);
   const [prompt, setPrompt] = useState('');
   const [preview, setPreview] = useState<NLCorrectionPreview | null>(null);
 
@@ -61,6 +63,8 @@ export function NLCorrectionWidget({
       setPrompt('');
     },
   });
+
+  if (!aiAvailable) return null;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">

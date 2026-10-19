@@ -9,6 +9,33 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.4.0] — 2026-10-19
 
+### Added — Personal-device punching across companies
+
+- **One shift at a time.** Someone who works for more than one company can't
+  clock in at a second company while still clocked in (or on break) at
+  another: the clock-in answers 409 `open_shift_elsewhere` naming where they
+  are. `/my-punch` shows "You're clocked in at Acme since 9:02 AM" with a
+  button to go there. Kiosk punches aren't gated.
+- **Remembers the company.** `/my-punch` and `/my-timesheet` open on the
+  company the person is clocked in at, else the one they used last (per user,
+  in this browser), instead of whichever sorts first.
+- **Company name in the header** of `/my-punch` and `/my-timesheet`.
+- **Last event time** on `/my-punch`: "Clocked in at 9:02 AM", "On break since
+  12:01 PM" (with the clock-in time), or "Clocked out at 5:30 PM"; another
+  day's time shows its date. `GET /punch/current` gains `shiftStartedAt` and
+  `lastEndedAt`; new `GET /punch/open-shifts`.
+- **Employees land on `/my-punch`** after sign-in: a user with no SuperAdmin,
+  admin or supervisor role and an employee record skips the dashboard (and
+  the Dashboard link).
+
+### Changed — AI cards hide when AI is off
+
+- The "Ask assistant" correction card and the support chat show only when AI
+  is enabled for the company and something can answer (router, Ollama, or an
+  API key). New `GET /companies/:id/ai/availability`, open to every member —
+  the support chat previously read the admin-only settings, so employees and
+  supervisors never saw it even with AI on.
+
 ### Added — Access groups
 
 - **Appliance → Groups** (SuperAdmin): named groups that give the firm's

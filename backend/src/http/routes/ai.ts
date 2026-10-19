@@ -7,7 +7,7 @@ import {
   updateAISettingsRequestSchema,
 } from '@vibept/shared';
 import { Router } from 'express';
-import { getAISettings, updateAISettings } from '../../services/ai/config.js';
+import { getAISettings, isAIAvailable, updateAISettings } from '../../services/ai/config.js';
 import { applyNLCorrection, previewNLCorrection } from '../../services/ai/nl-correction.js';
 import { ProviderError } from '../../services/ai/provider.js';
 import { supportChat } from '../../services/ai/support-chat.js';
@@ -43,6 +43,22 @@ aiRouter.patch(
       const body = updateAISettingsRequestSchema.parse(req.body);
       const result = await updateAISettings(Number(req.params.companyId), body);
       res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** Any member may ask whether AI is usable here — only that yes/no, never
+ *  the settings — so the support chat and "Ask assistant" cards can stay
+ *  hidden when it isn't. */
+aiRouter.get(
+  '/:companyId/ai/availability',
+  requireAuth,
+  requireCompanyRole(['company_admin', 'supervisor', 'employee']),
+  async (req, res, next) => {
+    try {
+      res.json({ data: { available: await isAIAvailable(Number(req.params.companyId)) } });
     } catch (err) {
       next(err);
     }

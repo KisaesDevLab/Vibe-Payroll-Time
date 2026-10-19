@@ -1,8 +1,9 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import type { ChatMessage } from '@vibept/shared';
 import { useEffect, useRef, useState } from 'react';
+import { useAIAvailable } from '../hooks/useAIAvailable';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
 import { ai } from '../lib/resources';
@@ -44,15 +45,10 @@ export function SupportChatWidget() {
   }, [messages]);
 
   // Only render the Ask chat when the selected company has AI turned on
-  // and a provider configured. Two conditions because `aiEnabled` can be
-  // true while `aiApiKeyConfigured` is false on a fresh appliance —
-  // clicking Ask in that state would error on every send.
-  const aiSettings = useQuery({
-    queryKey: ['ai-settings', companyId],
-    queryFn: () => ai.getSettings(companyId!),
-    enabled: companyId != null,
-  });
-  const aiAvailable = !!aiSettings.data?.aiEnabled && !!aiSettings.data?.aiApiKeyConfigured;
+  // and something configured to answer — clicking Ask otherwise would
+  // error on every send. The availability check is open to every member
+  // (the settings themselves are admin-only).
+  const aiAvailable = useAIAvailable(companyId);
 
   if (!session) return null;
   if (!aiAvailable) return null;

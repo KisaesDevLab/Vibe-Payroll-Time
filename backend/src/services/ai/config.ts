@@ -111,6 +111,20 @@ export async function assertAIEnabled(companyId: number): Promise<void> {
   if (!row.ai_enabled) throw Forbidden('AI features are disabled for this company');
 }
 
+/**
+ * Can this company's staff use AI right now? The company switch is on AND
+ * something can answer: the Vibe AI Router, a local Ollama (no key), or an
+ * API key on the company or the appliance. The UI hides the AI cards
+ * (support chat, "Ask assistant") when this is false.
+ */
+export async function isAIAvailable(companyId: number): Promise<boolean> {
+  const row = await loadRow(companyId);
+  if (!row.ai_enabled) return false;
+  if (env.VIBE_AI_MODE === 'router') return true;
+  if (row.ai_provider === 'ollama' || row.ai_api_key_encrypted) return true;
+  return !!(await getResolvedAI()).apiKey;
+}
+
 export async function dailyCorrectionLimit(companyId: number): Promise<number> {
   const row = await loadRow(companyId);
   return row.ai_daily_correction_limit;

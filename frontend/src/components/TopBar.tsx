@@ -6,6 +6,7 @@ import { useApplianceName } from '../hooks/useApplianceName';
 import { useSession } from '../hooks/useSession';
 import { apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
+import { isPunchOnlyUser } from '../lib/punch-only';
 import { isSsoSession, ssoSignOut } from '../lib/sso';
 import { Button } from './Button';
 
@@ -64,7 +65,11 @@ export function TopBar() {
   // Shared link list used by both desktop + mobile so they never drift
   // out of sync. Each entry is gated on the same visibility rules that
   // already drove the desktop-only nav.
-  const links: Array<{ to: string; label: string }> = [{ to: '/', label: 'Dashboard' }];
+  // Someone who only punches has no dashboard: `/` sends them to My time.
+  const punchOnly = !!session && isPunchOnlyUser(session.user);
+  const links: Array<{ to: string; label: string }> = punchOnly
+    ? []
+    : [{ to: '/', label: 'Dashboard' }];
   if (hasMemberships) {
     if (isEmployee) {
       links.push({ to: '/my-punch', label: 'My time' });

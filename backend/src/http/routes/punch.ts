@@ -19,8 +19,8 @@ import {
   switchJob,
   type PunchContext,
 } from '../../services/punch.js';
-import { getCurrentPunch } from '../../services/time-entries.js';
-import { Forbidden, Unauthorized } from '../errors.js';
+import { getCurrentPunch, openShiftsForUser } from '../../services/time-entries.js';
+import { Forbidden, HttpError, Unauthorized } from '../errors.js';
 import { requireAuth } from '../middleware/auth.js';
 
 export const punchRouter: Router = Router();
@@ -80,10 +80,40 @@ function baseCtx(
 // Personal-device punches (user JWT)
 // ---------------------------------------------------------------------------
 
+/**
+ * One person, one shift at a time. Someone who works for two companies
+ * has an employee row in each, and the one-open-entry index is per row,
+ * so a personal-device clock-in is refused while they are still on the
+ * clock (or on break) at another company. Kiosk punches are not gated:
+ * a kiosk is the company's own device and its employees often have no
+ * user account to correlate.
+ */
+async function assertNoOpenShiftElsewhere(userId: number, companyId: number): Promise<void> {
+  const elsewhere = (await openShiftsForUser(userId)).find((s) => s.companyId !== companyId);
+  if (elsewhere) {
+    throw new HttpError(
+      409,
+      'open_shift_elsewhere',
+      `You're still clocked in at ${elsewhere.companyName}. Clock out there first.`,
+      elsewhere,
+    );
+  }
+}
+
+punchRouter.get('/open-shifts', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    res.json({ data: await openShiftsForUser(req.user.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 punchRouter.post('/clock-in', requireAuth, async (req, res, next) => {
   try {
     const body = clockInRequestSchema.parse(req.body);
     const { employeeId } = await resolveEmployeeForUser(req, body.companyId);
+    await assertNoOpenShiftElsewhere(req.user!.id, body.companyId);
     const entry = await clockIn(baseCtx(req, body, employeeId), { jobId: body.jobId ?? null });
     res.status(201).json({ data: entry });
   } catch (err) {
