@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import { db } from '../../db/knex.js';
 import { BadRequest, Conflict, NotFound, Unauthorized } from '../../http/errors.js';
 import { getResolvedDisplayName } from '../appliance-settings.js';
+import { normalizeToE164 } from './phone-number.js';
 import { notify } from './service.js';
 
 const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -63,7 +64,7 @@ export async function startPhoneVerification(
     // Send the code via SMS. The channel bypass is intentional here —
     // we ignore the employee's smsOptIn and phoneVerified gates because
     // the whole point of this flow is to opt in and verify.
-    await notify({
+    const result = await notify({
       companyId,
       type: 'phone_verification',
       recipient: {
@@ -78,6 +79,14 @@ export async function startPhoneVerification(
       vars: { appName: await getResolvedDisplayName(), code },
       channels: ['sms'],
     });
+    // notify() records failures instead of throwing. The person is waiting
+    // on this code, so a send that didn't go out is an error they see —
+    // and it rolls back the code and the unverified number with it.
+    if (result.sms?.status !== 'sent') {
+      throw BadRequest(
+        `The verification code could not be sent: ${result.sms?.error ?? result.sms?.status ?? 'no SMS provider'}`,
+      );
+    }
 
     return { expiresAt: expiresAt.toISOString() };
   });
@@ -128,37 +137,4 @@ export function assertValidPhone(phone: string): void {
   }
 }
 
-/**
- * Coerce operator-entered phone strings into strict E.164 ("+15551234567").
- * This is what both Twilio and TextLinkSMS actually want — without the
- * leading `+` and country code, the Android SIM paired to a
- * TextLinkSMS account silently fails to route the message, which is
- * exactly the "I sent a verify but never got the SMS" symptom.
- *
- * Rules:
- *   - already starts with `+`: keep the `+`, drop everything
- *     non-digit after it.
- *   - 10 bare digits: prepend `+1` (US default — product target).
- *   - 11 digits starting with `1`: prepend `+`.
- *   - anything else: reject with a clear error so the UI can say so.
- *
- * If we ever target non-US customers as a primary audience, expose an
- * appliance-level default country. Until then this assumption matches
- * the rest of the product (pay periods, FLSA OT, etc.).
- */
-export function normalizeToE164(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('+')) {
-    const digits = trimmed.slice(1).replace(/\D+/g, '');
-    if (digits.length < 7 || digits.length > 15) {
-      throw BadRequest(`Phone must be 7–15 digits after the country code (got ${digits.length}).`);
-    }
-    return '+' + digits;
-  }
-  const digits = trimmed.replace(/\D+/g, '');
-  if (digits.length === 10) return '+1' + digits;
-  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
-  throw BadRequest(
-    'Phone number must be 10 digits for US numbers, or include a country code starting with +.',
-  );
-}
+export { normalizeToE164 } from './phone-number.js';

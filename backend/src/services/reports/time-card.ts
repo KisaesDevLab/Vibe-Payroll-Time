@@ -1,9 +1,15 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import { buildTimesheetSummary, timeCardParamsSchema, type TimeCardParams } from '@vibept/shared';
+import {
+  TIME_OFF_CATEGORY_LABELS,
+  buildTimesheetSummary,
+  timeCardParamsSchema,
+  type TimeCardParams,
+} from '@vibept/shared';
 import { db } from '../../db/knex.js';
 import { NotFound } from '../../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from '../punch.js';
+import { loadTimeOffJobs } from '../time-off.js';
 import type { ReportHandler } from './types.js';
 
 export const timeCardReport: ReportHandler<typeof timeCardParamsSchema> = {
@@ -47,11 +53,15 @@ export const timeCardReport: ReportHandler<typeof timeCardParamsSchema> = {
       .orderBy('t.started_at', 'asc')
       .select<Array<TimeEntryRow & { job_code: string | null }>>('t.*', 'j.code as job_code');
 
+    const timeOffJobs = await loadTimeOffJobs(companyId);
     for (const r of rows) {
       const entry = rowToTimeEntry(r);
+      const timeOff = entry.jobId != null ? timeOffJobs.get(entry.jobId) : undefined;
       yield {
         date: entry.startedAt.slice(0, 10),
-        type: entry.entryType,
+        type: timeOff
+          ? `time off · ${TIME_OFF_CATEGORY_LABELS[timeOff.category]}`
+          : entry.entryType,
         startedAt: entry.startedAt,
         endedAt: entry.endedAt,
         durationSeconds: entry.durationSeconds,
@@ -93,6 +103,7 @@ export const timeCardReport: ReportHandler<typeof timeCardParamsSchema> = {
         roundingGraceMinutes: settings.punch_rounding_grace_minutes,
         periodStart: start,
         periodEnd: end,
+        timeOffJobs,
       });
 
       yield {
@@ -106,6 +117,23 @@ export const timeCardReport: ReportHandler<typeof timeCardParamsSchema> = {
         approved: null,
         autoClosed: null,
       };
+
+      // Time off gets its own total lines: it is paid (or unpaid) but
+      // not worked, so it never sits inside the regular/OT split above.
+      for (const [category, seconds] of Object.entries(summary.timeOff.byCategory)) {
+        if (seconds === 0) continue;
+        yield {
+          date: '',
+          type: `TIME OFF · ${TIME_OFF_CATEGORY_LABELS[category as keyof typeof TIME_OFF_CATEGORY_LABELS]}`,
+          startedAt: null,
+          endedAt: null,
+          durationSeconds: seconds,
+          jobCode: '',
+          source: category === 'unpaid' ? 'unpaid' : 'paid, not worked',
+          approved: null,
+          autoClosed: null,
+        };
+      }
     }
   },
 };

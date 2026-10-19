@@ -86,6 +86,22 @@ export const hoursByJobParamsSchema = z.object({
 });
 export type HoursByJobParams = z.infer<typeof hoursByJobParamsSchema>;
 
+export const timeOffSummaryParamsSchema = z.object({
+  periodStart: z.string().datetime(),
+  periodEnd: z.string().datetime(),
+});
+export type TimeOffSummaryParams = z.infer<typeof timeOffSummaryParamsSchema>;
+
+export const timeOffEntriesParamsSchema = z.object({
+  periodStart: z.string().datetime(),
+  periodEnd: z.string().datetime(),
+  /** Single employee id, or empty for all. */
+  employeeId: z.coerce.number().int().positive().optional(),
+  /** all | pto | sick | holiday | unpaid | other */
+  category: z.enum(['all', 'pto', 'sick', 'holiday', 'unpaid', 'other']).optional(),
+});
+export type TimeOffEntriesParams = z.infer<typeof timeOffEntriesParamsSchema>;
+
 export const overtimeParamsSchema = z.object({
   /** Optional reference date (ISO). Defaults to today — the report
    *  resolves the current work-week from this reference. */

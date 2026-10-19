@@ -7,7 +7,8 @@ import {
   getResolvedSmsProvider,
 } from '../appliance-settings.js';
 import { EmailDeliveryError, sendViaEmailIt } from './emailit-client.js';
-import { normalizeToE164 } from './phone-verification.js';
+import { normalizeToE164 } from './phone-number.js';
+import { resolveSmsConfig, sendSmsWithConfig } from './service.js';
 import { sendViaTextLinkSms } from './textlinksms-client.js';
 import { SmsDeliveryError, sendViaTwilio } from './twilio-client.js';
 
@@ -71,6 +72,40 @@ export async function sendTestEmail(to: string): Promise<TestSendResult> {
     const msg = err instanceof EmailDeliveryError ? err.message : (err as Error).message;
     logger.warn({ err, to }, 'test email send failed');
     return fail(msg, 'emailit');
+  }
+}
+
+/**
+ * Company-scoped twin of sendTestSms: sends through exactly the provider
+ * a real employee SMS at this company would use (resolveSmsConfig —
+ * the company's own Twilio/TextLinkSMS, else the appliance's), so a
+ * company admin can prove their own settings work.
+ */
+export async function sendCompanyTestSms(companyId: number, to: string): Promise<TestSendResult> {
+  let normalized: string;
+  try {
+    normalized = normalizeToE164(to);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : 'Invalid phone', null);
+  }
+  const config = await resolveSmsConfig(companyId);
+  if (!config) {
+    return fail(
+      'No SMS provider configured for this company or the appliance — fill in Twilio above, or ask a SuperAdmin to set one up appliance-wide.',
+      null,
+    );
+  }
+  const appName = await getResolvedDisplayName();
+  try {
+    const res = await sendSmsWithConfig(config, {
+      to: normalized,
+      body: `${appName} — test SMS. Receiving this confirms this company's SMS settings work.`,
+    });
+    return { ok: true, providerMessageId: res.messageId, error: null, provider: config.provider };
+  } catch (err) {
+    const msg = err instanceof SmsDeliveryError ? err.message : (err as Error).message;
+    logger.warn({ err, companyId, provider: config.provider }, 'company test sms failed');
+    return fail(msg, config.provider);
   }
 }
 

@@ -113,5 +113,14 @@ export const GENERIC_COLUMN_KEYS = [
   'manual_hours',
   'source',
   'override_reasons',
+  // Time off (PTO, sick, holiday, other, unpaid). `total_hours` stays
+  // worked hours only; `total_paid_hours` adds paid time off.
+  'pto_hours',
+  'sick_hours',
+  'holiday_hours',
+  'other_time_off_hours',
+  'unpaid_hours',
+  'paid_time_off_hours',
+  'total_paid_hours',
 ] as const;
 export type GenericColumnKey = (typeof GENERIC_COLUMN_KEYS)[number];

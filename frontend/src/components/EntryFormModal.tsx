@@ -160,12 +160,16 @@ export function EntryFormModal({ target, jobs, onCancel, onSubmit, pending, erro
               }
             >
               <option value="">— none —</option>
-              {jobs.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.code ? `${j.code} — ` : ''}
-                  {j.name}
-                </option>
-              ))}
+              {/* Time off is entered as hours on the weekly grid, not as a
+                  start/end entry. Keep an existing choice visible. */}
+              {jobs
+                .filter((j) => !j.isTimeOff || j.id === values.jobId)
+                .map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.code ? `${j.code} — ` : ''}
+                    {j.name}
+                  </option>
+                ))}
             </select>
           </label>
         </div>

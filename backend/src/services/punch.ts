@@ -11,6 +11,7 @@ import { OFFLINE_PUNCH_MAX_AGE_SECONDS } from '@vibept/shared';
 import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, NotFound } from '../http/errors.js';
+import { isTimeOffJob } from './time-off.js';
 
 // ---------------------------------------------------------------------------
 // Row shape + row→resource mapping
@@ -320,6 +321,8 @@ export async function getTodayWorkSeconds(companyId: number, employeeId: number)
       AND te.employee_id = ?
       AND te.deleted_at IS NULL
       AND te.entry_type = 'work'
+      -- Worked time only: a PTO day is not hours on the clock.
+      AND (te.job_id IS NULL OR te.job_id NOT IN (SELECT id FROM jobs WHERE is_time_off))
       AND te.started_at < b.day_end
       AND COALESCE(te.ended_at, NOW()) > b.day_start
     `,
@@ -402,6 +405,20 @@ async function ensureJobBelongsToCompany(
   if (!row) throw NotFound('Active job not found for this company');
 }
 
+/** Time off is entered as hours on the timesheet, never punched: a
+ *  running PTO clock would make "8 hours off" depend on when someone
+ *  remembered to clock out. */
+async function ensurePunchableJob(
+  trx: Knex.Transaction,
+  companyId: number,
+  jobId: number,
+): Promise<void> {
+  await ensureJobBelongsToCompany(trx, companyId, jobId);
+  if (await isTimeOffJob(trx, companyId, jobId)) {
+    throw BadRequest('Time off is entered as hours on the timesheet, not punched');
+  }
+}
+
 /** Return the `job_id` from the last non-break entry in a shift — used so
  *  breakOut resumes on the same job the employee left. */
 async function lastWorkJobForShift(trx: Knex.Transaction, shiftId: string): Promise<number | null> {
@@ -437,7 +454,7 @@ export async function clockIn(
 ): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
     await ensureActiveEmployee(trx, ctx.companyId, ctx.employeeId);
-    if (opts.jobId) await ensureJobBelongsToCompany(trx, ctx.companyId, opts.jobId);
+    if (opts.jobId) await ensurePunchableJob(trx, ctx.companyId, opts.jobId);
     await lockEmployee(trx, ctx.employeeId);
 
     const open = await findOpenEntry(trx, ctx.companyId, ctx.employeeId);
@@ -662,7 +679,7 @@ export async function breakOut(ctx: PunchContext): Promise<TimeEntry> {
 
 export async function switchJob(ctx: PunchContext, newJobId: number): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
-    await ensureJobBelongsToCompany(trx, ctx.companyId, newJobId);
+    await ensurePunchableJob(trx, ctx.companyId, newJobId);
     await lockEmployee(trx, ctx.employeeId);
     const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
     const loc = await resolveLocation(trx, ctx);
@@ -891,9 +908,18 @@ export async function createEntryForEmployee(
 
     // Overlap check. Two ranges overlap when a.start < b.end AND a.end > b.start.
     // Unclosed entries (ended_at IS NULL) are treated as extending to +inf.
+    // Time off is stored from local midnight as a duration, not a clock
+    // span, so it never blocks a shift on the same day.
     const overlap = await trx<TimeEntryRow>('time_entries')
       .where({ company_id: actor.companyId, employee_id: input.employeeId })
       .whereNull('deleted_at')
+      .whereNull('superseded_by_entry_id')
+      .where((qb) => {
+        qb.whereNull('job_id').orWhereNotIn(
+          'job_id',
+          trx('jobs').where({ company_id: actor.companyId, is_time_off: true }).select('id'),
+        );
+      })
       .where('started_at', '<', endedAt)
       .andWhere((qb) => {
         qb.whereNull('ended_at').orWhere('ended_at', '>', startedAt);

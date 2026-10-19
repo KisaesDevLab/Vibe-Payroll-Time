@@ -6,7 +6,8 @@ import type {
   MagicLinkOptionsResponse,
   SendAccountLinkResponse,
 } from '@vibept/shared';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ApiError, apiFetch } from '../lib/api';
 
 /**
@@ -21,7 +22,14 @@ import { ApiError, apiFetch } from '../lib/api';
  * creds has no way to deliver anything, so rather than offer buttons
  * that always fail we disable them and say why — the operator's fix is
  * in Appliance settings, not on this page.
+ *
+ * The menu renders in a portal with fixed positioning: the tables it sits
+ * in clip their overflow (rounded cards), which cut the menu off on the
+ * last rows. It opens below the button, or above it when there isn't room.
  */
+
+const MENU_WIDTH = 256; // w-64
+const MENU_GAP = 4;
 
 interface Action {
   purpose: LinkPurpose;
@@ -50,6 +58,32 @@ export function SendLinkMenu({
   const [result, setResult] = useState<SendAccountLinkResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Place the menu against the button, flipping above it when it would
+  // run off the bottom of the viewport. Measured after render so the
+  // menu's real height is known.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const button = buttonRef.current?.getBoundingClientRect();
+    if (!button) return;
+    const height = menuRef.current?.offsetHeight ?? 0;
+    const below = button.bottom + MENU_GAP;
+    const top =
+      below + height > window.innerHeight && button.top - MENU_GAP - height > 0
+        ? button.top - MENU_GAP - height
+        : below;
+    const left = Math.max(
+      8,
+      Math.min(button.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8),
+    );
+    setPos({ top, left });
+  }, [open]);
 
   const options = useQuery({
     queryKey: ['magic-options'],
@@ -63,16 +97,23 @@ export function SendLinkMenu({
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (!wrapRef.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
+    // A fixed-position menu would drift away from its button on scroll.
+    const close = () => setOpen(false);
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
     };
   }, [open]);
 
@@ -100,6 +141,7 @@ export function SendLinkMenu({
   return (
     <div className="relative inline-block text-left" ref={wrapRef}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={mutation.isPending}
@@ -108,34 +150,44 @@ export function SendLinkMenu({
         {mutation.isPending ? 'Sending…' : `${label} ▾`}
       </button>
 
-      {open && (
-        <div className="absolute right-0 z-20 mt-1 w-64 rounded-md border border-slate-200 bg-white py-1 shadow-lg">
-          {ACTIONS.map((a) => {
-            const enabled = available(a.channel);
-            return (
-              <button
-                key={`${a.purpose}-${a.channel}`}
-                type="button"
-                disabled={!enabled}
-                onClick={() => mutation.mutate({ channel: a.channel, purpose: a.purpose })}
-                className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-white"
-                title={
-                  enabled
-                    ? undefined
-                    : `No ${a.channel === 'email' ? 'email' : 'SMS'} transport is configured on this appliance`
-                }
-              >
-                {a.label}
-              </button>
-            );
-          })}
-          {!options.data?.emailEnabled && !options.data?.smsEnabled && (
-            <p className="px-3 py-2 text-xs text-slate-500">
-              Configure EmailIt or an SMS provider in Appliance settings to send links.
-            </p>
-          )}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="fixed z-50 w-64 rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+            // Hidden for the one frame before it is measured and placed.
+            style={
+              pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: 'hidden' }
+            }
+          >
+            {ACTIONS.map((a) => {
+              const enabled = available(a.channel);
+              return (
+                <button
+                  key={`${a.purpose}-${a.channel}`}
+                  type="button"
+                  disabled={!enabled}
+                  onClick={() => mutation.mutate({ channel: a.channel, purpose: a.purpose })}
+                  className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-white"
+                  title={
+                    enabled
+                      ? undefined
+                      : `No ${a.channel === 'email' ? 'email' : 'SMS'} transport is configured on this appliance`
+                  }
+                >
+                  {a.label}
+                </button>
+              );
+            })}
+            {!options.data?.emailEnabled && !options.data?.smsEnabled && (
+              <p className="px-3 py-2 text-xs text-slate-500">
+                Configure EmailIt or an SMS provider in Appliance settings to send links.
+              </p>
+            )}
+          </div>,
+          document.body,
+        )}
 
       {result && <SendOutcome result={result} onDismiss={() => setResult(null)} />}
       {error && (

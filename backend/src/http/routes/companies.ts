@@ -14,7 +14,9 @@ import {
   revokeBadgeRequestSchema,
   sendAccountLinkRequestSchema,
   sendEmployeeLinkRequestSchema,
+  setEmployeeLoginRequestSchema,
   setEmployeePinRequestSchema,
+  setTimeOffTypeRequestSchema,
   updateCompanyRequestSchema,
   updateCompanySettingsRequestSchema,
   updateEmployeeRequestSchema,
@@ -46,9 +48,11 @@ import {
   listEmployees,
   regeneratePin,
   setEmployeePinManually,
+  setEmployeeLogin,
   updateEmployee,
 } from '../../services/employees.js';
 import { archiveJob, createJob, listJobs, unarchiveJob, updateJob } from '../../services/jobs.js';
+import { listTimeOffTypes, setTimeOffType } from '../../services/time-off.js';
 import {
   issuePairingCode,
   listKioskDevices,
@@ -399,8 +403,19 @@ companiesRouter.post(
 
       const employee = await db('employees')
         .where({ id: employeeId, company_id: companyId })
-        .first<{ id: number; user_id: number | null; email: string | null; status: string }>();
+        .first<{
+          id: number;
+          user_id: number | null;
+          email: string | null;
+          status: string;
+          login_disabled_at: Date | null;
+        }>();
       if (!employee) return next(NotFound('Employee not found'));
+      if (employee.login_disabled_at) {
+        return next(
+          BadRequest("This employee's sign-in is turned off. Turn it back on to send a link."),
+        );
+      }
 
       let userId = employee.user_id;
       let loginCreated = false;
@@ -573,6 +588,28 @@ companiesRouter.patch(
         companyIdFromParams(req),
         Number(req.params.employeeId),
         body,
+      );
+      res.json({ data: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// The employee record's sign-in switch (services/employee-login.ts).
+companiesRouter.put(
+  '/:companyId/employees/:employeeId/login',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const body = setEmployeeLoginRequestSchema.parse(req.body);
+      const updated = await setEmployeeLogin(
+        companyIdFromParams(req),
+        Number(req.params.employeeId),
+        body.enabled,
+        req.user.id,
       );
       res.json({ data: updated });
     } catch (err) {
@@ -808,6 +845,40 @@ companiesRouter.delete(
     try {
       await archiveJob(companyIdFromParams(req), Number(req.params.jobId));
       res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Settings → Time off: the four standard time-off types (PTO, sick,
+// holiday, unpaid), each switched on or off per company.
+companiesRouter.get(
+  '/:companyId/time-off-types',
+  requireAuth,
+  assertCompanyAccess,
+  async (req, res, next) => {
+    try {
+      res.json({ data: await listTimeOffTypes(companyIdFromParams(req)) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.put(
+  '/:companyId/time-off-types/:category',
+  requireAuth,
+  requireCompanyRole(['company_admin'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      const body = setTimeOffTypeRequestSchema.parse(req.body);
+      const types = await setTimeOffType(
+        companyIdFromParams(req),
+        String(req.params.category),
+        body.enabled,
+      );
+      res.json({ data: types });
     } catch (err) {
       next(err);
     }

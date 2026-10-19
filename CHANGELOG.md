@@ -7,6 +7,94 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — "Add time" on My timesheet
+
+- Employees can type in a shift they forgot to punch: date, clock-in and
+  clock-out time, optional job, and a reason (a clock-out before the clock-in
+  means the shift ran past midnight). Under the default `allowed`
+  manual-entry policy it is saved straight away and audited as created by the
+  employee; under `override_only` / `disabled`, or on a day with approved
+  time, it goes to a supervisor as an add request. Overlapping shifts and
+  clock-outs in the future are refused.
+- **Approving an add request now creates the entry** (attributed to the
+  reviewer). Previously approval only marked the request. The Corrections page
+  shows such requests as a readable shift.
+- The employee correction-request route now honours the sign-in switch.
+
+### Added — Per-employee sign-in switch
+
+- Employee record → Web login → **Allow sign-in**. Off closes this company
+  to the person: it drops out of their session, company-scoped requests are
+  refused, personal-device punching stops, and links can't be sent. Password,
+  magic-link, single sign-on and refresh sign-in are refused once every
+  company they belong to has them switched off. Kiosk punching, timesheets and
+  the record itself are untouched. Admins can't switch off their own sign-in;
+  SuperAdmins are never affected. Migration
+  `20261019000005_employee_login_switch.js` (`employees.login_disabled_at`,
+  `login_disabled_by`).
+
+### Added — Time off (PTO, sick, holiday, unpaid)
+
+- **Per-company time-off types.** Settings → Time off switches PTO, Sick,
+  Holiday and Unpaid leave on or off. Each type is a job code marked as
+  time off; switching one off archives the code and keeps every hour
+  already recorded. Other kinds (bereavement, jury duty, …) are added on the
+  Jobs page as time-off codes with a category and a paid/unpaid flag.
+- **Who enters it.** "Employees can record their own time off" (on by
+  default); off means supervisors and admins only.
+- **Entry.** The weekly grid has a Time off section under the jobs, with
+  worked and time-off totals shown separately. Time off is entered as hours,
+  never punched, never supersedes a punch, and the note is optional.
+- **Overtime.** Time off never counts toward FLSA overtime: 38 worked + 8 PTO
+  is 46 paid hours and 0 OT.
+- **Reports.** New _Time off by period_ (hours used per employee by type)
+  and _Time off entries_ (every entry, who entered it, approval). Hours by
+  pay period gains PTO / Sick / Holiday / Other / Unpaid / Paid total
+  columns; the time card, hours by job and overtime reports show time off
+  separately.
+- **Payroll exports.** Gusto fills `pto_hours` / `holiday_hours` /
+  `sick_hours`; Payroll Relief appends PTO / Sick / Holiday / Other paid
+  leave columns after `PeriodEnd`; QBO gets one row per paid time-off code;
+  the generic CSV gains `pto_hours`, `sick_hours`, `holiday_hours`,
+  `other_time_off_hours`, `unpaid_hours`, `paid_time_off_hours` and
+  `total_paid_hours`. Unpaid leave stays out of vendor exports.
+- Timesheets, the multi-employee grid and the employee's own timesheet show
+  time off alongside worked hours. No balances or accruals anywhere.
+- Migration `20261019000004_time_off.js`: `jobs.is_time_off`,
+  `jobs.time_off_category`, `jobs.is_paid`, and
+  `company_settings.time_off_self_entry`. Nothing is seeded; existing
+  companies see no change until they turn a type on.
+
+### Fixed — SMS
+
+- **A company's own Twilio settings were ignored.** Company settings have no
+  provider picker, so on an appliance without an appliance-wide SMS provider
+  every employee text resolved to "no provider" and was skipped. A company's
+  own complete Twilio (or TextLinkSMS) credentials now win, then the
+  appliance-wide provider. Personal phone verification (Preferences) falls
+  back to the user's company provider the same way.
+- **Twilio numbers and credentials are cleaned up.** The From number is
+  normalized to E.164 on save (a Messaging Service SID `MG…` is accepted too)
+  and again at send time, so `(414) 555-1212` no longer fails every send with
+  21212; pasted Account SID / Auth Token whitespace is trimmed.
+- **Errors say what to do.** Failed sends record Twilio's code plus a hint
+  (e.g. 21608 "trial accounts can only text numbers verified in the Twilio
+  console"). Employee phone verification no longer reports "code sent" when
+  the send failed, and personal phone verification returns the provider's
+  error instead of a 500.
+
+### Fixed — UI
+
+- **The Team page's "Send link" menu was cut off** by the table around it.
+  The menu now opens above the page and flips upward near the bottom of the
+  window.
+
+### Added
+
+- **Company test SMS**: Settings → Notifications → "Send a test SMS" sends
+  through the provider that company's texts actually use
+  (`POST /companies/:id/notifications/test-sms`).
+
 ## [1.4.0] — 2026-10-19
 
 ### Added — Personal-device punching across companies

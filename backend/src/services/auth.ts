@@ -4,6 +4,7 @@ import type { AuthResponse, AuthUser, LoginRequest } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { BadRequest, NotFound, Unauthorized } from '../http/errors.js';
 import { recordAuthEvent } from './auth-events.js';
+import { assertSignInAllowed } from './employee-login.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { issueAccessToken, issueRefreshToken, revokeAllForUser } from './tokens.js';
 import {
@@ -111,6 +112,19 @@ export async function loginWithPassword(
       });
       throw err;
     }
+  }
+
+  try {
+    await assertSignInAllowed(user);
+  } catch (err) {
+    await recordAuthEvent({
+      eventType: 'login_failure',
+      userId: user.id,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+      metadata: { reason: 'employee_login_disabled' },
+    });
+    throw err;
   }
 
   // Self-heal any employees rows that match this user by email but

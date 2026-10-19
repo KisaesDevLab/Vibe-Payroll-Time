@@ -77,6 +77,14 @@ the fix, and your supervisor will see it on their queue. If they approve it,
 the entry is updated and the change is recorded in the audit trail with your
 original request attached.
 
+### Adding time you forgot to punch
+
+On **My timesheet**, tap **+ Add time**. Pick the date, type the time you
+clocked in and out, choose a job if your company uses them, and say why.
+If the clock-out is earlier than the clock-in, the shift is treated as
+running past midnight. Depending on your company's settings it is added
+right away, or sent to your supervisor and shows up once they approve it.
+
 ## Notifications (optional)
 
 - **Email**: your admin has configured this company-wide. You'll get missed-
@@ -111,6 +119,18 @@ jobs down. Tap any cell to edit or add time.
 
 If your company has set "override only" policy, you'll see a message
 when you try to add time on a day+job you didn't actually punch for.
+
+### Logging a day off
+
+If your company records time off, the grid has a **Time off** section
+under your jobs (PTO, Sick, Holiday, …). Tap the day and type the
+hours, e.g. `8` for a full vacation day. A note is optional. Time off
+is never clocked in and out, and it never counts toward overtime. Your
+timesheet shows worked hours and time off as separate totals.
+
+If the section says your supervisor records time off for you, ask them
+to enter it. Vibe PT doesn't track how much time off you have left;
+that stays with your employer's payroll.
 
 ### Accepted input formats
 

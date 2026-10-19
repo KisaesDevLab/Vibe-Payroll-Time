@@ -1,16 +1,18 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { csvLine, hoursDecimal } from './csv.js';
-import type { FormatFn } from './types.js';
+import { hasHours, paidTimeOff, type FormatFn } from './types.js';
 
 /**
  * Gusto "Hours Worked" CSV import. Gusto matches employees by email
  * (strong) or name (weaker) — we emit both so manual mapping in the
  * Gusto UI is unambiguous.
  *
- * Double-overtime, PTO, sick, and holiday are zero for v1 (Vibe PT has
- * no leave-accrual concept); they're emitted as 0.00 so the import
- * template doesn't treat a missing column as an error.
+ * PTO, sick and holiday hours come from time-off codes (paid ones
+ * only). Paid codes in the "other" category (bereavement, jury duty, …)
+ * are added to pto_hours, Gusto's catch-all for paid leave. Unpaid leave
+ * is not exported. Double overtime is always 0.00: Vibe PT computes
+ * federal FLSA overtime only.
  *
  * See docs/exports/gusto.md.
  */
@@ -30,7 +32,8 @@ export const gusto: FormatFn = (ctx) => {
   ];
 
   for (const e of ctx.employees) {
-    if (e.workSeconds === 0) continue;
+    if (!hasHours(e)) continue;
+    const paid = paidTimeOff(e);
     rows.push(
       csvLine([
         e.firstName,
@@ -39,9 +42,9 @@ export const gusto: FormatFn = (ctx) => {
         hoursDecimal(e.regularSeconds),
         hoursDecimal(e.overtimeSeconds),
         '0.00',
-        '0.00',
-        '0.00',
-        '0.00',
+        hoursDecimal(paid.pto + paid.other),
+        hoursDecimal(paid.holiday),
+        hoursDecimal(paid.sick),
       ]),
     );
   }

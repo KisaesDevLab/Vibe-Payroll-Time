@@ -1,6 +1,11 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import { hoursByJobParamsSchema, type HoursByJobParams } from '@vibept/shared';
+import {
+  TIME_OFF_CATEGORY_LABELS,
+  hoursByJobParamsSchema,
+  type HoursByJobParams,
+  type TimeOffCategory,
+} from '@vibept/shared';
 import { db } from '../../db/knex.js';
 import type { ReportHandler } from './types.js';
 
@@ -8,13 +13,14 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
   name: 'hours_by_job',
   label: 'Hours by job',
   description:
-    'Work hours summed per (employee × job) for the period. Unassigned entries land in a "No job" row.',
+    'Hours summed per (employee × job) for the period. Unassigned entries land in a "No job" row; time-off codes (PTO, sick, …) are listed after each employee\'s worked jobs.',
   columns: [
     { key: 'employeeNumber', label: 'Employee #', type: 'string' },
     { key: 'lastName', label: 'Last name', type: 'string' },
     { key: 'firstName', label: 'First name', type: 'string' },
     { key: 'jobCode', label: 'Job code', type: 'string' },
     { key: 'jobName', label: 'Job name', type: 'string' },
+    { key: 'kind', label: 'Type', type: 'string' },
     { key: 'workSeconds', label: 'Hours', type: 'hours' },
   ],
   paramFields: [
@@ -46,8 +52,11 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
         'j.id',
         'j.code',
         'j.name',
+        'j.is_time_off',
+        'j.time_off_category',
       ])
-      .orderBy(['e.last_name', 'e.first_name', 'j.code'])
+      .orderBy(['e.last_name', 'e.first_name'])
+      .orderByRaw('COALESCE(j.is_time_off, false), j.code')
       .select<
         Array<{
           employee_id: number;
@@ -56,9 +65,11 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
           employee_number: string | null;
           job_code: string | null;
           job_name: string | null;
+          is_time_off: boolean | null;
+          time_off_category: TimeOffCategory | null;
           total_seconds: string;
         }>
-      >('e.id as employee_id', 'e.first_name', 'e.last_name', 'e.employee_number', 'j.code as job_code', 'j.name as job_name', db.raw('COALESCE(SUM(t.duration_seconds), 0) as total_seconds'));
+      >('e.id as employee_id', 'e.first_name', 'e.last_name', 'e.employee_number', 'j.code as job_code', 'j.name as job_name', 'j.is_time_off', 'j.time_off_category', db.raw('COALESCE(SUM(t.duration_seconds), 0) as total_seconds'));
 
     for (const r of rows) {
       yield {
@@ -67,6 +78,10 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
         firstName: r.first_name,
         jobCode: r.job_code ?? '(none)',
         jobName: r.job_name ?? 'No job',
+        kind:
+          r.is_time_off && r.time_off_category
+            ? `time off · ${TIME_OFF_CATEGORY_LABELS[r.time_off_category]}`
+            : 'work',
         workSeconds: Number(r.total_seconds),
       };
     }

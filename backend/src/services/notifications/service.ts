@@ -23,7 +23,7 @@ import {
 /** Tagged-union SMS config. The resolver picks ONE provider per send
  *  based on company/appliance settings, and the dispatcher in sendSms
  *  switches on `provider` to pick the right client. */
-type SmsConfig =
+export type SmsConfig =
   | ({ provider: 'twilio' } & TwilioConfig)
   | ({ provider: 'textlinksms' } & TextLinkSmsConfig);
 
@@ -138,58 +138,74 @@ async function resolveApplianceSmsConfig(): Promise<SmsConfig | null> {
 }
 
 /**
- * Resolve the SMS provider + credentials for a company. Resolution:
- *   1. Effective provider = company.sms_provider ?? appliance.sms_provider.
- *   2. Effective creds for that provider = company row if complete, else
- *      appliance row if complete, else null (silent disable).
- * Returns a tagged union so the dispatcher can branch cleanly.
+ * Resolve the SMS provider + credentials for a company (or, with null,
+ * for the appliance alone). Resolution:
+ *
+ *   1. The company picked a provider (`company_settings.sms_provider`):
+ *      that provider's company creds if complete, else the appliance's
+ *      creds for the same provider.
+ *   2. No pick: the company's own COMPLETE creds — Twilio, then
+ *      TextLinkSMS. The company settings page has no provider picker, so
+ *      an admin who fills in Twilio there has made the choice by doing
+ *      so; requiring a separate pick silently disabled every SMS for
+ *      companies on an appliance without its own provider.
+ *   3. Otherwise the appliance-wide provider.
+ *
+ * Null means nothing is configured; callers record a `skipped` send.
  */
-async function resolveSmsConfig(companyId: number): Promise<SmsConfig | null> {
-  const company = await db('company_settings').where({ company_id: companyId }).first<{
-    sms_provider: 'twilio' | 'textlinksms' | null;
-    twilio_account_sid: string | null;
-    twilio_auth_token_encrypted: string | null;
-    twilio_from_number: string | null;
-    textlinksms_api_key_encrypted: string | null;
-    textlinksms_from_number: string | null;
-  }>();
-
+export async function resolveSmsConfig(companyId: number | null): Promise<SmsConfig | null> {
+  const company = companyId
+    ? await db('company_settings').where({ company_id: companyId }).first<{
+        sms_provider: 'twilio' | 'textlinksms' | null;
+        twilio_account_sid: string | null;
+        twilio_auth_token_encrypted: string | null;
+        twilio_from_number: string | null;
+        textlinksms_api_key_encrypted: string | null;
+        textlinksms_from_number: string | null;
+      }>()
+    : undefined;
   const appliance = await getResolvedSmsProvider();
-  const provider = company?.sms_provider ?? appliance.provider;
-  if (!provider) return null;
 
-  if (provider === 'twilio') {
-    if (
-      company?.twilio_account_sid &&
-      company.twilio_auth_token_encrypted &&
-      company.twilio_from_number
-    ) {
-      return {
-        provider: 'twilio',
-        accountSid: company.twilio_account_sid,
-        authToken: decryptSecret(company.twilio_auth_token_encrypted),
-        fromNumber: company.twilio_from_number,
-      };
-    }
-    if (appliance.provider === 'twilio' && appliance.twilio) {
-      return { provider: 'twilio', ...appliance.twilio };
-    }
-    return null;
-  }
+  const companyTwilio: SmsConfig | null =
+    company?.twilio_account_sid && company.twilio_auth_token_encrypted && company.twilio_from_number
+      ? {
+          provider: 'twilio',
+          accountSid: company.twilio_account_sid,
+          authToken: decryptSecret(company.twilio_auth_token_encrypted),
+          fromNumber: company.twilio_from_number,
+        }
+      : null;
+  const companyTextLink: SmsConfig | null =
+    company?.textlinksms_api_key_encrypted && company.textlinksms_from_number
+      ? {
+          provider: 'textlinksms',
+          apiKey: decryptSecret(company.textlinksms_api_key_encrypted),
+          fromNumber: company.textlinksms_from_number,
+          baseUrl: appliance.textlinksms?.baseUrl ?? null,
+        }
+      : null;
+  const applianceTwilio: SmsConfig | null = appliance.twilio
+    ? { provider: 'twilio', ...appliance.twilio }
+    : null;
+  const applianceTextLink: SmsConfig | null = appliance.textlinksms
+    ? { provider: 'textlinksms', ...appliance.textlinksms }
+    : null;
 
-  // textlinksms
-  if (company?.textlinksms_api_key_encrypted && company.textlinksms_from_number) {
-    return {
-      provider: 'textlinksms',
-      apiKey: decryptSecret(company.textlinksms_api_key_encrypted),
-      fromNumber: company.textlinksms_from_number,
-      baseUrl: appliance.textlinksms?.baseUrl ?? null,
-    };
-  }
-  if (appliance.provider === 'textlinksms' && appliance.textlinksms) {
-    return { provider: 'textlinksms', ...appliance.textlinksms };
-  }
-  return null;
+  if (company?.sms_provider === 'twilio') return companyTwilio ?? applianceTwilio;
+  if (company?.sms_provider === 'textlinksms') return companyTextLink ?? applianceTextLink;
+  if (companyTwilio) return companyTwilio;
+  if (companyTextLink) return companyTextLink;
+  return resolveApplianceSmsConfig();
+}
+
+/** Send one SMS through a resolved config. Throws SmsDeliveryError. */
+export async function sendSmsWithConfig(
+  config: SmsConfig,
+  payload: SmsPayload,
+): Promise<{ messageId: string }> {
+  return config.provider === 'twilio'
+    ? sendViaTwilio(config, payload)
+    : sendViaTextLinkSms(config, payload);
 }
 
 // ---------------------------------------------------------------------------
@@ -418,10 +434,7 @@ async function sendSms(input: NotifyInput, to: string, payload: SmsPayload): Pro
     };
   }
   try {
-    const res =
-      config.provider === 'twilio'
-        ? await sendViaTwilio(config, payload)
-        : await sendViaTextLinkSms(config, payload);
+    const res = await sendSmsWithConfig(config, payload);
     return { status: 'sent', providerMessageId: res.messageId, error: null };
   } catch (err) {
     const msg = err instanceof SmsDeliveryError ? err.message : (err as Error).message;

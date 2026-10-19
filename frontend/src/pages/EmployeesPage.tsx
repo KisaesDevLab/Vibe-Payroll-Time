@@ -155,6 +155,11 @@ export function EmployeesPage() {
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-900">
                     {e.lastName}, {e.firstName}
+                    {!e.loginEnabled && (
+                      <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700">
+                        sign-in off
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{e.employeeNumber ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{e.email ?? '—'}</td>
@@ -771,6 +776,53 @@ function EmployeeLoginPanel({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The drawer holds a snapshot of the row; track the switch locally so
+  // it reflects the server's answer at once.
+  const [loginEnabled, setLoginEnabled] = useState(employee.loginEnabled);
+
+  const setLogin = useMutation({
+    mutationFn: (enabled: boolean) => employeesApi.setLogin(companyId, employee.id, enabled),
+    onMutate: () => {
+      setError(null);
+      setNotice(null);
+    },
+    onSuccess: (e) => {
+      setLoginEnabled(e.loginEnabled);
+      onChanged();
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not change sign-in.'),
+  });
+
+  const loginSwitch = (
+    <label className="mt-3 flex items-start gap-2 border-t border-slate-200 pt-3 text-sm text-slate-700">
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4"
+        checked={loginEnabled}
+        disabled={setLogin.isPending}
+        onChange={(e) => {
+          const enabled = e.target.checked;
+          if (
+            !enabled &&
+            !confirm(
+              `Turn off sign-in for ${employee.firstName}? They'll be signed out of this company on the web and phone app. Kiosk punching keeps working.`,
+            )
+          ) {
+            return;
+          }
+          setLogin.mutate(enabled);
+        }}
+      />
+      <span>
+        Allow sign-in
+        <span className="block text-xs text-slate-500">
+          {loginEnabled
+            ? 'Can sign in on the web and phone app (password, link or single sign-on).'
+            : 'Sign-in is off for this company. Their record, timesheets and kiosk punching are unchanged.'}
+        </span>
+      </span>
+    </label>
+  );
 
   const invite = useMutation({
     mutationFn: (channel: 'email' | 'sms') =>
@@ -805,14 +857,20 @@ function EmployeeLoginPanel({
           <div>
             <p className="text-sm font-semibold text-slate-900">Web login</p>
             <p className="text-xs text-slate-600">
-              Enabled · signs in at the app with {employee.email ?? 'their email'}
+              {loginEnabled
+                ? `Enabled · signs in at the app with ${employee.email ?? 'their email'}`
+                : 'Turned off · kiosk only'}
             </p>
           </div>
-          <SendLinkMenu
-            send={(body) => employeesApi.sendLink(companyId, employee.id, body)}
-            label="Send link"
-          />
+          {loginEnabled && (
+            <SendLinkMenu
+              send={(body) => employeesApi.sendLink(companyId, employee.id, body)}
+              label="Send link"
+            />
+          )}
         </div>
+        {loginSwitch}
+        {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
       </div>
     );
   }
@@ -860,6 +918,8 @@ function EmployeeLoginPanel({
         </>
       )}
 
+      {/* Lets an admin switch sign-in off before a login exists, or back on. */}
+      {employee.email && loginSwitch}
       {notice && <p className="mt-2 text-xs text-emerald-700">{notice}</p>}
       {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
     </div>

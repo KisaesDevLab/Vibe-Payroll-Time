@@ -13,7 +13,7 @@ import { TopBar } from '../components/TopBar';
 import { usePunchCompany } from '../hooks/usePunchCompany';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
-import { timesheets } from '../lib/resources';
+import { jobs as jobsApi, timesheets } from '../lib/resources';
 
 /**
  * Employee's own timesheet for the current pay period. Shows entries
@@ -28,6 +28,8 @@ export function MyTimesheetPage() {
   const { memberships, companyId, setCompanyId, company } = usePunchCompany();
 
   const [correction, setCorrection] = useState<TimeEntry | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addNotice, setAddNotice] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const sheet = useQuery({
@@ -54,15 +56,31 @@ export function MyTimesheetPage() {
               Current pay period. Request a fix on any entry that needs correcting.
             </p>
             {sheet.data && companyId != null && (
-              <div className="mt-3 inline-flex overflow-hidden rounded-full border border-slate-300 text-xs font-medium">
-                <span className="bg-slate-900 px-3 py-1.5 text-white">List view</span>
-                <Link
-                  to={`/companies/${companyId}/timesheets/${sheet.data.employee.id}/week`}
-                  className="px-3 py-1.5 text-slate-600 hover:bg-slate-100"
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <div className="inline-flex overflow-hidden rounded-full border border-slate-300 text-xs font-medium">
+                  <span className="bg-slate-900 px-3 py-1.5 text-white">List view</span>
+                  <Link
+                    to={`/companies/${companyId}/timesheets/${sheet.data.employee.id}/week`}
+                    className="px-3 py-1.5 text-slate-600 hover:bg-slate-100"
+                  >
+                    Grid view →
+                  </Link>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setAddNotice(null);
+                    setAddOpen(true);
+                  }}
                 >
-                  Grid view →
-                </Link>
+                  + Add time
+                </Button>
               </div>
+            )}
+            {addNotice && (
+              <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                {addNotice}
+              </p>
             )}
           </div>
           {memberships.length > 1 && (
@@ -109,6 +127,18 @@ export function MyTimesheetPage() {
         )}
       </main>
 
+      {addOpen && companyId != null && (
+        <AddTimeModal
+          companyId={companyId}
+          onClose={() => setAddOpen(false)}
+          onDone={(message) => {
+            setAddOpen(false);
+            setAddNotice(message);
+            qc.invalidateQueries({ queryKey: ['my-timesheet', companyId] });
+          }}
+        />
+      )}
+
       {correction && companyId != null && (
         <CorrectionRequestModal
           companyId={companyId}
@@ -121,6 +151,154 @@ export function MyTimesheetPage() {
         />
       )}
     </>
+  );
+}
+
+/** `YYYY-MM-DD` for a local Date. */
+function localIsoDay(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * Add a shift the employee forgot to punch: a date, clock-in and
+ * clock-out time, an optional job, and a reason. A clock-out earlier than
+ * the clock-in means the shift ran past midnight. The server saves it
+ * straight away or sends it to a supervisor, per the company's policy.
+ */
+function AddTimeModal({
+  companyId,
+  onClose,
+  onDone,
+}: {
+  companyId: number;
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  const [day, setDay] = useState(() => localIsoDay(new Date()));
+  const [clockIn, setClockIn] = useState('');
+  const [clockOut, setClockOut] = useState('');
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [reason, setReason] = useState('');
+
+  const jobsQ = useQuery({
+    queryKey: ['jobs', companyId, false],
+    queryFn: () => jobsApi.list(companyId),
+  });
+  const workJobs = (jobsQ.data ?? []).filter((j) => !j.isTimeOff);
+
+  const span = (() => {
+    if (!day || !clockIn || !clockOut) return null;
+    const start = new Date(`${day}T${clockIn}`);
+    const end = new Date(`${day}T${clockOut}`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+    const overnight = end <= start;
+    if (overnight) end.setDate(end.getDate() + 1);
+    return { start, end, overnight, hours: (end.getTime() - start.getTime()) / 3_600_000 };
+  })();
+
+  const submit = useMutation({
+    mutationFn: () =>
+      timesheets.addOwnEntry(companyId, {
+        startedAt: span!.start.toISOString(),
+        endedAt: span!.end.toISOString(),
+        jobId,
+        reason: reason.trim(),
+      }),
+    onSuccess: (r) =>
+      onDone(
+        r.status === 'added'
+          ? 'Time added to your timesheet.'
+          : 'Sent to your supervisor for approval. It shows on your timesheet once approved.',
+      ),
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Add time"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!span || !reason.trim()}
+            loading={submit.isPending}
+            onClick={() => submit.mutate()}
+          >
+            Save
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-slate-600">
+          Forgot to clock in or out? Enter the times you actually worked.
+        </p>
+        <FormField
+          label="Date"
+          type="date"
+          value={day}
+          max={localIsoDay(new Date())}
+          onChange={(e) => setDay(e.target.value)}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <FormField
+            label="Clock in"
+            type="time"
+            value={clockIn}
+            onChange={(e) => setClockIn(e.target.value)}
+          />
+          <FormField
+            label="Clock out"
+            type="time"
+            value={clockOut}
+            onChange={(e) => setClockOut(e.target.value)}
+          />
+        </div>
+        {span && (
+          <p className="text-xs text-slate-600">
+            {span.hours.toFixed(2)} hrs
+            {span.overnight ? ' · ends the next day' : ''}
+          </p>
+        )}
+        {workJobs.length > 0 && (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-700">Job (optional)</span>
+            <select
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+              value={jobId ?? ''}
+              onChange={(e) => setJobId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">— none —</option>
+              {workJobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.code} — {j.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Reason</span>
+          <textarea
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+            rows={2}
+            value={reason}
+            maxLength={500}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Phone was dead, forgot to clock in"
+          />
+        </label>
+        {submit.isError && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {submit.error instanceof ApiError ? submit.error.message : 'Could not save.'}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

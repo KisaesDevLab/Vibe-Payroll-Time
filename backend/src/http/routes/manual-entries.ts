@@ -17,6 +17,7 @@ import {
 } from '../../services/manual-entries.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth } from '../middleware/auth.js';
+import { isCompanyLoginBlocked } from '../../services/employee-login.js';
 
 export const manualEntriesRouter: Router = Router();
 
@@ -30,6 +31,9 @@ async function assertCallerOwnsCompany(
     .where({ user_id: userId, company_id: companyId })
     .first<{ role: string }>();
   if (!membership) throw Forbidden('Not a member of this company');
+  if (await isCompanyLoginBlocked(userId, companyId)) {
+    throw Forbidden('Your sign-in to this company has been turned off');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -48,7 +52,7 @@ manualEntriesRouter.post('/', requireAuth, async (req, res, next) => {
       day: body.day,
       jobId: body.jobId,
       durationSeconds: body.durationSeconds,
-      reason: body.reason,
+      reason: body.reason ?? '',
       ...(body.typedInput !== undefined ? { typedInput: body.typedInput } : {}),
       actor: {
         userId: req.user.id,

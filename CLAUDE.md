@@ -16,7 +16,7 @@ A self-hosted, multi-tenant **employee time tracking** application for hourly/sh
 **Explicit non-goals (v1):**
 
 - ❌ Payroll processing (gross-to-net, tax withholding, direct deposit, 941/940/W-2 filings) — export-only to Payroll Relief / Gusto / QBO Payroll / generic CSV
-- ❌ Scheduling (shifts, templates, trades, availability, time-off requests, PTO accruals)
+- ❌ Scheduling (shifts, templates, trades, availability, time-off requests, PTO accruals or balances). Time-off hours ARE recordable: see "Time off is a job flag" below.
 - ❌ Geofencing / photo / biometric / device-binding — anti-buddy-punching is auth-based only. (Opt-in per-company **punch location logging** exists: one GPS fix recorded with each personal-device punch, never used to accept or reject one. See "Punch location" below.)
 - ❌ Rate/wage data — hours only, no dollars anywhere in the system
 - ❌ Professional-services billable-hours UX (timer-first, per-client billing) — this is a punch-in/out app
@@ -130,6 +130,14 @@ Manual entries use `source = web_manual` and carry an `entry_reason`. A manual e
 - Kiosk, admin-created, and cron-closed entries always record NULL. A kiosk punch is already attributed to the paired tablet.
 - Edits never touch recorded coordinates. The create audit row carries `startedLocation`; the close writes an `ended_location` audit row.
 - Coordinates appear on timesheets and in the Punch activity report, never in payroll exports.
+
+### Time off is a job flag, not a separate concept
+
+PTO, sick, holiday and unpaid leave are job codes with `jobs.is_time_off = true`, a `time_off_category` (`pto | sick | holiday | unpaid | other`) and `is_paid`. Entries live in `time_entries` like any manual entry, created through `createManualEntry` and approved with the pay period. Each company turns the four standard types on under Settings → Time off (`services/time-off.ts`: on creates or restores the code, off archives it) and decides with `company_settings.time_off_self_entry` whether employees enter their own.
+
+- `buildTimesheetSummary` takes `timeOffJobs` (from `loadTimeOffJobs`) and splits time off out of `workSeconds`; OT reads worked hours only. Every caller that builds a summary must pass it.
+- Time off is never punched (`ensurePunchableJob`), never supersedes a punch, and needs no reason.
+- Vendor exports carry paid time off only; unpaid leave appears in reports and the generic CSV.
 
 ### Time format is always a display concern
 
@@ -262,6 +270,10 @@ docker compose -f docker-compose.prod.yml build
 - **Don't let an SSO-provisioned account bootstrap a local credential.** `users.sso_provisioned_at` marks just-in-time accounts; the self-service link lookups in `magic-links.ts` filter on it. Only an admin-sent link may grant such an account a password.
 - **Don't trust the vibe-auth package's default role map.** It would make every `vibe-partner` an appliance `super_admin`. The map is explicit (`VIBE_PT_ROLE_MAP`), and `setRole` refuses to demote the last SuperAdmin.
 - **Don't provision accounts before first-run setup.** Any `super_admin` row locks `/setup` for ever; break-glass and JIT creation check `assertSetupComplete` first.
+- **Don't grant company access without the sign-in switch.** `employees.login_disabled_at` closes a company to that person. Company-scoped checks go through `isCompanyLoginBlocked` and every session mint through `assertSignInAllowed` (`services/employee-login.ts`); a new access path that reads `company_memberships` directly must call it too. Kiosk punching is not a login and ignores it.
+- **Don't compute OT on total hours.** OT is `max(0, worked − 40)`. Time off is paid-but-not-worked; a summary built without `timeOffJobs` would count PTO as work.
+- **Don't flip a job between work and time off once it has approved entries.** Totals are derived on read, so the flip would restate approved periods; `updateJob` refuses it.
+- **Don't show balances.** Vibe PT records time off used; it never shows "remaining" or accruals.
 - **Don't make a punch depend on its location.** `required` mode lives in the PWA; the service records `missing` and moves on. A dropped punch is a wage claim, a flagged one is a conversation.
 - **Don't ask a personal device for location outside the moment of a punch.** No `watchPosition`, no fix on page load, no fix when the mode is `off`. The employee guide promises exactly one fix per punch.
 - **Don't let a grid re-render without reading the user's current format preference.** Format is resolved server-side on every grid-payload response (`timeFormat` field) so client and server always agree.

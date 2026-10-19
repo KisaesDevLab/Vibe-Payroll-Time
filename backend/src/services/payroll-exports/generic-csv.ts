@@ -3,7 +3,7 @@
 import { GENERIC_COLUMN_KEYS, formatHours, type GenericColumnKey } from '@vibept/shared';
 import { BadRequest } from '../../http/errors.js';
 import { csvLine, hoursDecimal } from './csv.js';
-import type { EmployeeSummary, ExportContext, FormatFn } from './types.js';
+import { hasHours, type EmployeeSummary, type ExportContext, type FormatFn } from './types.js';
 
 /**
  * Generic CSV exporter. Columns + order are configurable per run.
@@ -34,6 +34,13 @@ const HEADER_LABELS: Record<GenericColumnKey, string> = {
   manual_hours: 'Manual hours',
   source: 'Source',
   override_reasons: 'Override reasons',
+  pto_hours: 'PTO hours',
+  sick_hours: 'Sick hours',
+  holiday_hours: 'Holiday hours',
+  other_time_off_hours: 'Other time off hours',
+  unpaid_hours: 'Unpaid leave hours',
+  paid_time_off_hours: 'Paid time off hours',
+  total_paid_hours: 'Total paid hours',
 };
 
 export const genericCsv: FormatFn = (ctx) => {
@@ -61,7 +68,7 @@ export const genericCsv: FormatFn = (ctx) => {
   const periodEnd = ctx.periodEnd.toISOString().slice(0, 10);
 
   for (const e of ctx.employees) {
-    if (e.workSeconds === 0) continue;
+    if (!hasHours(e)) continue;
     const cells = columns.map((c) => formatCellFor(c, e, periodStart, periodEnd, ctx));
     rows.push(csvLine(cells));
   }
@@ -115,6 +122,20 @@ function formatCellFor(
       return sourceLabelFor(e);
     case 'override_reasons':
       return e.overrideReasons.join(' · ');
+    case 'pto_hours':
+      return renderHours(e.timeOff.byCategory.pto, ctx);
+    case 'sick_hours':
+      return renderHours(e.timeOff.byCategory.sick, ctx);
+    case 'holiday_hours':
+      return renderHours(e.timeOff.byCategory.holiday, ctx);
+    case 'other_time_off_hours':
+      return renderHours(e.timeOff.byCategory.other, ctx);
+    case 'unpaid_hours':
+      return renderHours(e.timeOff.unpaidSeconds, ctx);
+    case 'paid_time_off_hours':
+      return renderHours(e.timeOff.paidSeconds, ctx);
+    case 'total_paid_hours':
+      return renderHours(e.workSeconds + e.timeOff.paidSeconds, ctx);
     case 'job_breakdown_json':
       return JSON.stringify(
         e.byJob.map((j) => ({ jobCode: j.jobCode, hours: Number(hoursDecimal(j.workSeconds)) })),

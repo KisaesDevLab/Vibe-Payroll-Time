@@ -1,6 +1,6 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import type { TimeEntry, TimesheetResponse } from '@vibept/shared';
+import { TIME_OFF_CATEGORY_LABELS, type TimeEntry, type TimesheetResponse } from '@vibept/shared';
 import { useMemo, useState } from 'react';
 import { formatCoords, mapLinkFor } from '../lib/punch-location';
 import { EntryAuditDrawer } from './EntryAuditDrawer';
@@ -89,6 +89,17 @@ export function TimesheetView({
   onDeleteEntry?: (entry: TimeEntry) => void;
 }) {
   const [auditEntryId, setAuditEntryId] = useState<number | null>(null);
+  // Time-off codes used this period → their category, to label entries.
+  const timeOffCategoryByJob = useMemo(
+    () => new Map(data.timeOffBreakdown.map((t) => [t.jobId, t.category])),
+    [data.timeOffBreakdown],
+  );
+  const timeOffParts = Object.entries(data.timeOff.byCategory)
+    .filter(([, secs]) => (secs ?? 0) > 0)
+    .map(
+      ([cat, secs]) =>
+        `${TIME_OFF_CATEGORY_LABELS[cat as keyof typeof TIME_OFF_CATEGORY_LABELS]} ${formatHours(secs ?? 0)}`,
+    );
 
   // Bucket entries by their authoritative day-id assignment from the
   // backend. The summary's day.entryIds list is computed in the
@@ -145,8 +156,15 @@ export function TimesheetView({
             highlight={data.totals.overtimeSeconds > 0}
           />
           <Total label="Break" value={formatHours(data.totals.breakSeconds)} unit="hrs" />
-          <Total label="Total" value={formatHours(data.totals.workSeconds)} unit="hrs" />
+          <Total label="Worked" value={formatHours(data.totals.workSeconds)} unit="hrs" />
         </dl>
+        {data.timeOff.totalSeconds > 0 && (
+          <p className="mt-3 text-sm text-slate-700">
+            <span className="font-medium">Time off this period:</span>{' '}
+            {formatHours(data.timeOff.totalSeconds)} hrs ({timeOffParts.join(' · ')}). Paid but not
+            worked; not counted toward overtime.
+          </p>
+        )}
       </header>
 
       {data.days.length === 0 && (
@@ -174,6 +192,7 @@ export function TimesheetView({
               </div>
               <p className="text-xs text-slate-500">
                 Work {formatHours(day.workSeconds)} hrs · Break {formatHours(day.breakSeconds)} hrs
+                {day.timeOffSeconds > 0 && <> · Time off {formatHours(day.timeOffSeconds)} hrs</>}
               </p>
             </header>
             <table className="min-w-full divide-y divide-slate-100 text-sm">
@@ -199,7 +218,9 @@ export function TimesheetView({
                             : 'bg-amber-100 text-amber-800')
                         }
                       >
-                        {e.entryType}
+                        {e.jobId != null && timeOffCategoryByJob.has(e.jobId)
+                          ? `time off · ${TIME_OFF_CATEGORY_LABELS[timeOffCategoryByJob.get(e.jobId)!]}`
+                          : e.entryType}
                       </span>
                     </td>
                     <td className="px-5 py-2 font-mono text-xs text-slate-700">

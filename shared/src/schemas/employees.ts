@@ -22,6 +22,10 @@ export const employeeSchema = z.object({
    *    - reads by lower-privilege users
    *    - reads where the HTTP layer didn't opt in with includePin=true. */
   pin: z.string().nullable(),
+  /** Sign-in to this company (web, phone app, links, SSO). Off leaves
+   *  the record, timesheets and kiosk punching alone. */
+  loginEnabled: z.boolean(),
+  loginDisabledAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -58,6 +62,11 @@ export const updateEmployeeRequestSchema = z.object({
   status: z.enum(['active', 'terminated']).optional(),
 });
 export type UpdateEmployeeRequest = z.infer<typeof updateEmployeeRequestSchema>;
+
+export const setEmployeeLoginRequestSchema = z.object({
+  enabled: z.boolean(),
+});
+export type SetEmployeeLoginRequest = z.infer<typeof setEmployeeLoginRequestSchema>;
 
 /** Create-with-PIN response exposes the plaintext PIN once. */
 export const employeeWithPinResponseSchema = z.object({

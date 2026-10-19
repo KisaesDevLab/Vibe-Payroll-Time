@@ -11,6 +11,8 @@ import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from './punch.js';
+import { isTimeOffJob } from './time-off.js';
+import { isCompanyLoginBlocked } from './employee-login.js';
 
 // ---------------------------------------------------------------------------
 // Pure authorization function (unit-testable without touching the DB).
@@ -83,7 +85,21 @@ interface CompanyConfig {
   timezone: string;
   manualEntryMode: EmployeeManualEntryMode;
   requiresApproval: boolean;
+  /** May employees record their own time off? */
+  timeOffSelfEntry: boolean;
 }
+
+/**
+ * The employee guardrail that applies to an entry. Worked-time
+ * corrections follow `employee_manual_entry_mode`; time off follows its
+ * own switch, since a day off has no punch to override.
+ */
+function employeeModeFor(config: CompanyConfig, timeOff: boolean): EmployeeManualEntryMode {
+  if (!timeOff) return config.manualEntryMode;
+  return config.timeOffSelfEntry ? 'allowed' : 'disabled';
+}
+
+const TIME_OFF_SELF_ENTRY_OFF = 'Your company records time off for you. Ask your supervisor.';
 
 async function loadCompanyConfig(
   trx: Knex | Knex.Transaction,
@@ -94,12 +110,14 @@ async function loadCompanyConfig(
   const settings = await trx('company_settings').where({ company_id: companyId }).first<{
     employee_manual_entry_mode: EmployeeManualEntryMode;
     manual_entry_requires_approval: boolean;
+    time_off_self_entry: boolean;
   }>();
   if (!settings) throw NotFound('Company settings not found');
   return {
     timezone: company.timezone,
     manualEntryMode: settings.employee_manual_entry_mode,
     requiresApproval: settings.manual_entry_requires_approval,
+    timeOffSelfEntry: settings.time_off_self_entry,
   };
 }
 
@@ -116,9 +134,11 @@ async function loadActorContext(
     .where({ id: employeeId, company_id: companyId })
     .first<{ user_id: number | null; status: string }>();
   if (!employee) throw NotFound('Employee not found');
+  // Sign-in switched off for this company: no company role here.
+  const blocked = await isCompanyLoginBlocked(actor.userId, companyId, trx);
   return {
     roleGlobal: actor.roleGlobal,
-    companyRole: membership?.role ?? null,
+    companyRole: blocked ? null : (membership?.role ?? null),
     isOwnEntry: employee.user_id === actor.userId,
   };
 }
@@ -238,9 +258,14 @@ export async function createManualEntry(
 ): Promise<ManualEntryResponse> {
   if (input.durationSeconds <= 0) throw BadRequest('Duration must be greater than 0');
   if (input.durationSeconds > 86_400) throw BadRequest('Duration must be ≤ 24 hours');
-  if (!input.reason.trim()) throw BadRequest('Reason is required for manual entries');
 
   return db.transaction(async (trx) => {
+    const timeOff = await isTimeOffJob(trx, input.companyId, input.jobId);
+    // Worked-time overrides need a reason for the audit trail; a day off
+    // doesn't (the code itself says what it is).
+    const reason = input.reason.trim() || (timeOff ? 'Time off' : '');
+    if (!reason) throw BadRequest('Reason is required for manual entries');
+
     const config = await loadCompanyConfig(trx, input.companyId);
     const actorCtx = await loadActorContext(
       trx,
@@ -261,12 +286,17 @@ export async function createManualEntry(
       .whereNotNull('approved_at')
       .first<{ id: number }>();
 
+    const mode = employeeModeFor(config, timeOff);
     const decision = canManualEdit(actorCtx, {
       isApproved: !!approvedEntryToday,
-      mode: config.manualEntryMode,
+      mode,
     });
     if (!decision.allowed) {
-      throw Forbidden(decision.reason ?? 'Not allowed');
+      throw Forbidden(
+        timeOff && mode === 'disabled' && actorCtx.companyRole === 'employee'
+          ? TIME_OFF_SELF_ENTRY_OFF
+          : (decision.reason ?? 'Not allowed'),
+      );
     }
 
     // `override_only` means employees may create a manual entry only
@@ -275,7 +305,7 @@ export async function createManualEntry(
     // gate and skip this check.
     if (
       actorCtx.companyRole === 'employee' &&
-      config.manualEntryMode === 'override_only' &&
+      mode === 'override_only' &&
       actorCtx.roleGlobal !== 'super_admin'
     ) {
       const punchExists = await findOverlappingPunches(
@@ -302,15 +332,18 @@ export async function createManualEntry(
     const endedAtUtc = new Date(startedAtUtc.getTime() + input.durationSeconds * 1000);
 
     // Lock the day's rows for this employee so concurrent creates race
-    // cleanly to the unique-index violation.
-    const overlapping = await findOverlappingPunches(
-      trx,
-      input.companyId,
-      input.employeeId,
-      config.timezone,
-      input.day,
-      input.jobId,
-    );
+    // cleanly to the unique-index violation. Time off sits beside the
+    // day's punches; it never supersedes them.
+    const overlapping = timeOff
+      ? []
+      : await findOverlappingPunches(
+          trx,
+          input.companyId,
+          input.employeeId,
+          config.timezone,
+          input.day,
+          input.jobId,
+        );
     const supersededIds = overlapping.map((r) => r.id);
 
     const insertRow: Record<string, unknown> = {
@@ -327,11 +360,11 @@ export async function createManualEntry(
       source_offline: false,
       source_ip: input.actor.sourceIp ?? null,
       source_user_agent: input.actor.sourceUserAgent ?? null,
-      entry_reason: input.reason,
+      entry_reason: reason,
       supersedes_entry_ids: supersededIds.length > 0 ? supersededIds : null,
       created_by: input.actor.userId,
       edited_by: input.actor.userId,
-      edit_reason: input.reason,
+      edit_reason: reason,
     };
 
     let inserted: TimeEntryRow;
@@ -364,7 +397,7 @@ export async function createManualEntry(
       companyId: input.companyId,
       actorUserId: input.actor.userId,
       action: 'manual_create',
-      reason: input.reason,
+      reason,
       newValue: {
         day: input.day,
         jobId: input.jobId,
@@ -384,7 +417,7 @@ export async function createManualEntry(
           field: 'superseded_by_entry_id',
           oldValue: null,
           newValue: inserted.id,
-          reason: input.reason,
+          reason,
         });
       }
     }
@@ -433,12 +466,18 @@ export async function updateManualEntry(
       input.companyId,
       row.employee_id,
     );
+    const timeOff = await isTimeOffJob(trx, input.companyId, row.job_id);
+    const mode = employeeModeFor(config, timeOff);
     const decision = canManualEdit(actorCtx, {
       isApproved: !!row.approved_at,
-      mode: config.manualEntryMode,
+      mode,
     });
     if (!decision.allowed) {
-      throw Forbidden(decision.reason ?? 'Not allowed');
+      throw Forbidden(
+        timeOff && mode === 'disabled' && actorCtx.companyRole === 'employee'
+          ? TIME_OFF_SELF_ENTRY_OFF
+          : (decision.reason ?? 'Not allowed'),
+      );
     }
 
     // Duration of 0 → delegate to delete so the supersede chain is
@@ -521,12 +560,18 @@ export async function deleteManualEntry(input: DeleteManualEntryInput): Promise<
       input.companyId,
       row.employee_id,
     );
+    const timeOff = await isTimeOffJob(trx, input.companyId, row.job_id);
+    const mode = employeeModeFor(config, timeOff);
     const decision = canManualEdit(actorCtx, {
       isApproved: !!row.approved_at,
-      mode: config.manualEntryMode,
+      mode,
     });
     if (!decision.allowed) {
-      throw Forbidden(decision.reason ?? 'Not allowed');
+      throw Forbidden(
+        timeOff && mode === 'disabled' && actorCtx.companyRole === 'employee'
+          ? TIME_OFF_SELF_ENTRY_OFF
+          : (decision.reason ?? 'Not allowed'),
+      );
     }
 
     await _deleteWithinTrx(trx, { row, reason: input.reason, actor: input.actor });
@@ -680,6 +725,8 @@ export async function copyLastWeek(input: CopyLastWeekInput): Promise<{
       AND entry_type = 'work'
       AND deleted_at IS NULL
       AND superseded_by_entry_id IS NULL
+      -- Last week's vacation is not this week's.
+      AND (job_id IS NULL OR job_id NOT IN (SELECT id FROM jobs WHERE is_time_off))
       AND started_at AT TIME ZONE ? >= (?::date)::timestamp
       AND started_at AT TIME ZONE ? < ((?::date) + INTERVAL '7 day')::timestamp
     GROUP BY day, job_id

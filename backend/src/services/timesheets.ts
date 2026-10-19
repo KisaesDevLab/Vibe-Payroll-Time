@@ -12,6 +12,8 @@ import { buildTimesheetSummary, resolvePayPeriod } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { Forbidden, NotFound } from '../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from './punch.js';
+import { loadTimeOffJobs } from './time-off.js';
+import { isCompanyLoginBlocked } from './employee-login.js';
 
 interface CompanyCtx {
   id: number;
@@ -115,6 +117,7 @@ export async function getTimesheet(
     .orderBy('started_at', 'asc');
 
   const entries: TimeEntry[] = rows.map(rowToTimeEntry);
+  const timeOffJobs = await loadTimeOffJobs(companyId);
 
   const summary = buildTimesheetSummary(
     entries.map((e) => ({
@@ -133,6 +136,7 @@ export async function getTimesheet(
       roundingGraceMinutes: settings.roundingGraceMinutes,
       periodStart,
       periodEnd,
+      timeOffJobs,
     },
   );
 
@@ -167,6 +171,8 @@ export async function getTimesheet(
       overtimeSeconds: summary.periodTotal.overtimeSeconds,
     },
     jobBreakdown: summary.jobBreakdown,
+    timeOff: summary.timeOff,
+    timeOffBreakdown: summary.timeOffBreakdown,
     isApproved: allApproved,
     approvedAt,
   };
@@ -344,11 +350,12 @@ export async function loadEditContext(
   const employee = await db('employees')
     .where({ id: entry.employee_id })
     .first<{ user_id: number | null }>();
+  const blocked = await isCompanyLoginBlocked(actor.userId, companyId);
 
   return {
     userId: actor.userId,
     roleGlobal: actor.roleGlobal,
-    companyRole: membership?.role ?? null,
+    companyRole: blocked ? null : (membership?.role ?? null),
     isOwnEntry: employee?.user_id === actor.userId,
     isApproved: !!entry.approved_at,
   };
@@ -377,7 +384,11 @@ export async function loadCompanyEditContext(
   const membership = await db('company_memberships')
     .where({ user_id: actor.userId, company_id: companyId })
     .first<{ role: 'company_admin' | 'supervisor' | 'employee' }>();
-  return { roleGlobal: actor.roleGlobal, companyRole: membership?.role ?? null };
+  const blocked = await isCompanyLoginBlocked(actor.userId, companyId);
+  return {
+    roleGlobal: actor.roleGlobal,
+    companyRole: blocked ? null : (membership?.role ?? null),
+  };
 }
 
 export function assertCanAddEntry(ctx: {

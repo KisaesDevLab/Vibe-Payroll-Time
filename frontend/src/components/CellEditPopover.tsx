@@ -28,6 +28,9 @@ export interface CellEditPopoverProps {
   onDelete?: (() => Promise<void>) | undefined;
   saving?: boolean;
   errorText?: string | null;
+  /** A time-off code (PTO, sick, …): the reason becomes an optional
+   *  note, since nobody should have to justify a day off. */
+  timeOff?: boolean;
 }
 
 export function CellEditPopover({
@@ -44,6 +47,7 @@ export function CellEditPopover({
   onDelete,
   saving,
   errorText,
+  timeOff = false,
 }: CellEditPopoverProps): JSX.Element {
   const [seconds, setSeconds] = useState<number | null>(initialSeconds);
   const [parseError, setParseError] = useState<ParseError | null>(null);
@@ -52,12 +56,19 @@ export function CellEditPopover({
     initialSeconds != null ? formatHours(initialSeconds, format) : '',
   );
 
-  const reasonRequired = mode !== 'add';
+  const reasonRequired = !timeOff && mode !== 'add';
   const canSave =
     seconds != null && seconds > 0 && !parseError && (!reasonRequired || reason.trim().length > 0);
 
-  const title =
-    mode === 'add' ? 'Add entry' : mode === 'override' ? 'Override punch' : 'Edit entry';
+  const title = timeOff
+    ? mode === 'add'
+      ? 'Add time off'
+      : 'Edit time off'
+    : mode === 'add'
+      ? 'Add entry'
+      : mode === 'override'
+        ? 'Override punch'
+        : 'Edit entry';
 
   return (
     <Modal
@@ -138,7 +149,8 @@ export function CellEditPopover({
 
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-slate-700">
-            Reason {reasonRequired && <span className="text-red-500">*</span>}
+            {timeOff ? 'Note' : 'Reason'}{' '}
+            {reasonRequired && <span className="text-red-500">*</span>}
           </span>
           <textarea
             value={reason}

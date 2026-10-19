@@ -9,20 +9,22 @@ import {
 import { db } from '../../db/knex.js';
 import { NotFound } from '../../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from '../punch.js';
+import { loadTimeOffJobs } from '../time-off.js';
 import type { ReportHandler } from './types.js';
 
 export const overtimeReport: ReportHandler<typeof overtimeParamsSchema> = {
   name: 'overtime',
   label: 'Overtime & approaching-OT',
   description:
-    'Employees running over 40 hours this work week, or above an "approaching" threshold (default 35).',
+    'Employees running over 40 worked hours this work week, or above an "approaching" threshold (default 35). FLSA overtime is computed on worked hours only; time off is shown but never counts toward the 40.',
   columns: [
     { key: 'employeeNumber', label: 'Employee #', type: 'string' },
     { key: 'lastName', label: 'Last name', type: 'string' },
     { key: 'firstName', label: 'First name', type: 'string' },
     { key: 'weekStart', label: 'Week start', type: 'date' },
-    { key: 'workSeconds', label: 'Hours this week', type: 'hours' },
+    { key: 'workSeconds', label: 'Worked hrs this week', type: 'hours' },
     { key: 'overtimeSeconds', label: 'OT hours', type: 'hours' },
+    { key: 'timeOffSeconds', label: 'Time off hrs', type: 'hours' },
     { key: 'status', label: 'Flag', type: 'string' },
   ],
   paramFields: [{ key: 'periodStart', label: 'Reference date', type: 'date', required: false }],
@@ -67,6 +69,7 @@ export const overtimeReport: ReportHandler<typeof overtimeParamsSchema> = {
         }>
       >('id', 'first_name', 'last_name', 'employee_number');
 
+    const timeOffJobs = await loadTimeOffJobs(companyId);
     const byEmployee = new Map<number, TimeEntryRow[]>();
     for (const r of rows) {
       const arr = byEmployee.get(r.employee_id) ?? [];
@@ -98,6 +101,7 @@ export const overtimeReport: ReportHandler<typeof overtimeParamsSchema> = {
         roundingGraceMinutes: settings.punch_rounding_grace_minutes,
         periodStart: start,
         periodEnd: end,
+        timeOffJobs,
       });
 
       const work = summary.periodTotal.workSeconds;
@@ -114,6 +118,7 @@ export const overtimeReport: ReportHandler<typeof overtimeParamsSchema> = {
         weekStart: start.toISOString().slice(0, 10),
         workSeconds: work,
         overtimeSeconds: ot,
+        timeOffSeconds: summary.timeOff.totalSeconds,
         status: flag,
       };
     }

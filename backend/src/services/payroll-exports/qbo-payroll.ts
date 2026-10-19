@@ -1,7 +1,8 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { csvLine, hoursDecimal } from './csv.js';
-import type { FormatFn } from './types.js';
+import { TIME_OFF_CATEGORY_LABELS } from '@vibept/shared';
+import { hasHours, type FormatFn } from './types.js';
 
 /**
  * QuickBooks Online Payroll — time-activity import. QBO breaks hours
@@ -14,6 +15,10 @@ import type { FormatFn } from './types.js';
  * OT to the "most recent" job by allocating OT to the job with the
  * largest work_seconds share. Good enough for the import template; firms
  * can fine-tune in QBO post-import.
+ *
+ * Paid time off gets one row per time-off code (ServiceItem = the code,
+ * e.g. PTO or SICK, all hours regular) so it maps to the matching QBO
+ * pay type. Unpaid leave is not exported.
  *
  * See docs/exports/qbo-payroll.md.
  */
@@ -33,8 +38,25 @@ export const qboPayroll: FormatFn = (ctx) => {
   const payDate = ctx.periodEnd.toISOString().slice(0, 10);
 
   for (const e of ctx.employees) {
-    if (e.workSeconds === 0) continue;
+    if (!hasHours(e)) continue;
     const name = `${e.firstName} ${e.lastName}`;
+    const memo = `Vibe PT pay period ${ctx.periodStart.toISOString().slice(0, 10)}`;
+
+    for (const t of e.timeOffByJob) {
+      if (!t.isPaid || t.seconds === 0) continue;
+      rows.push(
+        csvLine([
+          name,
+          e.email ?? '',
+          t.jobCode ?? '',
+          hoursDecimal(t.seconds),
+          hoursDecimal(0),
+          payDate,
+          `${memo} · ${TIME_OFF_CATEGORY_LABELS[t.category]}`,
+        ]),
+      );
+    }
+    if (e.workSeconds === 0) continue;
 
     if (e.byJob.length === 0) {
       rows.push(

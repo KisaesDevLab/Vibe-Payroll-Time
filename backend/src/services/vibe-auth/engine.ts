@@ -35,6 +35,7 @@ import {
   ssoRequestContext,
   vibeAuditSink,
 } from './users.js';
+import { assertSignInAllowed } from '../employee-login.js';
 
 /**
  * Vibe Auth (single sign-on) — the product side of the contract.
@@ -135,6 +136,7 @@ async function mintSsoSession(
   // it may have been refused (last super_admin).
   const row = await db<UserRow>('users').where({ id }).whereNull('disabled_at').first();
   if (!row) throw new Error(`vibe-auth: user ${user.id} vanished during sign-in`);
+  await assertSignInAllowed(row);
 
   await healEmployeeLinksForUser(row.id, row.email);
 

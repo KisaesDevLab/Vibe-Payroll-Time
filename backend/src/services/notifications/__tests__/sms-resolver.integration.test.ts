@@ -20,6 +20,7 @@ import { db } from '../../../db/knex.js';
 import { runMigrations } from '../../../db/migrate.js';
 import { getResolvedSmsProvider } from '../../appliance-settings.js';
 import { encryptSecret } from '../../crypto.js';
+import { resolveSmsConfig } from '../service.js';
 
 const dbReachable = await db
   .raw('select 1')
@@ -135,5 +136,62 @@ describe.skipIf(!dbReachable)('getResolvedSmsProvider', () => {
     // Creds are incomplete so no bundle is returned — the dispatcher
     // then falls through to company creds (or no-ops silently).
     expect(resolved.textlinksms).toBeNull();
+  });
+});
+
+describe.skipIf(!dbReachable)('resolveSmsConfig', () => {
+  async function company(settings: Record<string, unknown>): Promise<number> {
+    const [co] = await db('companies')
+      .insert({ name: 'Acme', slug: 'acme', timezone: 'UTC', pay_period_type: 'weekly' })
+      .returning<Array<{ id: number }>>('id');
+    await db('company_settings').insert({ company_id: co!.id, ...settings });
+    return co!.id;
+  }
+  const companyTwilio = {
+    twilio_account_sid: 'ACco',
+    twilio_auth_token_encrypted: encryptSecret('co-token'),
+    twilio_from_number: '+15553334444',
+  };
+
+  it("uses a company's own Twilio with no provider picked anywhere", async () => {
+    // The company settings page has no provider picker; filling in Twilio
+    // there has to be enough on an appliance with no SMS of its own.
+    const id = await company(companyTwilio);
+    expect(await resolveSmsConfig(id)).toEqual({
+      provider: 'twilio',
+      accountSid: 'ACco',
+      authToken: 'co-token',
+      fromNumber: '+15553334444',
+    });
+  });
+
+  it("prefers the company's own complete creds over the appliance's", async () => {
+    await db('appliance_settings')
+      .where({ id: 1 })
+      .update({
+        sms_provider: 'textlinksms',
+        textlinksms_api_key_encrypted: encryptSecret('tl'),
+        textlinksms_from_number: '+15550000000',
+      });
+    const id = await company(companyTwilio);
+    expect(await resolveSmsConfig(id)).toMatchObject({ provider: 'twilio', accountSid: 'ACco' });
+  });
+
+  it('falls back to the appliance when the company has nothing', async () => {
+    await db('appliance_settings')
+      .where({ id: 1 })
+      .update({
+        twilio_account_sid: 'ACapp',
+        twilio_auth_token_encrypted: encryptSecret('app-token'),
+        twilio_from_number: '+15551112222',
+      });
+    const id = await company({});
+    expect(await resolveSmsConfig(id)).toMatchObject({ provider: 'twilio', accountSid: 'ACapp' });
+    expect(await resolveSmsConfig(null)).toMatchObject({ provider: 'twilio', accountSid: 'ACapp' });
+  });
+
+  it('is null when nothing is configured', async () => {
+    const id = await company({});
+    expect(await resolveSmsConfig(id)).toBeNull();
   });
 });

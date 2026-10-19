@@ -43,6 +43,9 @@ import type {
   EmployeePreferences,
   InviteMembershipRequest,
   Job,
+  AddOwnEntryRequest,
+  AddOwnEntryResponse,
+  TimeOffTypeState,
   KioskDevice,
   KioskPairingCodeResponse,
   Membership,
@@ -120,6 +123,12 @@ export const companySettings = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  /** Send a test SMS through the provider this company's messages use. */
+  testSms: (companyId: number, to: string) =>
+    apiFetch<TestSendResponse>(`/companies/${companyId}/notifications/test-sms`, {
+      method: 'POST',
+      body: JSON.stringify({ to }),
+    }),
 };
 
 // ---------------------------------------------------------------------------
@@ -177,6 +186,11 @@ export const employees = {
     apiFetch<Employee>(`/companies/${companyId}/employees/${employeeId}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
+    }),
+  setLogin: (companyId: number, employeeId: number, enabled: boolean) =>
+    apiFetch<Employee>(`/companies/${companyId}/employees/${employeeId}/login`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
     }),
   regeneratePin: (companyId: number, employeeId: number, length = 6) =>
     apiFetch<EmployeeWithPinResponse>(
@@ -306,6 +320,20 @@ export const jobs = {
 };
 
 // ---------------------------------------------------------------------------
+// Time off (Settings → Time off)
+// ---------------------------------------------------------------------------
+
+export const timeOff = {
+  listTypes: (companyId: number) =>
+    apiFetch<TimeOffTypeState[]>(`/companies/${companyId}/time-off-types`),
+  setType: (companyId: number, category: string, enabled: boolean) =>
+    apiFetch<TimeOffTypeState[]>(`/companies/${companyId}/time-off-types/${category}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+};
+
+// ---------------------------------------------------------------------------
 // Kiosk devices (admin side)
 // ---------------------------------------------------------------------------
 
@@ -376,6 +404,12 @@ export const timesheets = {
     apiFetch<EntryAuditRow[]>(`/timesheets/entries/${entryId}/audit?companyId=${companyId}`),
   createCorrection: (companyId: number, body: CreateCorrectionRequest) =>
     apiFetch<CorrectionRequest>(`/timesheets/correction-requests?companyId=${companyId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Employee adds a shift they forgot to punch. */
+  addOwnEntry: (companyId: number, body: AddOwnEntryRequest) =>
+    apiFetch<AddOwnEntryResponse>(`/timesheets/my-entries?companyId=${companyId}`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

@@ -38,8 +38,11 @@ async function resolveEmployeeForUser(
 
   const employee = await db('employees')
     .where({ user_id: req.user.id, company_id: companyId, status: 'active' })
-    .first<{ id: number }>();
+    .first<{ id: number; login_disabled_at: Date | null }>('id', 'login_disabled_at');
   if (!employee) throw Forbidden('You are not an active employee at this company');
+  if (employee.login_disabled_at) {
+    throw Forbidden('Your sign-in has been turned off. Clock in and out at the kiosk.');
+  }
   return { employeeId: employee.id };
 }
 

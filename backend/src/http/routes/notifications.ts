@@ -4,6 +4,7 @@ import {
   confirmPhoneVerificationSchema,
   notificationsLogQuerySchema,
   requestPhoneVerificationSchema,
+  testSmsRequestSchema,
   updateEmployeePreferencesRequestSchema,
   type EmployeePreferences,
   type NotificationsLogRow,
@@ -15,6 +16,7 @@ import {
   confirmPhoneVerification,
   startPhoneVerification,
 } from '../../services/notifications/phone-verification.js';
+import { sendCompanyTestSms } from '../../services/notifications/test-send.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth, requireCompanyRole } from '../middleware/auth.js';
 import { authRateLimiter } from '../middleware/rate-limit.js';
@@ -178,6 +180,23 @@ notificationsRouter.post(
 // ---------------------------------------------------------------------------
 
 export const notificationsAdminRouter: Router = Router({ mergeParams: true });
+
+/** Company admin: send a test SMS through the provider this company's
+ *  messages actually use. */
+notificationsAdminRouter.post(
+  '/:companyId/notifications/test-sms',
+  authRateLimiter,
+  requireAuth,
+  requireCompanyRole(['company_admin']),
+  async (req, res, next) => {
+    try {
+      const body = testSmsRequestSchema.parse(req.body);
+      res.json({ data: await sendCompanyTestSms(Number(req.params.companyId), body.to) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 notificationsAdminRouter.get(
   '/:companyId/notifications-log',

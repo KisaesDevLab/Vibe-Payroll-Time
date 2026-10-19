@@ -8,13 +8,14 @@ import {
 import { db } from '../../db/knex.js';
 import { NotFound } from '../../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from '../punch.js';
+import { loadTimeOffJobs } from '../time-off.js';
 import type { ReportHandler } from './types.js';
 
 export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema> = {
   name: 'hours_by_period',
   label: 'Hours by pay period',
   description:
-    'One row per active employee with regular, overtime, break, and total hours for the period.',
+    'One row per active employee with regular, overtime, break and worked hours for the period, plus time off by type. Overtime is computed on worked hours only.',
   columns: [
     { key: 'employeeNumber', label: 'Employee #', type: 'string' },
     { key: 'lastName', label: 'Last name', type: 'string' },
@@ -22,7 +23,13 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
     { key: 'regularSeconds', label: 'Regular hrs', type: 'hours' },
     { key: 'overtimeSeconds', label: 'OT hrs', type: 'hours' },
     { key: 'breakSeconds', label: 'Break hrs', type: 'hours' },
-    { key: 'workSeconds', label: 'Total hrs', type: 'hours' },
+    { key: 'workSeconds', label: 'Worked hrs', type: 'hours' },
+    { key: 'ptoSeconds', label: 'PTO hrs', type: 'hours' },
+    { key: 'sickSeconds', label: 'Sick hrs', type: 'hours' },
+    { key: 'holidaySeconds', label: 'Holiday hrs', type: 'hours' },
+    { key: 'otherTimeOffSeconds', label: 'Other time off hrs', type: 'hours' },
+    { key: 'unpaidSeconds', label: 'Unpaid leave hrs', type: 'hours' },
+    { key: 'paidTotalSeconds', label: 'Paid total hrs', type: 'hours' },
   ],
   paramFields: [
     { key: 'periodStart', label: 'Period start', type: 'date', required: true },
@@ -69,6 +76,7 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
         }>
       >('id', 'first_name', 'last_name', 'employee_number', 'status');
 
+    const timeOffJobs = await loadTimeOffJobs(companyId);
     const byEmployee = new Map<number, TimeEntryRow[]>();
     for (const r of rows) {
       const arr = byEmployee.get(r.employee_id) ?? [];
@@ -101,6 +109,7 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
         roundingGraceMinutes: settings.punch_rounding_grace_minutes,
         periodStart: start,
         periodEnd: end,
+        timeOffJobs,
       });
 
       yield {
@@ -111,6 +120,12 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
         overtimeSeconds: summary.periodTotal.overtimeSeconds,
         breakSeconds: summary.periodTotal.breakSeconds,
         workSeconds: summary.periodTotal.workSeconds,
+        ptoSeconds: summary.timeOff.byCategory.pto,
+        sickSeconds: summary.timeOff.byCategory.sick,
+        holidaySeconds: summary.timeOff.byCategory.holiday,
+        otherTimeOffSeconds: summary.timeOff.byCategory.other,
+        unpaidSeconds: summary.timeOff.unpaidSeconds,
+        paidTotalSeconds: summary.periodTotal.workSeconds + summary.timeOff.paidSeconds,
       };
     }
   },

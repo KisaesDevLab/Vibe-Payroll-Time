@@ -3,6 +3,7 @@
 import {
   approvePeriodRequestSchema,
   createCorrectionRequestSchema,
+  addOwnEntryRequestSchema,
   createEntryRequestSchema,
   decideCorrectionRequestSchema,
   deleteEntryRequestSchema,
@@ -37,6 +38,8 @@ import {
 } from '../../services/timesheets.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth, requireCompanyRole } from '../middleware/auth.js';
+import { isCompanyLoginBlocked } from '../../services/employee-login.js';
+import { addOwnEntry } from '../../services/own-entries.js';
 
 export const timesheetsRouter: Router = Router();
 
@@ -57,6 +60,9 @@ async function assertCallerOwnsCompany(
     .where({ user_id: userId, company_id: companyId })
     .first<{ role: 'company_admin' | 'supervisor' | 'employee' }>();
   if (!membership) throw Forbidden('Not a member of this company');
+  if (await isCompanyLoginBlocked(userId, companyId)) {
+    throw Forbidden('Your sign-in to this company has been turned off');
+  }
   if (minRole) {
     const rank = { employee: 1, supervisor: 2, company_admin: 3 };
     if (rank[membership.role] < rank[minRole]) throw Forbidden('Insufficient role');
@@ -371,6 +377,24 @@ correctionsRouter.get(
   },
 );
 
+// Employee adds a shift they forgot to punch ("Add time" on My timesheet).
+// Saved directly or sent for approval per the company's manual-entry
+// policy (services/own-entries.ts).
+timesheetsRouter.post('/my-entries', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const { companyId } = approveQuery.parse(req.query);
+    const body = addOwnEntryRequestSchema.parse(req.body);
+    const result = await addOwnEntry(companyId, req.user.id, body, {
+      sourceIp: req.ip ?? null,
+      sourceUserAgent: req.headers['user-agent']?.slice(0, 512) ?? null,
+    });
+    res.status(201).json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Employee creates a request — scoped to the acting user's employee row.
 timesheetsRouter.post('/correction-requests', requireAuth, async (req, res, next) => {
   try {
@@ -380,8 +404,11 @@ timesheetsRouter.post('/correction-requests', requireAuth, async (req, res, next
 
     const employee = await db('employees')
       .where({ company_id: companyId, user_id: req.user.id, status: 'active' })
-      .first<{ id: number }>();
+      .first<{ id: number; login_disabled_at: Date | null }>('id', 'login_disabled_at');
     if (!employee) return next(Forbidden('Not an active employee at this company'));
+    if (employee.login_disabled_at) {
+      return next(Forbidden('Your sign-in to this company has been turned off'));
+    }
 
     const created = await createCorrectionRequest(companyId, employee.id, req.user.id, body);
     res.status(201).json({ data: created });

@@ -114,6 +114,17 @@ cause and re-send; the notification log under **Settings → Notifications** has
 the full history (message bodies for links are deliberately redacted so nobody
 can copy someone else's sign-in link out of the log).
 
+### Turning someone's sign-in off
+
+On the employee record, **Web login → Allow sign-in** switches that
+person's sign-in to this company on or off. Off signs them out of this
+company on the web and the phone app and refuses password, link and
+single sign-on sign-in. Their record, timesheets and **kiosk punching
+are unchanged**. Someone who works for several companies keeps the
+others; if every company has them switched off, they can't sign in at
+all. You can't switch off your own sign-in, and SuperAdmins are never
+affected. The Employees list marks them **sign-in off**.
+
 ### Employees who can't self-serve
 
 If the appliance has no email and no SMS transport at all, there is no
@@ -173,6 +184,40 @@ Optional. Jobs let employees tag a punch with a customer / project / cost code.
 Enable under **Settings → Job tracking**. Individual jobs can be marked
 billable or unbillable — it's just a label, since this app tracks hours only
 (no rates, no dollars).
+
+## Time off (PTO, sick, holiday, unpaid)
+
+Vibe PT records time off; it does not track balances, accruals or
+requests. Turn on the kinds a company uses under **Settings → Time
+off**:
+
+- **PTO**, **Sick**, **Holiday** (paid) and **Unpaid leave**. Each
+  switch applies at once. On creates the matching job code (`PTO`,
+  `SICK`, `HOLIDAY`, `UNPAID`); off archives it, which hides it for new
+  entries but keeps every hour already recorded on timesheets, reports
+  and exports.
+- **Employees can record their own time off** (on by default). Off means
+  only supervisors and admins can enter it. This is separate from the
+  manual-entry policy for worked time, since a day off has no punch to
+  override.
+- Other kinds (bereavement, jury duty, …): on the **Jobs** page, create
+  a job, tick **This is a time-off code**, pick a category (usually
+  _Other time off_) and whether it is paid.
+
+Time off is entered as hours on the weekly grid, in the **Time off**
+section below the jobs. It can't be punched, needs no reason (the note
+is optional), and goes through the normal pay-period approval. It
+**never counts toward overtime**: FLSA overtime is based on hours
+actually worked, so 38 worked + 8 PTO is 46 paid hours and 0 overtime.
+
+A code with approved entries can't be switched between work and time
+off, because that would silently restate approved pay periods. Create
+a new code instead.
+
+Reports: **Time off by period** (hours used per employee, by type) and
+**Time off entries** (every entry, who entered it, approval). Hours by
+pay period, Time card, Hours by job and Overtime also show time off.
+Payroll exports carry paid time off; see `docs/exports/`.
 
 ## When something goes wrong
 
