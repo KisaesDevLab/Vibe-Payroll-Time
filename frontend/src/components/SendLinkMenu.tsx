@@ -47,12 +47,16 @@ const ACTIONS: Action[] = [
 export function SendLinkMenu({
   send,
   label = 'Send link',
+  smsTo,
 }: {
   send: (body: {
     channel: 'email' | 'sms';
     purpose: LinkPurpose;
   }) => Promise<SendAccountLinkResponse>;
   label?: string;
+  /** The number texts will go to, shown on the text options so the admin
+   *  sees it before sending. Omit when the page doesn't know it. */
+  smsTo?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<SendAccountLinkResponse | null>(null);
@@ -177,6 +181,9 @@ export function SendLinkMenu({
                   }
                 >
                   {a.label}
+                  {a.channel === 'sms' && smsTo && (
+                    <span className="block text-xs text-slate-500">to {smsTo}</span>
+                  )}
                 </button>
               );
             })}

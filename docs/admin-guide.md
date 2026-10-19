@@ -114,6 +114,17 @@ cause and re-send; the notification log under **Settings → Notifications** has
 the full history (message bodies for links are deliberately redacted so nobody
 can copy someone else's sign-in link out of the log).
 
+### Which number a sign-in text goes to
+
+- **From an employee record:** the phone on that record, shown under the
+  text options in **Send link**. No phone on the record means no text.
+- **From a company's Team page:** the person's employee record at that
+  company, else the phone they set in Preferences.
+- **"Text me a link" on the login page:** only a **verified** number (the
+  employee confirms it under Notifications with a texted code). If the same
+  number is verified on several accounts, one link is sent per account, each
+  naming its account.
+
 ### Turning someone's sign-in off
 
 On the employee record, **Web login → Allow sign-in** switches that

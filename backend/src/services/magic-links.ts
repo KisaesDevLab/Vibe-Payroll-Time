@@ -183,45 +183,66 @@ interface Recipient {
 }
 
 /**
- * Best phone for a user, preferring a verified number and falling back
- * to an unverified one on an active employee record.
+ * The number an admin-initiated text goes to.
  *
- * Verification is required in the SELF-SERVICE path (`resolveByIdentifier`)
- * because there the number IS the lookup key: anyone who can type a
- * phone number could otherwise point a stranger's account at their own
- * handset. That threat doesn't exist here. An admin-initiated send
- * picks the recipient by identity — a specific employee row they have
- * open — and the number is merely the address on that record, typed in
- * by the admin themselves.
+ * An admin sends from somewhere specific, and the number must be the one
+ * on that page, never a number from another company or from the person's
+ * other accounts:
  *
- * Refusing unverified numbers here would also make the common case
- * impossible: a new hire has no way to verify a phone until they can
- * sign in, and the SMS is how they sign in. Callers get `verified` back
- * so they can label the send for the admin, whose typo is now the only
- * remaining risk — the same risk that already applies to the email
- * address on the same form.
+ *   - from an employee record (`employeeId`): that record's phone, and
+ *     only it. Previously the linked user's own phone, or a verified phone
+ *     on ANY of their employee records at ANY company, took precedence,
+ *     so a link could reach a number the admin never saw (and another
+ *     company's data decided where this company's link went).
+ *   - from a company's Team page (`companyId`): the person's employee
+ *     record at that company, else their own Preferences number.
+ *   - appliance-wide (People page, SuperAdmin): their Preferences number,
+ *     else a verified employee phone, else any employee phone.
+ *
+ * Verification is not required here, unlike the self-service path
+ * (`resolveByIdentifier`), where the number IS the lookup key and anyone
+ * who can type one could point a stranger's account at their own
+ * handset. Here the admin picks the person and the number is the address
+ * on their record. A new hire can't verify before they can sign in, and
+ * the text is how they sign in. `verified` comes back so the admin is
+ * told when the number is unconfirmed.
  */
 async function findPhoneForUser(
   user: UserRow,
+  scope: { companyId?: number | null; employeeId?: number | null } = {},
 ): Promise<{ phone: string; verified: boolean } | null> {
+  type Row = { phone: string | null; phone_verified_at: Date | null };
+  const asResult = (r: Row | undefined) =>
+    r?.phone ? { phone: r.phone, verified: !!r.phone_verified_at } : null;
+
+  if (scope.employeeId != null) {
+    const row = await db('employees')
+      .where({ id: scope.employeeId, user_id: user.id })
+      .modify((q) => {
+        if (scope.companyId != null) q.where('company_id', scope.companyId);
+      })
+      .first<Row>('phone', 'phone_verified_at');
+    return asResult(row);
+  }
+
+  if (scope.companyId != null) {
+    const row = await db('employees')
+      .where({ user_id: user.id, company_id: scope.companyId, status: 'active' })
+      .whereNotNull('phone')
+      .orderBy('id', 'asc')
+      .first<Row>('phone', 'phone_verified_at');
+    return (
+      asResult(row) ?? asResult({ phone: user.phone, phone_verified_at: user.phone_verified_at })
+    );
+  }
+
   if (user.phone && user.phone_verified_at) return { phone: user.phone, verified: true };
-
-  const verified = await db('employees')
+  const employeePhone = await db('employees')
     .where({ user_id: user.id, status: 'active' })
     .whereNotNull('phone')
-    .whereNotNull('phone_verified_at')
-    .orderBy('id', 'asc')
-    .first<{ phone: string }>('phone');
-  if (verified) return { phone: verified.phone, verified: true };
-
-  if (user.phone) return { phone: user.phone, verified: false };
-
-  const unverified = await db('employees')
-    .where({ user_id: user.id, status: 'active' })
-    .whereNotNull('phone')
-    .orderBy('id', 'asc')
-    .first<{ phone: string }>('phone');
-  return unverified ? { phone: unverified.phone, verified: false } : null;
+    .orderByRaw('phone_verified_at IS NULL, id')
+    .first<Row>('phone', 'phone_verified_at');
+  return asResult(employeePhone) ?? asResult({ phone: user.phone, phone_verified_at: null });
 }
 
 /**
@@ -239,7 +260,7 @@ async function findPhoneForUser(
 async function resolveByIdentifier(
   identifier: string,
   channel: MagicLinkChannel,
-): Promise<Recipient | null> {
+): Promise<Recipient[]> {
   if (channel === 'email') {
     const user =
       (await db<UserRow>('users')
@@ -247,13 +268,15 @@ async function resolveByIdentifier(
         .whereNull('disabled_at')
         .whereNull('sso_provisioned_at')
         .first()) ?? null;
-    if (!user) return null;
-    return {
-      user,
-      identifier,
-      phone: user.phone,
-      phoneVerified: !!user.phone_verified_at,
-    };
+    if (!user) return [];
+    return [
+      {
+        user,
+        identifier,
+        phone: user.phone,
+        phoneVerified: !!user.phone_verified_at,
+      },
+    ];
   }
 
   // Look in two places: the user's own appliance-wide phone (set at
@@ -266,11 +289,7 @@ async function resolveByIdentifier(
     .whereNotNull('phone_verified_at')
     .whereNull('disabled_at')
     .whereNull('sso_provisioned_at')
-    .first();
-  if (byUserPhone) {
-    return { user: byUserPhone, identifier, phone: identifier, phoneVerified: true };
-  }
-
+    .select('*');
   const byEmployeePhone = await db('users')
     .join('employees', 'employees.user_id', 'users.id')
     .where('employees.phone', identifier)
@@ -278,12 +297,24 @@ async function resolveByIdentifier(
     .whereNull('users.disabled_at')
     .whereNull('users.sso_provisioned_at')
     .where('employees.status', 'active')
-    .first<UserRow>('users.*');
-  if (!byEmployeePhone) return null;
+    .select<UserRow[]>('users.*');
+
+  // One number can be verified on several accounts (a shared family
+  // phone, an owner who verified it on two records). The person holding
+  // the phone gets one link per account, each naming its account, and
+  // picks; guessing one would sign them into an account that may not be
+  // the one they meant.
+  const matches = new Map<number, UserRow>();
+  for (const u of [...byUserPhone, ...byEmployeePhone]) matches.set(u.id, u);
 
   // Deliver to the number that MATCHED, not `users.phone` — which is
   // usually NULL for an hourly employee.
-  return { user: byEmployeePhone, identifier, phone: identifier, phoneVerified: true };
+  return [...matches.values()].map((user) => ({
+    user,
+    identifier,
+    phone: identifier,
+    phoneVerified: true,
+  }));
 }
 
 /** Canonicalize so the lookup, the rate-limit key, and the audit row
@@ -320,6 +351,8 @@ interface IssueInput {
   /** The client company an admin sent this from (single sign-on policy:
    *  see migration 20261019000002_magic_links_company.js). */
   companyId?: number | null;
+  /** Names the account in the text when one number reaches several. */
+  accountHint?: string;
 }
 
 interface IssueOutcome {
@@ -404,6 +437,7 @@ async function issueAndDeliver(input: IssueInput): Promise<IssueOutcome> {
     vars: {
       firstName: user.email.split('@')[0] ?? '',
       appName,
+      account: input.accountHint ?? null,
       [URL_VAR[purpose]]: url,
     },
   });
@@ -435,12 +469,14 @@ async function selfServiceRequest(
   if (!identifier) return;
 
   try {
-    const recipient = await resolveByIdentifier(identifier, input.channel);
-    if (!recipient) return;
     // Under oidc_only a firm user signs in through the IdP; a link could
     // not be used, so none is sent. Client-company users still get theirs.
     // Silent like every other miss — the 204 reveals nothing.
-    if (!(await linkSignInAllowedFor(recipient.user.id))) return;
+    const recipients: Recipient[] = [];
+    for (const r of await resolveByIdentifier(identifier, input.channel)) {
+      if (await linkSignInAllowedFor(r.user.id)) recipients.push(r);
+    }
+    if (recipients.length === 0) return;
 
     // Rate limit: no more than N SELF-SERVICE requests for this
     // identifier per hour. Admin-initiated rows are excluded (they
@@ -457,19 +493,26 @@ async function selfServiceRequest(
       .where('created_at', '>', since)
       .count<{ count: string }>({ count: '*' })
       .first();
-    if (Number(recentRow?.count ?? 0) >= RATE_LIMIT_PER_HOUR) {
+    // A number on several accounts writes one row per account per request.
+    if (Number(recentRow?.count ?? 0) >= RATE_LIMIT_PER_HOUR * recipients.length) {
       logger.warn({ identifier, purpose }, 'link request rate limit hit');
       return;
     }
 
-    await issueAndDeliver({
-      recipient,
-      channel: input.channel,
-      purpose,
-      origin: input.origin,
-      ip: input.ip,
-      userAgent: input.userAgent,
-    });
+    for (const recipient of recipients) {
+      await issueAndDeliver({
+        recipient,
+        channel: input.channel,
+        purpose,
+        origin: input.origin,
+        ip: input.ip,
+        userAgent: input.userAgent,
+        // Several accounts on one number: say which account each text is for.
+        ...(recipients.length > 1
+          ? { accountHint: maskAddress(recipient.user.email, 'email') }
+          : {}),
+      });
+    }
   } catch (err) {
     logger.warn({ err, purpose }, 'link request failed (silenced to prevent enumeration)');
   }
@@ -502,6 +545,8 @@ export interface SendAccountLinkInput {
    *  under oidc_only a firm user's link from a CLIENT company still works
    *  (vibe-auth/policy.ts `assertLinkSignInAllowed`). */
   companyId?: number | null;
+  /** Sent from this employee record: text exactly its phone. */
+  employeeId?: number | null;
   ip: string | null;
   userAgent: string | null;
 }
@@ -533,14 +578,19 @@ export async function sendAccountLink(
       phoneVerified: false,
     };
   } else {
-    const found = await findPhoneForUser(user);
+    const found = await findPhoneForUser(user, {
+      companyId: input.companyId ?? null,
+      employeeId: input.employeeId ?? null,
+    });
     if (!found) {
       // A hard 400 rather than a soft "skipped" — the admin picked SMS
       // explicitly and there is no number to send to, so nothing was
       // attempted and no token was minted. Minting one we can't
       // deliver would burn a row and confuse the audit trail.
       throw BadRequest(
-        'No phone number on file for this user. Add one to their employee record, or send the link by email instead.',
+        input.employeeId != null
+          ? 'This employee record has no phone number. Add one and save, or send the link by email instead.'
+          : 'No phone number on file for this user. Add one to their employee record, or send the link by email instead.',
       );
     }
     // `phoneVerified: true` is what unblocks notify()'s SMS gate. It is

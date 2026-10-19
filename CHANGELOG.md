@@ -7,6 +7,29 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — Sign-in texts going to the wrong phone
+
+- **A link texted from an employee record could go to a different number.**
+  The server ignored the record's phone and took the first number it found
+  for the linked account: the account's own Preferences phone, or a verified
+  phone on any of that person's employee records at any company. It now texts
+  exactly the record's phone, and refuses (rather than finding another number)
+  when the record has none. From a company's Team page it uses the person's
+  employee record at that company, else their own Preferences number, and never
+  another company's record. The Send link menu shows the number before
+  sending.
+- **Login page "text me a link" with a number on several accounts** picked
+  one account arbitrarily. It now texts one link per account, each naming its
+  account (masked email).
+
+### Fixed — Appliance test SMS stuck disabled
+
+- Appliance → SMS highlights Twilio by default, so an operator who filled in
+  Twilio and saved never actually picked a provider, and **Send test SMS**
+  stayed disabled ("Configure credentials above"). The test now uses the same
+  fallback as real sends (whichever provider has complete credentials), and
+  the page says when no provider is picked.
+
 ### Fixed — SMS delivery
 
 - **Test SMS now reports the carrier's verdict.** Twilio accepting a message

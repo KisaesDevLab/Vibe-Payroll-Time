@@ -75,4 +75,17 @@ describe('renderTemplate', () => {
       expect(out.sms).toContain('Jess');
     });
   });
+
+  describe('magic_link sms', () => {
+    it('names the account only when one is given', () => {
+      const plain = renderTemplate('magic_link', { appName: 'Vibe PT', magicUrl: 'https://x/y' });
+      expect(plain.sms).toBe('Vibe PT sign-in: https://x/y (valid 15m)');
+      const named = renderTemplate('magic_link', {
+        appName: 'Vibe PT',
+        magicUrl: 'https://x/y',
+        account: 'k••••@gmail.com',
+      });
+      expect(named.sms).toBe('Vibe PT sign-in for k••••@gmail.com: https://x/y (valid 15m)');
+    });
+  });
 });

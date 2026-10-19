@@ -92,7 +92,9 @@ A password reset was requested for your {{appName}} account. Open the link below
 {{resetUrl}}
 
 If you didn't request this, ignore this email.`,
-    sms: '{{appName}}: reset your password at {{resetUrl}} (valid 30m)',
+    // `account` is set only when one number reaches several accounts, so
+    // each text says which account it resets.
+    sms: '{{appName}}{{#account}} ({{account}}){{/account}}: reset your password at {{resetUrl}} (valid 30m)',
   },
 
   magic_link: {
@@ -105,7 +107,7 @@ If you didn't request this, ignore this email.`,
 Click to sign in to {{appName}}. The link is valid for 15 minutes.
 
 {{magicUrl}}`,
-    sms: '{{appName}} sign-in: {{magicUrl}} (valid 15m)',
+    sms: '{{appName}} sign-in{{#account}} for {{account}}{{/account}}: {{magicUrl}} (valid 15m)',
   },
 
   missed_punch_reminder: {

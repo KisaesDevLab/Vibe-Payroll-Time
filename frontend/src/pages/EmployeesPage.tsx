@@ -866,6 +866,7 @@ function EmployeeLoginPanel({
             <SendLinkMenu
               send={(body) => employeesApi.sendLink(companyId, employee.id, body)}
               label="Send link"
+              smsTo={employee.phone}
             />
           )}
         </div>

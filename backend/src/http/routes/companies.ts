@@ -471,6 +471,9 @@ companiesRouter.post(
         origin: originForRequest(req, body.origin),
         actorUserId: req.user.id,
         companyId,
+        // Text the number on THIS record, not one from the person's other
+        // accounts or companies.
+        employeeId,
         ip: req.ip ?? null,
         userAgent: req.headers['user-agent'] ?? null,
       });
