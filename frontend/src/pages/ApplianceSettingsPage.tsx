@@ -585,6 +585,12 @@ function SmsSection({ data, form, setForm }: SectionProps) {
             </button>
           )}
         </div>
+        {form.sms.provider === null && (
+          <p className="mt-1 text-xs text-slate-500">
+            No provider picked. Whichever one has complete credentials is used automatically. Click
+            one to pick it.
+          </p>
+        )}
       </Field>
 
       {activeProvider === 'twilio' ? (
@@ -705,15 +711,20 @@ function TestSmsWidget({ data }: { data: ApplianceSettings }) {
   const send = useMutation({
     mutationFn: () => admin.testSms({ to: to.trim() }),
   });
-  const provider = data.sms.provider;
+  const twilioReady =
+    !!data.sms.twilio.accountSid &&
+    data.sms.twilio.authTokenHasSecret &&
+    !!data.sms.twilio.fromNumber;
+  const textlinkReady = data.sms.textlinksms.apiKeyHasSecret && !!data.sms.textlinksms.fromNumber;
+  // Same fallback as the server (getResolvedSmsProvider): with no
+  // provider picked, whichever one has complete credentials is used. The
+  // provider buttons highlight Twilio by default, so an operator who
+  // filled in Twilio and saved never "picked" it and the test used to
+  // stay disabled.
+  const provider =
+    data.sms.provider ?? (twilioReady ? 'twilio' : textlinkReady ? 'textlinksms' : null);
   const hasCreds =
-    (provider === 'twilio' &&
-      !!data.sms.twilio.accountSid &&
-      data.sms.twilio.authTokenHasSecret &&
-      !!data.sms.twilio.fromNumber) ||
-    (provider === 'textlinksms' &&
-      data.sms.textlinksms.apiKeyHasSecret &&
-      !!data.sms.textlinksms.fromNumber);
+    (provider === 'twilio' && twilioReady) || (provider === 'textlinksms' && textlinkReady);
   const disabled = !provider || !hasCreds;
   const result = send.data ?? null;
 

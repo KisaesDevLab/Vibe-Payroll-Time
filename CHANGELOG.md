@@ -7,6 +7,14 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — Appliance test SMS stuck disabled
+
+- Appliance → SMS highlights Twilio by default, so an operator who filled in
+  Twilio and saved never actually picked a provider, and **Send test SMS**
+  stayed disabled ("Configure credentials above"). The test now uses the same
+  fallback as real sends (whichever provider has complete credentials), and
+  the page says when no provider is picked.
+
 ### Fixed — SMS delivery
 
 - **Test SMS now reports the carrier's verdict.** Twilio accepting a message
