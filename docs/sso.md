@@ -12,6 +12,15 @@ token and employees identify by PIN or QR badge, in every mode, with no
 identity-provider account. The SSO engine only ever handles `/auth/*`;
 kiosk traffic lives under `/api/v1/kiosk/*` and cannot pass through it.
 
+> **Pending scope change (not yet implemented).** SSO is meant for **firm
+> users only** — SuperAdmins and members of the firm's internal company
+> (`is_internal = true`) who use it to access client companies. Admins,
+> supervisors and employees of **client companies** must keep signing in
+> locally (password / login link) and never flow through Vibe Auth: no JIT
+> provisioning or role sync into client-company memberships, and `oidc_only`
+> must not lock them out. Until that lands, the behaviour described below
+> applies to the whole staff realm. Tracked in `BUILD_PLAN.md` Phase 15.
+
 ---
 
 ## Modes

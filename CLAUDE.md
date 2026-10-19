@@ -108,6 +108,8 @@ Admin toggles per-company: "personal device only", "kiosk only", "both allowed".
 
 **Single sign-on (optional, staff realm only).** Paths 1 and 2 can also sign in through the firm's identity provider via `@kisaesdevlab/vibe-auth` (`backend/src/services/vibe-auth/`, operator guide `docs/sso.md`). Modes `local` (default) / `both` / `oidc_only`, set by a SuperAdmin at Appliance → Authentication. An SSO login mints the same access + refresh pair a password login does and hands it to the SPA on the URL fragment; SSO access tokens carry a `sid` claim. Path 3 (kiosk) is never SSO's to gate. One local account, `vibe-breakglass`, survives `oidc_only` for IdP outages.
 
+> **Pending requirement — SSO is for firm users only (not yet implemented).** Vibe Auth must gate only the **firm's** users — SuperAdmins and staff of the internal company (`companies.is_internal = true`) who sign in to reach client companies. **Client-company admins, supervisors, and employees must never flow through Vibe Auth**: no "Sign in with …" button for them, no JIT provisioning or role sync into client-company memberships, and `oidc_only` must not refuse their password / magic-link / reset sign-ins. Today the integration covers the whole staff realm (see `docs/sso.md` § Scope); treat that as the thing to change. Tracked in `BUILD_PLAN.md` Phase 15.
+
 ### Punch model
 
 ```
