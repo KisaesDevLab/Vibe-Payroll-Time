@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeEntry } from '@vibept/shared';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
@@ -10,6 +10,7 @@ import { Modal } from '../components/Modal';
 import { NLCorrectionWidget } from '../components/NLCorrectionWidget';
 import { TimesheetView } from '../components/TimesheetView';
 import { TopBar } from '../components/TopBar';
+import { usePunchCompany } from '../hooks/usePunchCompany';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
 import { timesheets } from '../lib/resources';
@@ -23,14 +24,8 @@ export function MyTimesheetPage() {
   const session = useSession();
   // Same reasoning as MyPunchPage — admin-only memberships can't view
   // a timesheet (no employees row), so hide them from the picker.
-  const memberships = useMemo(
-    () => session?.user.memberships.filter((m) => m.isEmployee) ?? [],
-    [session],
-  );
-  const [companyId, setCompanyId] = useState<number | null>(memberships[0]?.companyId ?? null);
-  useEffect(() => {
-    if (!companyId && memberships[0]) setCompanyId(memberships[0].companyId);
-  }, [companyId, memberships]);
+  // Shares the remembered company with MyPunchPage.
+  const { memberships, companyId, setCompanyId, company } = usePunchCompany();
 
   const [correction, setCorrection] = useState<TimeEntry | null>(null);
   const qc = useQueryClient();
@@ -49,7 +44,12 @@ export function MyTimesheetPage() {
       <main className="mx-auto max-w-5xl px-6 py-8">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">My timesheet</h1>
+            <p className="text-xs uppercase tracking-widest text-slate-500">
+              {company?.companyName ?? 'No company'}
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+              My timesheet
+            </h1>
             <p className="mt-1 text-sm text-slate-600">
               Current pay period. Request a fix on any entry that needs correcting.
             </p>

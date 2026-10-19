@@ -101,6 +101,9 @@ export const membershipSchema = z.object({
   companyId: z.number().int().positive(),
   email: z.string().email(),
   role: z.enum(['company_admin', 'supervisor', 'employee']),
+  /** True when the access comes from an access group (managed on the
+   *  Groups page); such a membership can't be edited or removed here. */
+  grantedByGroup: z.boolean(),
   createdAt: z.string().datetime(),
 });
 export type Membership = z.infer<typeof membershipSchema>;

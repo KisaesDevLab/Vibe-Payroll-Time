@@ -137,7 +137,9 @@ async function upsertMembership(
   await trx('company_memberships')
     .insert({ user_id: uid, company_id: companyId, role })
     .onConflict(['user_id', 'company_id'])
-    .merge({ role });
+    // SSO role sync is a direct assignment: it takes the row over from an
+    // access group, if one granted it (services/access-groups.ts).
+    .merge({ role, granted_by_group: false });
 }
 
 /**

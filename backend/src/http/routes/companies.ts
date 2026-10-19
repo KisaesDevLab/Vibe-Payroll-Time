@@ -344,8 +344,10 @@ companiesRouter.post(
         .where({ id: membershipId, company_id: companyIdFromParams(req) })
         .first<{ user_id: number }>();
       if (!membership) return next(NotFound('Membership not found'));
-      // Under oidc_only a firm user cannot consume a link, so don't mint one.
-      await assertLinkSignInAllowed(membership.user_id);
+      // Under oidc_only a firm user's link only works when it comes from a
+      // client company they belong to, so don't mint one otherwise.
+      const companyId = companyIdFromParams(req);
+      await assertLinkSignInAllowed(membership.user_id, { companyId });
 
       const { sendAccountLink } = await import('../../services/magic-links.js');
       const result = await sendAccountLink({
@@ -354,6 +356,7 @@ companiesRouter.post(
         purpose: body.purpose,
         origin: originForRequest(req, body.origin),
         actorUserId: req.user.id,
+        companyId,
         ip: req.ip ?? null,
         userAgent: req.headers['user-agent'] ?? null,
       });
@@ -402,19 +405,12 @@ companiesRouter.post(
       let userId = employee.user_id;
       let loginCreated = false;
 
-      // Under oidc_only a firm user cannot consume a link, so don't mint
-      // one — and check before createLogin can provision anything. A login
-      // created here may reuse an existing account with the same email.
-      const existingUserId =
-        userId ??
-        (employee.email
-          ? ((
-              await db('users')
-                .whereRaw('LOWER(email) = LOWER(?)', [employee.email])
-                .first<{ id: number } | undefined>('id')
-            )?.id ?? null)
-          : null);
-      if (existingUserId) await assertLinkSignInAllowed(existingUserId);
+      // Under oidc_only a firm user's link only works when it comes from a
+      // client company they belong to, so don't mint one otherwise — and
+      // check before createLogin can provision anything. A login created
+      // here is tied to this company by the membership it creates, so only
+      // the company's own kind matters (the firm's internal one is refused).
+      if (userId) await assertLinkSignInAllowed(userId, { companyId });
       else await assertNewLoginLinkAllowed(companyId);
 
       if (!userId) {
@@ -459,6 +455,7 @@ companiesRouter.post(
         purpose: body.purpose,
         origin: originForRequest(req, body.origin),
         actorUserId: req.user.id,
+        companyId,
         ip: req.ip ?? null,
         userAgent: req.headers['user-agent'] ?? null,
       });

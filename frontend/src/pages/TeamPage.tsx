@@ -65,8 +65,10 @@ export function TeamPage() {
                 <td className="px-4 py-3 font-medium text-slate-900">{m.email}</td>
                 <td className="px-4 py-3">
                   <select
-                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm disabled:opacity-60"
                     value={m.role}
+                    disabled={m.grantedByGroup}
+                    title={m.grantedByGroup ? 'Granted by an access group' : undefined}
                     onChange={(e) =>
                       updateRole.mutate({
                         id: m.id,
@@ -80,6 +82,11 @@ export function TeamPage() {
                       </option>
                     ))}
                   </select>
+                  {m.grantedByGroup && (
+                    <span className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                      via group
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-slate-600">
                   {new Date(m.createdAt).toLocaleDateString()}
@@ -87,15 +94,18 @@ export function TeamPage() {
                 <td className="px-4 py-3">
                   <div className="flex items-start justify-end gap-3">
                     <SendLinkMenu send={(body) => membershipsApi.sendLink(companyId, m.id, body)} />
-                    <button
-                      type="button"
-                      className="min-h-[34px] text-sm font-medium text-red-700 hover:underline"
-                      onClick={() => {
-                        if (confirm(`Remove ${m.email} from this company?`)) revoke.mutate(m.id);
-                      }}
-                    >
-                      Remove
-                    </button>
+                    {/* Group access changes only on the Groups page. */}
+                    {!m.grantedByGroup && (
+                      <button
+                        type="button"
+                        className="min-h-[34px] text-sm font-medium text-red-700 hover:underline"
+                        onClick={() => {
+                          if (confirm(`Remove ${m.email} from this company?`)) revoke.mutate(m.id);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

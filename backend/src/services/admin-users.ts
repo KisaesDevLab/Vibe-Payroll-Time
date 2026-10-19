@@ -10,6 +10,7 @@ import type {
 } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { NotFound } from '../http/errors.js';
+import { reconcileGroupAccess } from './access-groups.js';
 import { healEmployeeLinksForUser } from './users.js';
 
 /**
@@ -33,6 +34,7 @@ interface MembershipRow {
   user_id: number;
   company_id: number;
   role: CompanyRole;
+  granted_by_group: boolean;
   name: string;
   slug: string;
   is_internal: boolean;
@@ -51,7 +53,7 @@ export async function listAdminUsers(): Promise<AdminUsersResponse> {
     .join('companies as c', 'c.id', 'm.company_id')
     .select<
       MembershipRow[]
-    >('m.user_id', 'm.company_id', 'm.role', 'c.name', 'c.slug', 'c.is_internal');
+    >('m.user_id', 'm.company_id', 'm.role', 'm.granted_by_group', 'c.name', 'c.slug', 'c.is_internal');
   const companies = await db<CompanyRow>('companies').orderBy('name', 'asc').select('*');
 
   const byUser = new Map<number, AdminMembership[]>();
@@ -63,6 +65,7 @@ export async function listAdminUsers(): Promise<AdminUsersResponse> {
       companySlug: r.slug,
       isInternal: r.is_internal,
       role: r.role,
+      grantedByGroup: r.granted_by_group,
     });
     byUser.set(r.user_id, arr);
   }
@@ -100,6 +103,13 @@ export async function listAdminUsers(): Promise<AdminUsersResponse> {
  *   - rows present in both with different `role` → UPDATE
  * All in a single transaction so a partial network failure can't
  * leave the user with a mix of old + new memberships.
+ *
+ * Only DIRECT memberships are reconciled. Group-granted rows are owned
+ * by services/access-groups.ts: they are never deleted or re-roled here,
+ * and a desired entry for a company the user already reaches through a
+ * group is a no-op. Afterwards the user's group access is reconciled, so
+ * a removed direct membership hands the company back to any group that
+ * grants it.
  */
 export async function reconcileMemberships(
   userId: number,
@@ -109,11 +119,13 @@ export async function reconcileMemberships(
     const user = await trx('users').where({ id: userId }).first<{ id: number; email: string }>();
     if (!user) throw NotFound('User not found');
 
-    const current = await trx('company_memberships')
+    const all = await trx('company_memberships')
       .where({ user_id: userId })
       .select<
-        Array<{ id: number; company_id: number; role: CompanyRole }>
-      >('id', 'company_id', 'role');
+        Array<{ id: number; company_id: number; role: CompanyRole; granted_by_group: boolean }>
+      >('id', 'company_id', 'role', 'granted_by_group');
+    const current = all.filter((r) => !r.granted_by_group);
+    const viaGroup = new Set(all.filter((r) => r.granted_by_group).map((r) => r.company_id));
     const byCompany = new Map(current.map((r) => [r.company_id, r]));
     const desiredByCompany = new Map(body.memberships.map((m) => [m.companyId, m]));
 
@@ -136,6 +148,7 @@ export async function reconcileMemberships(
     // a role mismatch. Done per-row so the counters stay accurate.
     for (const want of body.memberships) {
       const existing = byCompany.get(want.companyId);
+      if (!existing && viaGroup.has(want.companyId)) continue;
       if (!existing) {
         await trx('company_memberships').insert({
           user_id: userId,
@@ -158,6 +171,7 @@ export async function reconcileMemberships(
     if (added > 0) {
       await healEmployeeLinksForUser(userId, user.email, trx);
     }
+    await reconcileGroupAccess(trx, [userId]);
 
     return { added, removed, roleChanged };
   });

@@ -54,6 +54,31 @@ export async function signInRealmForUser(
 }
 
 /**
+ * Is the user tied (membership or active employee row) to `companyId`,
+ * and is that an active CLIENT company? The test for honouring a firm
+ * user's admin-sent link from that company under oidc_only.
+ */
+export async function isTiedToClientCompany(
+  userId: number,
+  companyId: number,
+  q: Knex | Knex.Transaction = db,
+): Promise<boolean> {
+  const company = await q('companies')
+    .where({ id: companyId })
+    .whereNull('disabled_at')
+    .first<{ is_internal: boolean } | undefined>('is_internal');
+  if (!company || company.is_internal) return false;
+  const membership = await q('company_memberships')
+    .where({ user_id: userId, company_id: companyId })
+    .first('id');
+  if (membership) return true;
+  const employee = await q('employees')
+    .where({ user_id: userId, company_id: companyId, status: 'active' })
+    .first('id');
+  return !!employee;
+}
+
+/**
  * The internal company role sync and just-in-time provisioning write to.
  * Exactly one active internal company, or null (none, or more than one —
  * ambiguous, so memberships are assigned by hand). Never a client company:

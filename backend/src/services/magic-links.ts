@@ -316,6 +316,9 @@ interface IssueInput {
    *  the row out of the self-service rate-limit bucket and records who
    *  did it. */
   initiatedByUserId?: number | null;
+  /** The client company an admin sent this from (single sign-on policy:
+   *  see migration 20261019000002_magic_links_company.js). */
+  companyId?: number | null;
 }
 
 interface IssueOutcome {
@@ -344,6 +347,7 @@ async function issueAndDeliver(input: IssueInput): Promise<IssueOutcome> {
     ip: input.ip,
     user_agent: input.userAgent?.slice(0, 512) ?? null,
     initiated_by_user_id: input.initiatedByUserId ?? null,
+    company_id: input.companyId ?? null,
     expires_at: expiresAt,
   });
 
@@ -364,14 +368,16 @@ async function issueAndDeliver(input: IssueInput): Promise<IssueOutcome> {
   const origin = input.origin.replace(/\/+$/, '');
   const url = `${origin}${LANDING_PATH[purpose]}?token=${encodeURIComponent(token)}`;
 
-  // Pick a company for notification routing. Prefer one the user is a
-  // member of (uses that company's provider config first); fall back to
-  // the oldest company on the appliance so the appliance EmailIt
-  // fallback still kicks in.
-  const membership = await db('company_memberships')
-    .where({ user_id: user.id })
-    .first<{ company_id: number }>();
-  let companyId = membership?.company_id ?? null;
+  // Pick a company for notification routing: the company the admin sent
+  // this from, else one the user is a member of — either way that
+  // company's provider config applies first (`companyScoped`). Fall back
+  // to the oldest company on the appliance so the appliance-wide
+  // provider still kicks in.
+  const membership = input.companyId
+    ? null
+    : await db('company_memberships').where({ user_id: user.id }).first<{ company_id: number }>();
+  let companyId = input.companyId ?? membership?.company_id ?? null;
+  const companyScoped = companyId !== null;
   if (!companyId) {
     const anyCo = await db('companies').orderBy('created_at', 'asc').first<{ id: number }>();
     companyId = anyCo?.id ?? null;
@@ -391,6 +397,7 @@ async function issueAndDeliver(input: IssueInput): Promise<IssueOutcome> {
       email: user.email,
       phone: recipient.phone,
       phoneVerified: recipient.phoneVerified,
+      companyScoped,
     },
     channels: [channel],
     vars: {
@@ -490,6 +497,10 @@ export interface SendAccountLinkInput {
   origin: string;
   /** The admin pressing the button — recorded on the row. */
   actorUserId: number;
+  /** The company page the admin sent it from, if any. Recorded so that
+   *  under oidc_only a firm user's link from a CLIENT company still works
+   *  (vibe-auth/policy.ts `assertLinkSignInAllowed`). */
+  companyId?: number | null;
   ip: string | null;
   userAgent: string | null;
 }
@@ -549,6 +560,7 @@ export async function sendAccountLink(
     ip: input.ip,
     userAgent: input.userAgent,
     initiatedByUserId: input.actorUserId,
+    companyId: input.companyId ?? null,
   });
 
   return {
@@ -571,7 +583,7 @@ export interface ConsumeMagicLinkInput {
   userAgent: string | null;
   /** Runs on the link's user before the token is burned; throw to refuse
    *  (the single sign-on policy). A refused link stays unconsumed. */
-  authorize?: (userId: number) => Promise<void>;
+  authorize?: (userId: number, link: { companyId: number | null }) => Promise<void>;
 }
 
 /**
@@ -597,13 +609,14 @@ export async function consumeMagicLink(input: ConsumeMagicLinkInput): Promise<Au
       purpose: LinkPurpose;
       expires_at: Date;
       consumed_at: Date | null;
+      company_id: number | null;
     }>();
 
     if (!row || row.consumed_at || new Date(row.expires_at) < new Date()) {
       throw Unauthorized('Invalid or expired login link');
     }
 
-    if (input.authorize) await input.authorize(row.user_id);
+    if (input.authorize) await input.authorize(row.user_id, { companyId: row.company_id });
 
     await trx('magic_links').where({ id: row.id }).update({ consumed_at: trx.fn.now() });
 

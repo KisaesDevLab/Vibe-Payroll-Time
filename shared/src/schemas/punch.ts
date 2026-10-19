@@ -144,5 +144,23 @@ export const currentPunchResponseSchema = z.object({
   /** The company's location setting, so the PWA knows whether to ask the
    *  browser for a fix before each punch. */
   punchLocationMode: z.enum(['off', 'optional', 'required']),
+  /** When the open shift began (its first entry's start — on a break this
+   *  is still the clock-in time). Null when clocked out. */
+  shiftStartedAt: z.string().datetime().nullable(),
+  /** When the most recent closed entry ended — the last clock-out (or
+   *  break end) — so a clocked-out employee sees when they left. Null if
+   *  they have never punched. */
+  lastEndedAt: z.string().datetime().nullable(),
 });
 export type CurrentPunchResponse = z.infer<typeof currentPunchResponseSchema>;
+
+/** A user's open shifts across every company they punch for — one per
+ *  company at most. The personal-device page uses it to say "you're
+ *  clocked in at Acme", and clock-in refuses a second concurrent shift. */
+export const openShiftSchema = z.object({
+  companyId: z.number().int().positive(),
+  companyName: z.string(),
+  entryType: z.enum(['work', 'break']),
+  startedAt: z.string().datetime(),
+});
+export type OpenShift = z.infer<typeof openShiftSchema>;

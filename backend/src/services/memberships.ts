@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import type { CompanyRole, InviteMembershipRequest, Membership } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, NotFound } from '../http/errors.js';
+import { reconcileGroupAccess } from './access-groups.js';
 import { hashPassword } from './passwords.js';
 import { healEmployeeLinksForUser } from './users.js';
 
@@ -12,6 +13,7 @@ interface MembershipRow {
   user_id: number;
   company_id: number;
   role: CompanyRole;
+  granted_by_group: boolean;
   created_at: Date;
   email: string;
 }
@@ -23,6 +25,7 @@ function rowToMembership(row: MembershipRow): Membership {
     companyId: row.company_id,
     email: row.email,
     role: row.role,
+    grantedByGroup: row.granted_by_group,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -34,7 +37,7 @@ export async function listMembershipsForCompany(companyId: number): Promise<Memb
     .orderBy('m.created_at', 'asc')
     .select<
       MembershipRow[]
-    >('m.id', 'm.user_id', 'm.company_id', 'm.role', 'm.created_at', 'u.email');
+    >('m.id', 'm.user_id', 'm.company_id', 'm.role', 'm.granted_by_group', 'm.created_at', 'u.email');
   return rows.map(rowToMembership);
 }
 
@@ -82,7 +85,12 @@ export async function inviteMembership(
 
     const clash = await trx('company_memberships')
       .where({ user_id: user.id, company_id: companyId })
-      .first<{ id: number }>();
+      .first<{ id: number; granted_by_group: boolean }>();
+    if (clash?.granted_by_group) {
+      throw Conflict(
+        'This person already has access to this company through an access group. Change it on the Groups page.',
+      );
+    }
     if (clash) throw Conflict('User is already a member of this company');
 
     const [inserted] = await trx('company_memberships')
@@ -111,8 +119,9 @@ export async function updateMembershipRole(
 ): Promise<Membership> {
   const existing = await db('company_memberships')
     .where({ id: membershipId, company_id: companyId })
-    .first<{ id: number }>();
+    .first<{ id: number; granted_by_group: boolean }>();
   if (!existing) throw NotFound('Membership not found');
+  if (existing.granted_by_group) throw groupManaged();
 
   await db('company_memberships').where({ id: membershipId }).update({ role });
 
@@ -121,15 +130,27 @@ export async function updateMembershipRole(
     .where('m.id', membershipId)
     .select<
       MembershipRow[]
-    >('m.id', 'm.user_id', 'm.company_id', 'm.role', 'm.created_at', 'u.email');
+    >('m.id', 'm.user_id', 'm.company_id', 'm.role', 'm.granted_by_group', 'm.created_at', 'u.email');
   const fresh = rows[0];
   if (!fresh) throw new Error('membership vanished after update');
   return rowToMembership(fresh);
 }
 
+/** Group-granted access changes only by changing the group. */
+function groupManaged() {
+  return Conflict('This access comes from an access group. Change it on the Groups page.');
+}
+
 export async function revokeMembership(companyId: number, membershipId: number): Promise<void> {
-  const removed = await db('company_memberships')
-    .where({ id: membershipId, company_id: companyId })
-    .delete();
-  if (removed === 0) throw NotFound('Membership not found');
+  await db.transaction(async (trx) => {
+    const row = await trx('company_memberships')
+      .where({ id: membershipId, company_id: companyId })
+      .first<{ user_id: number; granted_by_group: boolean }>();
+    if (!row) throw NotFound('Membership not found');
+    if (row.granted_by_group) throw groupManaged();
+    await trx('company_memberships').where({ id: membershipId }).delete();
+    // A direct membership may have been shadowing a group grant for this
+    // company; with it gone, the group's access applies.
+    await reconcileGroupAccess(trx, [row.user_id]);
+  });
 }

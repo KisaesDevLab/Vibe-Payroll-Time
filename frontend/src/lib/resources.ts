@@ -1,6 +1,11 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import type {
+  AccessGroup,
+  CreateAccessGroupRequest,
+  SetAccessGroupCompaniesRequest,
+  SetAccessGroupMembersRequest,
+  UpdateAccessGroupRequest,
   ApprovePeriodRequest,
   ApprovePeriodResponse,
   ConfirmUserPhoneRequest,
@@ -484,6 +489,8 @@ export const notifications = {
 
 export const ai = {
   getSettings: (companyId: number) => apiFetch<AISettings>(`/companies/${companyId}/ai/settings`),
+  availability: (companyId: number) =>
+    apiFetch<{ available: boolean }>(`/companies/${companyId}/ai/availability`),
   updateSettings: (companyId: number, body: UpdateAISettingsRequest) =>
     apiFetch<AISettings>(`/companies/${companyId}/ai/settings`, {
       method: 'PATCH',
@@ -601,6 +608,26 @@ export const admin = {
     }),
   seedDemo: () => apiFetch<{ ok: true }>('/admin/seed-demo', { method: 'POST' }),
   listUsers: () => apiFetch<AdminUsersResponse>('/admin/users'),
+  listAccessGroups: () => apiFetch<AccessGroup[]>('/admin/access-groups'),
+  createAccessGroup: (body: CreateAccessGroupRequest) =>
+    apiFetch<AccessGroup>('/admin/access-groups', { method: 'POST', body: JSON.stringify(body) }),
+  updateAccessGroup: (id: number, body: UpdateAccessGroupRequest) =>
+    apiFetch<AccessGroup>(`/admin/access-groups/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteAccessGroup: (id: number) =>
+    apiFetch<void>(`/admin/access-groups/${id}`, { method: 'DELETE' }),
+  setAccessGroupMembers: (id: number, body: SetAccessGroupMembersRequest) =>
+    apiFetch<AccessGroup>(`/admin/access-groups/${id}/members`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  setAccessGroupCompanies: (id: number, body: SetAccessGroupCompaniesRequest) =>
+    apiFetch<AccessGroup>(`/admin/access-groups/${id}/companies`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   setMemberships: (userId: number, body: BulkMembershipsRequest) =>
     apiFetch<BulkMembershipsResponse>(`/admin/users/${userId}/memberships`, {
       method: 'POST',

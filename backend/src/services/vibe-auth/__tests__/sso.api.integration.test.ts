@@ -758,6 +758,59 @@ describe.skipIf(!dbReachable)('single sign-on (Vibe Auth)', () => {
       expect(send.status).toBe(200);
     });
 
+    it("lets a client company's admin-sent link through for a firm user who belongs to it", async () => {
+      await ensureBreakglass();
+      await configure('oidc_only');
+      const { clientCompanyId } = await seedClientCompany();
+      // The owner is a firm user (super_admin) who also works at the client.
+      const [clientMembership] = await db('company_memberships')
+        .insert({ user_id: superAdminId, company_id: clientCompanyId, role: 'employee' })
+        .returning<Array<{ id: number }>>('id');
+      const firmMembership = await db('company_memberships')
+        .where({ user_id: superAdminId, company_id: companyId })
+        .first<{ id: number }>('id');
+      const bearer = issueAccessToken({
+        id: superAdminId,
+        email: 'owner@firm.test',
+        roleGlobal: 'super_admin',
+      }).token;
+      const send = (co: number, membershipId: number) =>
+        app(`/api/v1/companies/${co}/memberships/${membershipId}/send-link`, {
+          method: 'POST',
+          bearer,
+          body: { channel: 'email' },
+        });
+
+      // From the firm's own company: still refused.
+      expect((await send(companyId, firmMembership!.id)).status).toBe(403);
+
+      // From the client company: sent, and the link records where from.
+      expect((await send(clientCompanyId, clientMembership!.id)).status).toBe(200);
+      const sent = await db('magic_links').where({ user_id: superAdminId });
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ company_id: clientCompanyId });
+
+      // Consuming re-checks the tie: such a link works…
+      const token = await linkFor(superAdminId, 'owner@firm.test');
+      await db('magic_links')
+        .where({ token_hash: sha256Hex(token) })
+        .update({ company_id: clientCompanyId });
+      const ok = await app('/api/v1/auth/magic/consume', { method: 'POST', body: { token } });
+      expect(ok.status).toBe(200);
+
+      // …until the person no longer belongs to that company.
+      const later = await linkFor(superAdminId, 'owner@firm.test');
+      await db('magic_links')
+        .where({ token_hash: sha256Hex(later) })
+        .update({ company_id: clientCompanyId });
+      await db('company_memberships').where({ id: clientMembership!.id }).delete();
+      const refused = await app('/api/v1/auth/magic/consume', {
+        method: 'POST',
+        body: { token: later },
+      });
+      expect(refused.status).toBe(403);
+    });
+
     it('leaves the kiosk realm alone', async () => {
       await ensureBreakglass();
       await configure('oidc_only');

@@ -44,6 +44,14 @@ Only one shift can be open at a time. If you forget to clock out, the appliance
 will close the shift at the company's cutoff (typically 12 hours) and flag it
 — tell your supervisor so they can correct the end time.
 
+The card shows your last event — when you clocked in, went on break, or
+clocked out — and the company name sits at the top of the page.
+
+**Working for more than one company?** Pick the company from the list at the
+top; the app remembers your choice and opens on the company you're clocked in
+at. You can only be on the clock at one company at a time: clock out at the
+first before clocking in at the second.
+
 ## Using the kiosk
 
 At the shared tablet at your job site:

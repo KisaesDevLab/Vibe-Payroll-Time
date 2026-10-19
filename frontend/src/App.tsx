@@ -6,6 +6,7 @@ import { OfflineBanner } from './components/OfflineBanner';
 import { SupportChatWidget } from './components/SupportChatWidget';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
+import { AccessGroupsPage } from './pages/AccessGroupsPage';
 import { AllUsersPage } from './pages/AllUsersPage';
 import { ApplianceHealthPage } from './pages/ApplianceHealthPage';
 import { ApplianceSettingsPage } from './pages/ApplianceSettingsPage';
@@ -20,6 +21,7 @@ import { JobsPage } from './pages/JobsPage';
 import { KiosksPage } from './pages/KiosksPage';
 import { KioskPairPage } from './pages/kiosk/KioskPairPage';
 import { KioskRoot } from './pages/kiosk/KioskRoot';
+import { isPunchOnlyUser } from './lib/punch-only';
 import { LoginPage } from './pages/LoginPage';
 import { MagicLinkConsumePage } from './pages/MagicLinkConsumePage';
 import { MyPunchPage } from './pages/MyPunchPage';
@@ -50,6 +52,19 @@ function RequireSession({ children }: { children: ReactNode }) {
   const session = useSession();
   if (!session) return <Navigate to="/login" replace />;
   return <>{children}</>;
+}
+
+/**
+ * `/` — the dashboard for anyone who manages a company; straight to the
+ * clock for someone whose only job here is to punch (no SuperAdmin, no
+ * admin or supervisor role anywhere, and an employee record somewhere).
+ * Sign-in lands on `/`, so this is also where employees start.
+ */
+function HomeRoute() {
+  const session = useSession();
+  if (!session) return <Navigate to="/login" replace />;
+  if (isPunchOnlyUser(session.user)) return <Navigate to="/my-punch" replace />;
+  return <DashboardPage />;
 }
 
 function RequireSuperAdmin({ children }: { children: ReactNode }) {
@@ -163,14 +178,7 @@ export function App() {
           }
         />
 
-        <Route
-          path="/"
-          element={
-            <RequireSession>
-              <DashboardPage />
-            </RequireSession>
-          }
-        />
+        <Route path="/" element={<HomeRoute />} />
 
         <Route
           path="/companies"
@@ -210,6 +218,14 @@ export function App() {
           element={
             <RequireSuperAdmin>
               <AllUsersPage />
+            </RequireSuperAdmin>
+          }
+        />
+        <Route
+          path="/appliance/groups"
+          element={
+            <RequireSuperAdmin>
+              <AccessGroupsPage />
             </RequireSuperAdmin>
           }
         />

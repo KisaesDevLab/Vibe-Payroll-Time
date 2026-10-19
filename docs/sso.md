@@ -77,8 +77,14 @@ Under `oidc_only`, for **firm users** only (`services/vibe-auth/policy.ts`):
   answer 204 but send nothing (a link is a local credential)
 - `POST /api/v1/auth/magic/consume` refuses a firm user's link with 403
   without burning it
-- the three admin "send a sign-in link" actions refuse a firm user with 403
-  (for a brand-new login, refused when the company is the internal one)
+- the admin "send a sign-in link" actions refuse a firm user with 403 —
+  **except from a client company's Team or Employees page**: those links
+  follow the company. A firm user who also belongs to that client company
+  gets the link and can use it; the link records the company
+  (`magic_links.company_id`) and consuming it re-checks that the company is
+  still an active client company and the person still belongs to it. Sent
+  from the internal company or the appliance-wide People page, it is
+  refused. For a brand-new login, only the internal company is refused.
 
 `/login` keeps the email / password and link forms in every mode, because
 client-company users need them; `/firm` hides them under `oidc_only`.

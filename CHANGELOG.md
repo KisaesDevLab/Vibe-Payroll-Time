@@ -7,6 +7,74 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-10-19
+
+### Added — Personal-device punching across companies
+
+- **One shift at a time.** Someone who works for more than one company can't
+  clock in at a second company while still clocked in (or on break) at
+  another: the clock-in answers 409 `open_shift_elsewhere` naming where they
+  are. `/my-punch` shows "You're clocked in at Acme since 9:02 AM" with a
+  button to go there. Kiosk punches aren't gated.
+- **Remembers the company.** `/my-punch` and `/my-timesheet` open on the
+  company the person is clocked in at, else the one they used last (per user,
+  in this browser), instead of whichever sorts first.
+- **Company name in the header** of `/my-punch` and `/my-timesheet`.
+- **Last event time** on `/my-punch`: "Clocked in at 9:02 AM", "On break since
+  12:01 PM" (with the clock-in time), or "Clocked out at 5:30 PM"; another
+  day's time shows its date. `GET /punch/current` gains `shiftStartedAt` and
+  `lastEndedAt`; new `GET /punch/open-shifts`.
+- **Employees land on `/my-punch`** after sign-in: a user with no SuperAdmin,
+  admin or supervisor role and an employee record skips the dashboard (and
+  the Dashboard link).
+
+### Changed — AI cards hide when AI is off
+
+- The "Ask assistant" correction card and the support chat show only when AI
+  is enabled for the company and something can answer (router, Ollama, or an
+  API key). New `GET /companies/:id/ai/availability`, open to every member —
+  the support chat previously read the admin-only settings, so employees and
+  supervisors never saw it even with AI on.
+
+### Added — Access groups
+
+- **Appliance → Groups** (SuperAdmin): named groups that give the firm's
+  staff access to companies in bulk. A group has members and companies, each
+  company with a role; every member gets each company at that role and loses
+  it when removed from the group, the company is removed from the group, or
+  the group is deleted. Several groups granting the same company → the
+  highest role wins.
+- Grants are materialized into `company_memberships` as rows with
+  `granted_by_group = true` (migration `20261019000003_access_groups.js`), so
+  every existing permission check applies unchanged. A membership set
+  directly on a company's Team page or the People page takes precedence for
+  that company and is never touched by a group; removing it hands the
+  company back to the group.
+- Group-granted access shows as "via group" on the Team and People pages and
+  can only be changed on the Groups page (editing or removing it there
+  answers 409).
+
+### Fixed — SMS sign-in links ignored the company's Twilio settings
+
+- A sign-in or reset link sent by SMS to a user account only ever used the
+  appliance-wide SMS provider, so with Twilio configured on a company (and
+  not appliance-wide) every SMS link was skipped as "No appliance-level SMS
+  provider configured" — while the login page and Send-link menu offered SMS
+  because a company had it. Links now go through the provider of the company
+  they were sent from (or the user's company), falling back to the
+  appliance-wide one.
+
+### Changed — Client-company sign-in links follow the company
+
+- Under `oidc_only`, a sign-in or reset link an admin sends from a **client
+  company's** Team or Employees page now works for a firm user who also
+  belongs to that company (previously refused as "firm accounts sign in with
+  single sign-on"). The link records the company (`magic_links.company_id`,
+  migration `20261019000002_magic_links_company.js`) and consuming it
+  re-checks that the company is still a client company and the person still
+  belongs to it. Links sent from the internal company or the appliance-wide
+  People page, and self-service links, keep the firm rule.
+
 ## [1.3.0] — 2026-10-19
 
 ### Upgrade notes

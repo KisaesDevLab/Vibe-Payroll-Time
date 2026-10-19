@@ -111,6 +111,7 @@ export function AllUsersPage(): JSX.Element {
                             >
                               <span className="font-medium">{m.companyName}</span>
                               <span className="text-slate-500">· {m.role.replace('_', ' ')}</span>
+                              {m.grantedByGroup && <span className="text-indigo-600">· group</span>}
                             </li>
                           ))}
                         </ul>
@@ -165,10 +166,20 @@ function MembershipsDrawer({
   onClose: () => void;
 }): JSX.Element {
   const qc = useQueryClient();
+  // Access granted by a group is read-only here (Groups page owns it);
+  // the draft holds DIRECT memberships only.
+  const viaGroup = useMemo(
+    () => new Map(user.memberships.filter((m) => m.grantedByGroup).map((m) => [m.companyId, m])),
+    [user.memberships],
+  );
+  const direct = useMemo(
+    () => user.memberships.filter((m) => !m.grantedByGroup),
+    [user.memberships],
+  );
   // Draft state: a Map of companyId → role (absent = not a member).
   const [draft, setDraft] = useState<Map<number, CompanyRole>>(() => {
     const m = new Map<number, CompanyRole>();
-    for (const mem of user.memberships) m.set(mem.companyId, mem.role);
+    for (const mem of user.memberships) if (!mem.grantedByGroup) m.set(mem.companyId, mem.role);
     return m;
   });
 
@@ -189,17 +200,18 @@ function MembershipsDrawer({
   );
 
   const changed = useMemo(() => {
-    if (draft.size !== user.memberships.length) return true;
+    if (draft.size !== direct.length) return true;
     for (const [companyId, role] of draft.entries()) {
-      const existing = user.memberships.find((m) => m.companyId === companyId);
+      const existing = direct.find((m) => m.companyId === companyId);
       if (!existing || existing.role !== role) return true;
     }
     return false;
-  }, [draft, user.memberships]);
+  }, [draft, direct]);
 
   function toggleAll(checked: boolean, role: CompanyRole) {
     const next = new Map(draft);
     for (const c of sortedCompanies) {
+      if (viaGroup.has(c.id)) continue;
       if (checked) next.set(c.id, role);
       else next.delete(c.id);
     }
@@ -214,7 +226,8 @@ function MembershipsDrawer({
       footer={
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-slate-500">
-            {draft.size} membership{draft.size === 1 ? '' : 's'}
+            {draft.size} direct membership{draft.size === 1 ? '' : 's'}
+            {viaGroup.size > 0 && ` · ${viaGroup.size} via groups`}
             {changed && ' · unsaved'}
           </p>
           <div className="flex gap-2">
@@ -283,6 +296,29 @@ function MembershipsDrawer({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sortedCompanies.map((c) => {
+              const group = viaGroup.get(c.id);
+              if (group) {
+                return (
+                  <tr key={c.id}>
+                    <td className="py-2 pr-3">
+                      <input type="checkbox" checked disabled />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <div className="font-medium text-slate-900">{c.name}</div>
+                      <div className="text-xs text-slate-500">
+                        {c.slug}
+                        {c.isInternal && ' · internal'}
+                      </div>
+                    </td>
+                    <td className="py-2 text-sm text-slate-700">
+                      {group.role.replace('_', ' ')}{' '}
+                      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                        via group
+                      </span>
+                    </td>
+                  </tr>
+                );
+              }
               const current = draft.get(c.id);
               const isMember = current != null;
               return (
