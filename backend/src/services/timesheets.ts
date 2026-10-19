@@ -44,15 +44,18 @@ async function loadCompanyCtx(companyId: number): Promise<CompanyCtx> {
 async function loadSettings(companyId: number): Promise<{
   roundingMode: 'none' | '1min' | '5min' | '6min' | '15min';
   roundingGraceMinutes: number;
+  timeOffSelfEntry: boolean;
 }> {
   const row = await db('company_settings').where({ company_id: companyId }).first<{
     punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
     punch_rounding_grace_minutes: number;
+    time_off_self_entry: boolean;
   }>();
   if (!row) throw NotFound('Company settings not found');
   return {
     roundingMode: row.punch_rounding_mode,
     roundingGraceMinutes: row.punch_rounding_grace_minutes,
+    timeOffSelfEntry: row.time_off_self_entry,
   };
 }
 
@@ -173,6 +176,7 @@ export async function getTimesheet(
     jobBreakdown: summary.jobBreakdown,
     timeOff: summary.timeOff,
     timeOffBreakdown: summary.timeOffBreakdown,
+    timeOffSelfEntry: settings.timeOffSelfEntry,
     isApproved: allApproved,
     approvedAt,
   };

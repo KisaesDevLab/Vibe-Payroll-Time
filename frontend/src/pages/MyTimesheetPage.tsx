@@ -1,11 +1,12 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { TimeEntry } from '@vibept/shared';
+import { TIME_OFF_CATEGORY_LABELS, type Job, type TimeEntry } from '@vibept/shared';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
+import { HoursInput } from '../components/HoursInput';
 import { Modal } from '../components/Modal';
 import { NLCorrectionWidget } from '../components/NLCorrectionWidget';
 import { TimesheetView } from '../components/TimesheetView';
@@ -13,7 +14,7 @@ import { TopBar } from '../components/TopBar';
 import { usePunchCompany } from '../hooks/usePunchCompany';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
-import { jobs as jobsApi, timesheets } from '../lib/resources';
+import { jobs as jobsApi, manualEntries, timesheets } from '../lib/resources';
 
 /**
  * Employee's own timesheet for the current pay period. Shows entries
@@ -29,6 +30,7 @@ export function MyTimesheetPage() {
 
   const [correction, setCorrection] = useState<TimeEntry | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [timeOffOpen, setTimeOffOpen] = useState(false);
   const [addNotice, setAddNotice] = useState<string | null>(null);
   const qc = useQueryClient();
 
@@ -37,6 +39,14 @@ export function MyTimesheetPage() {
     queryFn: () => timesheets.current(companyId!),
     enabled: companyId != null,
   });
+  // The company's active time-off codes (PTO, Sick, …), shared with the
+  // Add time popup's job list via the same query key.
+  const jobsQ = useQuery({
+    queryKey: ['jobs', companyId, false],
+    queryFn: () => jobsApi.list(companyId!),
+    enabled: companyId != null,
+  });
+  const timeOffCodes = (jobsQ.data ?? []).filter((j) => j.isTimeOff && !j.archivedAt);
 
   if (!session) return null;
 
@@ -75,6 +85,17 @@ export function MyTimesheetPage() {
                 >
                   + Add time
                 </Button>
+                {sheet.data.timeOffSelfEntry && timeOffCodes.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setAddNotice(null);
+                      setTimeOffOpen(true);
+                    }}
+                  >
+                    + Time off
+                  </Button>
+                )}
               </div>
             )}
             {addNotice && (
@@ -139,6 +160,20 @@ export function MyTimesheetPage() {
         />
       )}
 
+      {timeOffOpen && companyId != null && sheet.data && (
+        <TimeOffModal
+          companyId={companyId}
+          employeeId={sheet.data.employee.id}
+          codes={timeOffCodes}
+          onClose={() => setTimeOffOpen(false)}
+          onDone={(message) => {
+            setTimeOffOpen(false);
+            setAddNotice(message);
+            qc.invalidateQueries({ queryKey: ['my-timesheet', companyId] });
+          }}
+        />
+      )}
+
       {correction && companyId != null && (
         <CorrectionRequestModal
           companyId={companyId}
@@ -151,6 +186,121 @@ export function MyTimesheetPage() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * Record PTO, sick, holiday or other time off: a date, the type (the
+ * company's active time-off codes), hours, and an optional note. Saved
+ * as a time-off entry on that day, like the Time off row of the weekly
+ * grid; it never counts toward overtime and goes through normal
+ * pay-period approval.
+ */
+function TimeOffModal({
+  companyId,
+  employeeId,
+  codes,
+  onClose,
+  onDone,
+}: {
+  companyId: number;
+  employeeId: number;
+  codes: Job[];
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  const [day, setDay] = useState(() => localIsoDay(new Date()));
+  const [jobId, setJobId] = useState<number>(codes[0]!.id);
+  const [seconds, setSeconds] = useState<number | null>(8 * 3600);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const code = codes.find((c) => c.id === jobId);
+
+  const submit = useMutation({
+    mutationFn: () =>
+      manualEntries.create({
+        companyId,
+        employeeId,
+        day,
+        jobId,
+        durationSeconds: seconds!,
+        ...(note.trim() ? { reason: note.trim() } : {}),
+      }),
+    onSuccess: () =>
+      onDone(
+        `${code ? (code.timeOffCategory ? TIME_OFF_CATEGORY_LABELS[code.timeOffCategory] : code.name) : 'Time off'} added to your timesheet.`,
+      ),
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Add time off"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!day || !seconds || seconds <= 0 || !!parseError}
+            loading={submit.isPending}
+            onClick={() => submit.mutate()}
+          >
+            Save
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-slate-600">
+          Paid time off, sick time and the like. It shows on your timesheet separately from hours
+          worked and never counts toward overtime.
+        </p>
+        <FormField label="Date" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Type</span>
+          <select
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+            value={jobId}
+            onChange={(e) => setJobId(Number(e.target.value))}
+          >
+            {codes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.isPaid ? '' : ' (unpaid)'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Hours</span>
+          <HoursInput
+            seconds={seconds}
+            format="decimal"
+            onChange={(s, err) => {
+              setSeconds(s);
+              setParseError(err);
+            }}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Note (optional)</span>
+          <textarea
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+            rows={2}
+            value={note}
+            maxLength={500}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </label>
+        {submit.isError && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {submit.error instanceof ApiError ? submit.error.message : 'Could not save.'}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

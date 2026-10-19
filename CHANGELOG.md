@@ -7,6 +7,14 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Time off from My timesheet
+
+- **+ Time off** on the My timesheet list view opens a popup for date, type
+  (the company's active PTO / Sick / Holiday / custom codes), hours and an
+  optional note. Shown only when the company lets employees record their own
+  time off (`timeOffSelfEntry` is now on the timesheet response) and has at
+  least one time-off type turned on.
+
 ### Fixed — Sign-in texts going to the wrong phone
 
 - **A link texted from an employee record could go to a different number.**
