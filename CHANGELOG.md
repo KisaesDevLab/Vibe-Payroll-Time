@@ -7,6 +7,21 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Report PDFs
+
+- Reports gain a **PDF** button: a real PDF built in the browser with jsPDF +
+  jspdf-autotable (as in Vibe MyBooks), opened in a new tab. Letter size, with
+  the company name, report title and period/filter line on top; a ruled table
+  with only the columns shown on screen; TOTAL / TIME OFF rows in bold;
+  landscape and smaller type for wide reports; report name, generated time
+  and page numbers in every footer. No server-side rendering or headless
+  Chromium. jsPDF loads only when a PDF is made.
+
+### Fixed — Printing reports
+
+- Print cut reports down to a narrow column with a scrollbar: the hidden
+  sidebar still took its grid track. Printed reports now use the full page.
+
 ### Fixed — Overriding a punch to 0 hours
 
 - The weekly grid refused 0 in the override popup, so a punched day couldn't be
