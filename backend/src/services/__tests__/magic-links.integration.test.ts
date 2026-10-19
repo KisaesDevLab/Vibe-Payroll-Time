@@ -522,4 +522,180 @@ describe.skipIf(!dbReachable)('magic-links service', () => {
     expect(rows[0]!.identifier).toBe('+15555550177');
     expect(rows[0]!.purpose).toBe('password_reset');
   });
+  describe('admin-sent texts go to the number on the page the admin is on', () => {
+    async function otherCompany(): Promise<number> {
+      const [co] = await db('companies')
+        .insert({ name: 'Other Co', slug: 'other-co', timezone: 'UTC', pay_period_type: 'weekly' })
+        .returning<Array<{ id: number }>>('id');
+      await db('company_settings').insert({ company_id: co!.id });
+      return co!.id;
+    }
+
+    it("texts the employee record's phone, not the user's own verified phone", async () => {
+      // The linked account has its own verified Preferences number; the
+      // admin is on the employee record, whose number is different.
+      await db('users')
+        .where({ id: userId })
+        .update({ phone: '+15555550101', phone_verified_at: new Date() });
+      const [emp] = await db('employees')
+        .insert({
+          company_id: companyId,
+          user_id: userId,
+          first_name: 'Rec',
+          last_name: 'Ord',
+          phone: '+15555550102',
+          status: 'active',
+        })
+        .returning<Array<{ id: number }>>('id');
+
+      const result = await sendAccountLink({
+        targetUserId: userId,
+        channel: 'sms',
+        purpose: 'login',
+        origin: 'https://test.local',
+        actorUserId: userId,
+        companyId,
+        employeeId: emp!.id,
+        ip: null,
+        userAgent: null,
+      });
+
+      expect(result.sentTo).toBe('•••-••02');
+      const [row] = await db('magic_links').where({ user_id: userId, channel: 'sms' });
+      expect(row!.identifier).toBe('+15555550102');
+    });
+
+    it("never uses another company's record from a company's Team page", async () => {
+      const other = await otherCompany();
+      // Verified number on the OTHER company's record, a plain one here.
+      await db('employees').insert([
+        {
+          company_id: other,
+          user_id: userId,
+          first_name: 'Else',
+          last_name: 'Where',
+          phone: '+15555550201',
+          phone_verified_at: new Date(),
+          status: 'active',
+        },
+        {
+          company_id: companyId,
+          user_id: userId,
+          first_name: 'Right',
+          last_name: 'Here',
+          phone: '+15555550202',
+          status: 'active',
+        },
+      ]);
+
+      await sendAccountLink({
+        targetUserId: userId,
+        channel: 'sms',
+        purpose: 'login',
+        origin: 'https://test.local',
+        actorUserId: userId,
+        companyId,
+        ip: null,
+        userAgent: null,
+      });
+
+      const [row] = await db('magic_links').where({ user_id: userId, channel: 'sms' });
+      expect(row!.identifier).toBe('+15555550202');
+    });
+
+    it('refuses a text from a record with no phone instead of finding another number', async () => {
+      await db('users')
+        .where({ id: userId })
+        .update({ phone: '+15555550301', phone_verified_at: new Date() });
+      const [emp] = await db('employees')
+        .insert({
+          company_id: companyId,
+          user_id: userId,
+          first_name: 'No',
+          last_name: 'Phone',
+          status: 'active',
+        })
+        .returning<Array<{ id: number }>>('id');
+
+      await expect(
+        sendAccountLink({
+          targetUserId: userId,
+          channel: 'sms',
+          purpose: 'login',
+          origin: 'https://test.local',
+          actorUserId: userId,
+          companyId,
+          employeeId: emp!.id,
+          ip: null,
+          userAgent: null,
+        }),
+      ).rejects.toThrow(/no phone number/);
+      expect(await db('magic_links')).toHaveLength(0);
+    });
+  });
+
+  describe('login page "text me a link"', () => {
+    it('sends to the verified number that was typed, however it was typed', async () => {
+      await db('employees').insert({
+        company_id: companyId,
+        user_id: userId,
+        first_name: 'Ver',
+        last_name: 'Ified',
+        phone: '+14173437517',
+        phone_verified_at: new Date(),
+        status: 'active',
+      });
+
+      await requestMagicLink({
+        identifier: '(417) 343-7517',
+        channel: 'sms',
+        origin: 'https://test.local',
+        ip: null,
+        userAgent: null,
+      });
+
+      const rows = await db('magic_links').where({ channel: 'sms' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.user_id).toBe(userId);
+      expect(rows[0]!.identifier).toBe('+14173437517');
+    });
+
+    it('sends one link per account when the number is verified on several', async () => {
+      const [other] = await db('users')
+        .insert({ email: 'second@test.local', password_hash: 'x', role_global: 'none' })
+        .returning<Array<{ id: number }>>('id');
+      await db('employees').insert([
+        {
+          company_id: companyId,
+          user_id: userId,
+          first_name: 'One',
+          last_name: 'A',
+          phone: '+15555550401',
+          phone_verified_at: new Date(),
+          status: 'active',
+        },
+        {
+          company_id: companyId,
+          user_id: other!.id,
+          first_name: 'Two',
+          last_name: 'B',
+          phone: '+15555550401',
+          phone_verified_at: new Date(),
+          status: 'active',
+        },
+      ]);
+
+      await requestMagicLink({
+        identifier: '5555550401',
+        channel: 'sms',
+        origin: 'https://test.local',
+        ip: null,
+        userAgent: null,
+      });
+
+      const rows = await db('magic_links').where({ channel: 'sms' }).orderBy('user_id');
+      expect(rows.map((r) => r.user_id)).toEqual([userId, other!.id]);
+      expect(rows.every((r) => r.identifier === '+15555550401')).toBe(true);
+    });
+  });
 });
