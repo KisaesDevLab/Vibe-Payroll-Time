@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 import {
   bulkMembershipsRequestSchema,
+  createAccessGroupRequestSchema,
+  setAccessGroupCompaniesRequestSchema,
+  setAccessGroupMembersRequestSchema,
+  updateAccessGroupRequestSchema,
   sendAccountLinkRequestSchema,
   testEmailRequestSchema,
   testSmsRequestSchema,
@@ -15,6 +19,14 @@ import {
   getApplianceSettingsForAdmin,
   updateApplianceSettings,
 } from '../../services/appliance-settings.js';
+import {
+  createAccessGroup,
+  deleteAccessGroup,
+  listAccessGroups,
+  setAccessGroupCompanies,
+  setAccessGroupMembers,
+  updateAccessGroup,
+} from '../../services/access-groups.js';
 import { exportCompanyAll } from '../../services/backup-export.js';
 import {
   checkLatestRelease,
@@ -277,6 +289,89 @@ adminRouter.get('/users', requireAuth, requireSuperAdmin, async (_req, res, next
     next(err);
   }
 });
+
+// ---- Access groups (SuperAdmin only) ----
+// Named groups that grant their members access to companies; the grants
+// are materialized into company_memberships (services/access-groups.ts).
+
+function groupIdFrom(raw: string | undefined): number {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id <= 0) throw NotFound('Group not found');
+  return id;
+}
+
+adminRouter.get('/access-groups', requireAuth, requireSuperAdmin, async (_req, res, next) => {
+  try {
+    res.json({ data: await listAccessGroups() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post('/access-groups', requireAuth, requireSuperAdmin, async (req, res, next) => {
+  try {
+    const body = createAccessGroupRequestSchema.parse(req.body);
+    res.status(201).json({ data: await createAccessGroup(body) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.patch(
+  '/access-groups/:groupId',
+  requireAuth,
+  requireSuperAdmin,
+  async (req, res, next) => {
+    try {
+      const body = updateAccessGroupRequestSchema.parse(req.body);
+      res.json({ data: await updateAccessGroup(groupIdFrom(req.params.groupId), body) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+adminRouter.delete(
+  '/access-groups/:groupId',
+  requireAuth,
+  requireSuperAdmin,
+  async (req, res, next) => {
+    try {
+      await deleteAccessGroup(groupIdFrom(req.params.groupId));
+      res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+adminRouter.put(
+  '/access-groups/:groupId/members',
+  requireAuth,
+  requireSuperAdmin,
+  async (req, res, next) => {
+    try {
+      const body = setAccessGroupMembersRequestSchema.parse(req.body);
+      res.json({ data: await setAccessGroupMembers(groupIdFrom(req.params.groupId), body) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+adminRouter.put(
+  '/access-groups/:groupId/companies',
+  requireAuth,
+  requireSuperAdmin,
+  async (req, res, next) => {
+    try {
+      const body = setAccessGroupCompaniesRequestSchema.parse(req.body);
+      res.json({ data: await setAccessGroupCompanies(groupIdFrom(req.params.groupId), body) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // Bulk-reconcile one user's memberships. Body is the desired set;
 // server diffs and applies. Atomic transaction so the user can't

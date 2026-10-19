@@ -6,6 +6,7 @@ import { OfflineBanner } from './components/OfflineBanner';
 import { SupportChatWidget } from './components/SupportChatWidget';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
+import { AccessGroupsPage } from './pages/AccessGroupsPage';
 import { AllUsersPage } from './pages/AllUsersPage';
 import { ApplianceHealthPage } from './pages/ApplianceHealthPage';
 import { ApplianceSettingsPage } from './pages/ApplianceSettingsPage';
@@ -210,6 +211,14 @@ export function App() {
           element={
             <RequireSuperAdmin>
               <AllUsersPage />
+            </RequireSuperAdmin>
+          }
+        />
+        <Route
+          path="/appliance/groups"
+          element={
+            <RequireSuperAdmin>
+              <AccessGroupsPage />
             </RequireSuperAdmin>
           }
         />

@@ -1,6 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 export * from './common.js';
+export * from './access-groups.js';
 export * from './ai.js';
 export * from './appliance-settings.js';
 export * from './auth.js';

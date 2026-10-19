@@ -7,7 +7,25 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [1.3.1] — 2026-10-19
+## [1.4.0] — 2026-10-19
+
+### Added — Access groups
+
+- **Appliance → Groups** (SuperAdmin): named groups that give the firm's
+  staff access to companies in bulk. A group has members and companies, each
+  company with a role; every member gets each company at that role and loses
+  it when removed from the group, the company is removed from the group, or
+  the group is deleted. Several groups granting the same company → the
+  highest role wins.
+- Grants are materialized into `company_memberships` as rows with
+  `granted_by_group = true` (migration `20261019000003_access_groups.js`), so
+  every existing permission check applies unchanged. A membership set
+  directly on a company's Team page or the People page takes precedence for
+  that company and is never touched by a group; removing it hands the
+  company back to the group.
+- Group-granted access shows as "via group" on the Team and People pages and
+  can only be changed on the Groups page (editing or removing it there
+  answers 409).
 
 ### Changed — Client-company sign-in links follow the company
 

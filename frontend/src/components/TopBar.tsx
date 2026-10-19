@@ -75,6 +75,7 @@ export function TopBar() {
   if (isSuper) {
     links.push({ to: '/companies', label: 'All companies' });
     links.push({ to: '/appliance/users', label: 'People' });
+    links.push({ to: '/appliance/groups', label: 'Groups' });
     links.push({ to: '/appliance', label: 'Appliance' });
   }
 

@@ -121,6 +121,30 @@ self-service recovery path — the login page says so. Recovery is: a CompanyAdm
 removes and re-invites the member with a new initial password, or a SuperAdmin
 does the same from **Appliance → People**.
 
+## Access groups (SuperAdmin)
+
+**Appliance → Groups** decides which of the firm's staff can reach which
+companies without editing each person:
+
+1. Create a group (e.g. "Audit team").
+2. Tick the companies it covers and pick a role for each (employee,
+   supervisor or company admin).
+3. Tick its members.
+
+Everyone in the group can now open those companies at that role. Take a
+person out of the group, a company out of the group, or delete the group,
+and the access goes with it on their next request.
+
+- In several groups that grant the same company, a person gets the highest
+  role.
+- A membership you set directly — on a company's **Team** page or on
+  **People** — always wins for that company, and groups never change it.
+  Remove the direct membership to let the groups decide.
+- Access from a group shows as **via group** on Team and People and can only
+  be changed here.
+- SuperAdmins already see every company; groups only set their role inside
+  each one.
+
 ## Running the week
 
 | Task                                                  | Where                            | Who                |

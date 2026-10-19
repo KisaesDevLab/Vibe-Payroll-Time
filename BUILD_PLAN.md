@@ -477,6 +477,17 @@ Requirement (from Kurt): remove the license, make the project MIT.
 - [x] License enforcement removed end to end (middleware, routes, verifier, heartbeat job, UI card/banner/page, env vars); `is_internal` kept
 - [x] Migration `20261019000001_remove_licensing.js` drops the license columns (reversible)
 
+## Phase 17 — Access groups
+
+Requirement (from Kurt): group management to define which firm users have access to which companies. In-app groups (not identity-provider groups).
+
+- [x] Migration `20261019000003_access_groups.js`: `access_groups`, `access_group_members`, `access_group_companies`; `company_memberships.granted_by_group`
+- [x] `services/access-groups.ts` — CRUD + `reconcileGroupAccess` (highest role wins; direct memberships untouched and take precedence)
+- [x] Direct paths respect group rows: Team role edit/remove → 409, invite clash → 409, People bulk reconcile skips them, SSO role sync takes them over
+- [x] SuperAdmin API `/api/v1/admin/access-groups[/:id[/members|/companies]]`
+- [x] Appliance → Groups page; "via group" badges on Team and People
+- [x] Integration tests (`access-groups.integration.test.ts`); admin guide + CHANGELOG
+
 ---
 
 ## Running counts

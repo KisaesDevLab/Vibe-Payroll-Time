@@ -125,6 +125,9 @@ export const adminMembershipSchema = z.object({
   companySlug: z.string(),
   isInternal: z.boolean(),
   role: z.enum(['company_admin', 'supervisor', 'employee']),
+  /** True when the access comes from an access group (managed on the
+   *  Groups page), not a direct membership. */
+  grantedByGroup: z.boolean(),
 });
 export type AdminMembership = z.infer<typeof adminMembershipSchema>;
 
