@@ -10,6 +10,24 @@ import { ApiError } from '../lib/api';
 import { corrections } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
+/** "Mon, Oct 19 · 8:00 AM → 10:15 AM (2.25 hrs)" for an add request that
+ *  carries a complete shift ("Add time" on My timesheet); null otherwise. */
+function shiftLabel(r: CorrectionRequest): string | null {
+  if (r.requestType !== 'add') return null;
+  const { startedAt, endedAt } = r.proposedChanges as { startedAt?: unknown; endedAt?: unknown };
+  if (typeof startedAt !== 'string' || typeof endedAt !== 'string') return null;
+  const start = new Date(startedAt);
+  const end = new Date(endedAt);
+  const time = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const day = start.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  const hours = ((end.getTime() - start.getTime()) / 3_600_000).toFixed(2);
+  return `${day} · ${time(start)} → ${time(end)} (${hours} hrs)`;
+}
+
 type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
 
 export function CorrectionsPage() {
@@ -74,9 +92,18 @@ export function CorrectionsPage() {
                 </p>
                 <p className="mt-1 text-sm text-slate-800">Employee #{r.employeeId}</p>
                 <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
-                <pre className="mt-2 overflow-x-auto rounded-md border border-slate-100 bg-slate-50 p-2 text-[11px] text-slate-700">
-                  {JSON.stringify(r.proposedChanges, null, 2)}
-                </pre>
+                {shiftLabel(r) ? (
+                  <p className="mt-2 rounded-md border border-slate-100 bg-slate-50 p-2 text-sm text-slate-800">
+                    Add shift: {shiftLabel(r)}
+                    <span className="block text-xs text-slate-500">
+                      Approving adds it to the timesheet.
+                    </span>
+                  </p>
+                ) : (
+                  <pre className="mt-2 overflow-x-auto rounded-md border border-slate-100 bg-slate-50 p-2 text-[11px] text-slate-700">
+                    {JSON.stringify(r.proposedChanges, null, 2)}
+                  </pre>
+                )}
                 <p className="mt-2 text-xs text-slate-500">
                   Submitted {new Date(r.createdAt).toLocaleString()}
                   {r.reviewedAt && (

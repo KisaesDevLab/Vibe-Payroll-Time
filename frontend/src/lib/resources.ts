@@ -43,6 +43,8 @@ import type {
   EmployeePreferences,
   InviteMembershipRequest,
   Job,
+  AddOwnEntryRequest,
+  AddOwnEntryResponse,
   TimeOffTypeState,
   KioskDevice,
   KioskPairingCodeResponse,
@@ -402,6 +404,12 @@ export const timesheets = {
     apiFetch<EntryAuditRow[]>(`/timesheets/entries/${entryId}/audit?companyId=${companyId}`),
   createCorrection: (companyId: number, body: CreateCorrectionRequest) =>
     apiFetch<CorrectionRequest>(`/timesheets/correction-requests?companyId=${companyId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Employee adds a shift they forgot to punch. */
+  addOwnEntry: (companyId: number, body: AddOwnEntryRequest) =>
+    apiFetch<AddOwnEntryResponse>(`/timesheets/my-entries?companyId=${companyId}`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

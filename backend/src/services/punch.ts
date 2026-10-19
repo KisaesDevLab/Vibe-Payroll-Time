@@ -908,9 +908,18 @@ export async function createEntryForEmployee(
 
     // Overlap check. Two ranges overlap when a.start < b.end AND a.end > b.start.
     // Unclosed entries (ended_at IS NULL) are treated as extending to +inf.
+    // Time off is stored from local midnight as a duration, not a clock
+    // span, so it never blocks a shift on the same day.
     const overlap = await trx<TimeEntryRow>('time_entries')
       .where({ company_id: actor.companyId, employee_id: input.employeeId })
       .whereNull('deleted_at')
+      .whereNull('superseded_by_entry_id')
+      .where((qb) => {
+        qb.whereNull('job_id').orWhereNotIn(
+          'job_id',
+          trx('jobs').where({ company_id: actor.companyId, is_time_off: true }).select('id'),
+        );
+      })
       .where('started_at', '<', endedAt)
       .andWhere((qb) => {
         qb.whereNull('ended_at').orWhere('ended_at', '>', startedAt);

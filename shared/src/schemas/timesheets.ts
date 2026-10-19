@@ -139,6 +139,18 @@ export const createEntryRequestSchema = z.object({
 });
 export type CreateEntryRequest = z.infer<typeof createEntryRequestSchema>;
 
+/** Employee adds time they forgot to punch, from their own timesheet.
+ *  Saved straight away when the company's manual-entry policy allows it;
+ *  otherwise (or on an approved day) it becomes an `add` correction
+ *  request for a supervisor. */
+export const addOwnEntryRequestSchema = z.object({
+  startedAt: z.string().datetime(),
+  endedAt: z.string().datetime(),
+  jobId: z.number().int().positive().nullable().optional(),
+  reason: z.string().trim().min(1).max(500),
+});
+export type AddOwnEntryRequest = z.infer<typeof addOwnEntryRequestSchema>;
+
 // ---------------------------------------------------------------------------
 // Correction requests
 // ---------------------------------------------------------------------------
@@ -159,6 +171,15 @@ export const correctionRequestSchema = z.object({
   createdAt: z.string().datetime(),
 });
 export type CorrectionRequest = z.infer<typeof correctionRequestSchema>;
+
+export const addOwnEntryResponseSchema = z.object({
+  /** `added`: the entry is on the timesheet. `requested`: it waits for a
+   *  supervisor's approval. */
+  status: z.enum(['added', 'requested']),
+  entry: timeEntrySchema.nullable(),
+  request: correctionRequestSchema.nullable(),
+});
+export type AddOwnEntryResponse = z.infer<typeof addOwnEntryResponseSchema>;
 
 export const createCorrectionRequestSchema = z.object({
   timeEntryId: z.number().int().positive().nullable().optional(),

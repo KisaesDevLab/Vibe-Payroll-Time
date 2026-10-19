@@ -7,6 +7,20 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — "Add time" on My timesheet
+
+- Employees can type in a shift they forgot to punch: date, clock-in and
+  clock-out time, optional job, and a reason (a clock-out before the clock-in
+  means the shift ran past midnight). Under the default `allowed`
+  manual-entry policy it is saved straight away and audited as created by the
+  employee; under `override_only` / `disabled`, or on a day with approved
+  time, it goes to a supervisor as an add request. Overlapping shifts and
+  clock-outs in the future are refused.
+- **Approving an add request now creates the entry** (attributed to the
+  reviewer). Previously approval only marked the request. The Corrections page
+  shows such requests as a readable shift.
+- The employee correction-request route now honours the sign-in switch.
+
 ### Added — Per-employee sign-in switch
 
 - Employee record → Web login → **Allow sign-in**. Off closes this company

@@ -77,6 +77,14 @@ the fix, and your supervisor will see it on their queue. If they approve it,
 the entry is updated and the change is recorded in the audit trail with your
 original request attached.
 
+### Adding time you forgot to punch
+
+On **My timesheet**, tap **+ Add time**. Pick the date, type the time you
+clocked in and out, choose a job if your company uses them, and say why.
+If the clock-out is earlier than the clock-in, the shift is treated as
+running past midnight. Depending on your company's settings it is added
+right away, or sent to your supervisor and shows up once they approve it.
+
 ## Notifications (optional)
 
 - **Email**: your admin has configured this company-wide. You'll get missed-

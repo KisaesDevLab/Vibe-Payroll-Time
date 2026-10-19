@@ -7,7 +7,7 @@ import type {
 } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { Conflict, NotFound } from '../http/errors.js';
-import { deleteEntry, editEntry, type EditEntryPatch } from './punch.js';
+import { createEntryForEmployee, deleteEntry, editEntry, type EditEntryPatch } from './punch.js';
 
 interface CorrectionRow {
   id: number;
@@ -121,10 +121,31 @@ export async function approveCorrectionRequest(
     if (!existing.time_entry_id) throw NotFound('Delete request missing target entry');
     await deleteEntry(existing.time_entry_id, { userId: actor.userId, companyId }, reason);
   }
-  // `add` requests don't auto-create entries in Phase 6 — the reviewer
-  // uses them as a prompt to hand-create the entry via the admin edit
-  // surface. Phase 11's NL correction feature is the intended surface
-  // for auto-applied adds.
+  // An `add` request carrying a complete shift ("Add time" on My
+  // timesheet) creates it, attributed to the reviewer, with the overlap
+  // check and audit row of any admin-created entry. Older free-form add
+  // requests (no times) stay a prompt to hand-create the entry.
+  if (existing.request_type === 'add') {
+    const p = existing.proposed_changes as {
+      startedAt?: unknown;
+      endedAt?: unknown;
+      entryType?: unknown;
+      jobId?: unknown;
+    };
+    if (typeof p.startedAt === 'string' && typeof p.endedAt === 'string') {
+      await createEntryForEmployee(
+        {
+          employeeId: existing.employee_id,
+          startedAt: p.startedAt,
+          endedAt: p.endedAt,
+          entryType: p.entryType === 'break' ? 'break' : 'work',
+          jobId: typeof p.jobId === 'number' ? p.jobId : null,
+          reason,
+        },
+        { userId: actor.userId, companyId },
+      );
+    }
+  }
 
   const [row] = await db<CorrectionRow>('correction_requests')
     .where({ id: requestId })
