@@ -1,24 +1,13 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import { type ReactNode } from 'react';
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { OfflineBanner } from './components/OfflineBanner';
 import { SupportChatWidget } from './components/SupportChatWidget';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
-import { AccessGroupsPage } from './pages/AccessGroupsPage';
-import { AllUsersPage } from './pages/AllUsersPage';
-import { ApplianceHealthPage } from './pages/ApplianceHealthPage';
-import { ApplianceSettingsPage } from './pages/ApplianceSettingsPage';
-import { AuthenticationSettingsPage } from './pages/AuthenticationSettingsPage';
-import { CompaniesListPage } from './pages/CompaniesListPage';
 import { CompanyLayout } from './pages/CompanyLayout';
-import { CompanySettingsPage } from './pages/CompanySettingsPage';
-import { CorrectionsPage } from './pages/CorrectionsPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { EmployeesPage } from './pages/EmployeesPage';
-import { JobsPage } from './pages/JobsPage';
-import { KiosksPage } from './pages/KiosksPage';
 import { KioskPairPage } from './pages/kiosk/KioskPairPage';
 import { KioskRoot } from './pages/kiosk/KioskRoot';
 import { isPunchOnlyUser } from './lib/punch-only';
@@ -28,20 +17,69 @@ import { MyPunchPage } from './pages/MyPunchPage';
 import { MyTimesheetPage } from './pages/MyTimesheetPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { NotificationPreferencesPage } from './pages/NotificationPreferencesPage';
-import { NotificationsLogPage } from './pages/NotificationsLogPage';
-import { PayrollExportsPage } from './pages/PayrollExportsPage';
 import { PreferencesPage } from './pages/PreferencesPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { SetupPage } from './pages/SetupPage';
-import { TeamPage } from './pages/TeamPage';
-import { MultiEmployeeGridPage } from './pages/MultiEmployeeGridPage';
-import { TimesheetsReviewPage } from './pages/TimesheetsReviewPage';
-import { WeeklyGridPage } from './pages/WeeklyGridPage';
+
+/**
+ * Admin, settings, report and grid pages load on demand, so an employee
+ * opening the punch page (often on cellular, through a tunnel) downloads
+ * only what that page needs. Employee and kiosk pages stay in the main
+ * bundle: they must work offline, and the service worker only caches a
+ * chunk once it has been fetched.
+ */
+function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(() => load().then((m) => ({ default: m[name] })));
+}
+
+const AccessGroupsPage = lazyPage(() => import('./pages/AccessGroupsPage'), 'AccessGroupsPage');
+const AllUsersPage = lazyPage(() => import('./pages/AllUsersPage'), 'AllUsersPage');
+const ApplianceHealthPage = lazyPage(
+  () => import('./pages/ApplianceHealthPage'),
+  'ApplianceHealthPage',
+);
+const ApplianceSettingsPage = lazyPage(
+  () => import('./pages/ApplianceSettingsPage'),
+  'ApplianceSettingsPage',
+);
+const AuthenticationSettingsPage = lazyPage(
+  () => import('./pages/AuthenticationSettingsPage'),
+  'AuthenticationSettingsPage',
+);
+const CompaniesListPage = lazyPage(() => import('./pages/CompaniesListPage'), 'CompaniesListPage');
+const CompanySettingsPage = lazyPage(
+  () => import('./pages/CompanySettingsPage'),
+  'CompanySettingsPage',
+);
+const CorrectionsPage = lazyPage(() => import('./pages/CorrectionsPage'), 'CorrectionsPage');
+const EmployeesPage = lazyPage(() => import('./pages/EmployeesPage'), 'EmployeesPage');
+const JobsPage = lazyPage(() => import('./pages/JobsPage'), 'JobsPage');
+const KiosksPage = lazyPage(() => import('./pages/KiosksPage'), 'KiosksPage');
+const NotificationsLogPage = lazyPage(
+  () => import('./pages/NotificationsLogPage'),
+  'NotificationsLogPage',
+);
+const PayrollExportsPage = lazyPage(
+  () => import('./pages/PayrollExportsPage'),
+  'PayrollExportsPage',
+);
+const ReportsPage = lazyPage(() => import('./pages/ReportsPage'), 'ReportsPage');
+const SetupPage = lazyPage(() => import('./pages/SetupPage'), 'SetupPage');
+const TeamPage = lazyPage(() => import('./pages/TeamPage'), 'TeamPage');
+const MultiEmployeeGridPage = lazyPage(
+  () => import('./pages/MultiEmployeeGridPage'),
+  'MultiEmployeeGridPage',
+);
+const TimesheetsReviewPage = lazyPage(
+  () => import('./pages/TimesheetsReviewPage'),
+  'TimesheetsReviewPage',
+);
+const WeeklyGridPage = lazyPage(() => import('./pages/WeeklyGridPage'), 'WeeklyGridPage');
 
 function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50">
-      {children}
+      <Suspense fallback={<p className="px-6 py-8 text-sm text-slate-500">Loading…</p>}>
+        {children}
+      </Suspense>
       <OfflineBanner />
       <SupportChatWidget />
     </div>

@@ -10,7 +10,6 @@ import { Button } from '../components/Button';
 import { CellEditPopover } from '../components/CellEditPopover';
 import { FormatToggle } from '../components/FormatToggle';
 import { HoursCell } from '../components/HoursCell';
-import { TopBar } from '../components/TopBar';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
 import {
@@ -79,7 +78,6 @@ export function WeeklyGridPage(): JSX.Element {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [lastSaveFailed, setLastSaveFailed] = useState(false);
-  const [tickTock, setTickTock] = useState(0);
 
   // Job-row filtering. At a company with 30+ active jobs the default
   // "render every job as a row" makes the grid a long, sparse,
@@ -123,13 +121,6 @@ export function WeeklyGridPage(): JSX.Element {
       }
     | null
   >(null);
-
-  // 1-second ticker so the "Saved 4s ago" indicator counts up without
-  // re-fetching anything.
-  useEffect(() => {
-    const id = window.setInterval(() => setTickTock((t) => t + 1), 1000);
-    return () => window.clearInterval(id);
-  }, []);
 
   const gridQ = useQuery({
     queryKey: ['weekly-grid', companyId, employeeId, weekStart],
@@ -368,20 +359,10 @@ export function WeeklyGridPage(): JSX.Element {
   }
 
   if (gridQ.isLoading) {
-    return (
-      <>
-        <TopBar />
-        <main className="p-6 text-sm text-slate-500">Loading…</main>
-      </>
-    );
+    return <p className="py-6 text-sm text-slate-500">Loading…</p>;
   }
   if (gridQ.error || !gridQ.data) {
-    return (
-      <>
-        <TopBar />
-        <main className="p-6 text-sm text-red-600">Failed to load weekly grid.</main>
-      </>
-    );
+    return <p className="py-6 text-sm text-red-600">Failed to load weekly grid.</p>;
   }
 
   const grid = gridQ.data;
@@ -521,8 +502,9 @@ export function WeeklyGridPage(): JSX.Element {
 
   return (
     <>
-      <TopBar />
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      {/* Rendered inside CompanyLayout, which supplies the TopBar and the
+          page container. */}
+      <div>
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
@@ -584,7 +566,7 @@ export function WeeklyGridPage(): JSX.Element {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <SaveIndicator lastSavedAt={lastSavedAt} failed={lastSaveFailed} tick={tickTock} />
+            <SaveIndicator lastSavedAt={lastSavedAt} failed={lastSaveFailed} />
             <FormatToggle
               value={format}
               onChange={(next) => updatePref.mutate(next)}
@@ -827,7 +809,7 @@ export function WeeklyGridPage(): JSX.Element {
         </div>
 
         <ExceptionsPanel entries={grid.entries} />
-      </main>
+      </div>
 
       {undo && (
         <UndoToast
@@ -947,15 +929,25 @@ function cellKey(jobId: number | null, date: string): string {
   return `${jobId ?? '_'}|${date}`;
 }
 
+/**
+ * "Saved 4s ago". The 1-second ticker lives here, not in the page, so the
+ * count-up re-renders this pill only — a ticker in the page re-rendered
+ * the whole grid every second, which is typing lag on a slow tablet. It
+ * runs only while there is something to count.
+ */
 function SaveIndicator({
   lastSavedAt,
   failed,
-  tick: _tick,
 }: {
   lastSavedAt: number | null;
   failed: boolean;
-  tick: number;
 }): JSX.Element | null {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (lastSavedAt == null || failed) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [lastSavedAt, failed]);
   if (lastSavedAt == null && !failed) return null;
   if (failed) {
     return (

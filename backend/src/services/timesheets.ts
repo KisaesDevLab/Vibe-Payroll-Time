@@ -44,15 +44,18 @@ async function loadCompanyCtx(companyId: number): Promise<CompanyCtx> {
 async function loadSettings(companyId: number): Promise<{
   roundingMode: 'none' | '1min' | '5min' | '6min' | '15min';
   roundingGraceMinutes: number;
+  timeOffSelfEntry: boolean;
 }> {
   const row = await db('company_settings').where({ company_id: companyId }).first<{
     punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
     punch_rounding_grace_minutes: number;
+    time_off_self_entry: boolean;
   }>();
   if (!row) throw NotFound('Company settings not found');
   return {
     roundingMode: row.punch_rounding_mode,
     roundingGraceMinutes: row.punch_rounding_grace_minutes,
+    timeOffSelfEntry: row.time_off_self_entry,
   };
 }
 
@@ -71,8 +74,13 @@ export async function getTimesheet(
     .first<{ id: number; first_name: string; last_name: string; timezone: string | null }>();
   if (!employee) throw NotFound('Employee not found');
 
-  const company = await loadCompanyCtx(companyId);
-  const settings = await loadSettings(companyId);
+  // Independent loads, in parallel: this backs My timesheet and every
+  // supervisor timesheet view.
+  const [company, settings, timeOffJobs] = await Promise.all([
+    loadCompanyCtx(companyId),
+    loadSettings(companyId),
+    loadTimeOffJobs(companyId),
+  ]);
 
   // Phase 14.2 — `employee.timezone` exists on the row (introduced by
   // migration 20260420000037) so we read it here, but we deliberately
@@ -117,7 +125,6 @@ export async function getTimesheet(
     .orderBy('started_at', 'asc');
 
   const entries: TimeEntry[] = rows.map(rowToTimeEntry);
-  const timeOffJobs = await loadTimeOffJobs(companyId);
 
   const summary = buildTimesheetSummary(
     entries.map((e) => ({
@@ -173,6 +180,7 @@ export async function getTimesheet(
     jobBreakdown: summary.jobBreakdown,
     timeOff: summary.timeOff,
     timeOffBreakdown: summary.timeOffBreakdown,
+    timeOffSelfEntry: settings.timeOffSelfEntry,
     isApproved: allApproved,
     approvedAt,
   };

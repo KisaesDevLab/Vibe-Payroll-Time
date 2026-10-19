@@ -71,6 +71,9 @@ export const timesheetResponseSchema = z.object({
       seconds: z.number().int().nonnegative(),
     }),
   ),
+  /** May the employee record their own time off at this company? Drives
+   *  the "Time off" button on My timesheet. */
+  timeOffSelfEntry: z.boolean(),
   /** True if every entry in the period is approved. */
   isApproved: z.boolean(),
   /** Present iff every entry has an approved_at set. */

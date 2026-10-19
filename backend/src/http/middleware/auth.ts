@@ -3,7 +3,6 @@
 import type { CompanyRole } from '@vibept/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { db } from '../../db/knex.js';
-import { isCompanyLoginBlocked } from '../../services/employee-login.js';
 import {
   verifyAccessToken,
   type AccessTokenClaims,
@@ -110,12 +109,21 @@ export function requireCompanyRole(
       // Super admins bypass per-company role checks.
       if (req.user.roleGlobal === 'super_admin') return next();
 
-      const membership = await db('company_memberships')
-        .where({ user_id: req.user.id, company_id: raw })
-        .first<{ role: CompanyRole }>();
+      // Membership and the employee sign-in switch in one round trip;
+      // this runs before every company-scoped handler.
+      const membership = await db('company_memberships as cm')
+        .leftJoin('employees as e', function () {
+          this.on('e.user_id', '=', 'cm.user_id').andOn('e.company_id', '=', 'cm.company_id');
+        })
+        .where({ 'cm.user_id': req.user.id, 'cm.company_id': raw })
+        .orderByRaw('e.login_disabled_at IS NULL') // any switched-off record wins
+        .first<{ role: CompanyRole; login_disabled_at: Date | null }>(
+          'cm.role',
+          'e.login_disabled_at',
+        );
 
       if (!membership) return next(Forbidden('Not a member of this company'));
-      if (await isCompanyLoginBlocked(req.user.id, raw)) {
+      if (membership.login_disabled_at) {
         return next(Forbidden('Your sign-in to this company has been turned off'));
       }
       if (!allowed.has(membership.role)) return next(Forbidden('Insufficient role'));

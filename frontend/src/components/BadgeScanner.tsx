@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import { BrowserQRCodeReader } from '@zxing/browser';
 import type { IScannerControls } from '@zxing/browser';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -21,6 +20,12 @@ export interface BadgeScannerProps {
   message?: string | null;
   /** If true, flash the viewfinder green to signal a successful read. */
   flashSuccess?: boolean;
+}
+
+/** Load the QR decoder on demand. Call early (kiosk mount) to have the
+ *  chunk downloaded and cached by the service worker while online. */
+export function loadZxing(): Promise<typeof import('@zxing/browser')> {
+  return import('@zxing/browser');
 }
 
 /**
@@ -88,6 +93,9 @@ export function BadgeScanner({
     setErrorText(null);
 
     try {
+      // zxing is large and only kiosks scan badges, so it isn't in the
+      // main bundle; KioskRoot preloads it so offline scanning still works.
+      const { BrowserQRCodeReader } = await loadZxing();
       const reader = new BrowserQRCodeReader(undefined, {
         delayBetweenScanAttempts: 100,
         delayBetweenScanSuccess: 1000,

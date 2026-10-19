@@ -7,6 +7,38 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Performance
+
+- **Weekly grid no longer re-renders every second.** The "Saved 4s ago"
+  ticker lived in the page and redrew the whole grid once a second (typing lag
+  on slow tablets); it now lives in the indicator, and only while counting.
+- **Smaller first load.** Admin, settings, report and grid pages load on
+  demand, and the QR decoder (zxing) loads only on the kiosk, which preloads
+  it so offline badge scanning still works. Employee and kiosk pages stay in
+  the main bundle for offline use.
+- **One query instead of two before every company-scoped request:** the
+  membership check and the employee sign-in switch are a single join.
+- **Indexes** (migration `20261019000007_performance_indexes.js`) for the
+  per-request "which employee am I here" lookup, the punch page's 30-second
+  "previous event" query, and the missed-punch reminder check.
+- My timesheet loads company, settings and time-off codes in parallel;
+  Settings → Time off reads its four types in one query.
+
+### Fixed — Grid views drew a page inside a page
+
+- The weekly grid and the all-employees grid render inside the company layout,
+  which already supplies the top bar and page container, but each drew its own
+  top bar and container again, so the header appeared twice. They now render
+  as plain page content.
+
+### Added — Time off from My timesheet
+
+- **+ Time off** on the My timesheet list view opens a popup for date, type
+  (the company's active PTO / Sick / Holiday / custom codes), hours and an
+  optional note. Shown only when the company lets employees record their own
+  time off (`timeOffSelfEntry` is now on the timesheet response) and has at
+  least one time-off type turned on.
+
 ### Fixed — Sign-in texts going to the wrong phone
 
 - **A link texted from an employee record could go to a different number.**

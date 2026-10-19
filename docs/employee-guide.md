@@ -122,6 +122,9 @@ when you try to add time on a day+job you didn't actually punch for.
 
 ### Logging a day off
 
+On **My timesheet**, tap **+ Time off**, pick the date and type, and enter
+the hours. You can also use the Time off rows in the Grid view.
+
 If your company records time off, the grid has a **Time off** section
 under your jobs (PTO, Sick, Holiday, …). Tap the day and type the
 hours, e.g. `8` for a full vacation day. A note is optional. Time off
