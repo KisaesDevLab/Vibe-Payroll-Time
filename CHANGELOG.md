@@ -25,6 +25,12 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the send failed, and personal phone verification returns the provider's
   error instead of a 500.
 
+### Fixed — UI
+
+- **The Team page's "Send link" menu was cut off** by the table around it.
+  The menu now opens above the page and flips upward near the bottom of the
+  window.
+
 ### Added
 
 - **Company test SMS**: Settings → Notifications → "Send a test SMS" sends
