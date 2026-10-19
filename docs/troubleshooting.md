@@ -52,13 +52,34 @@ minutes — put it on Wi-Fi with NTP enabled.
 
 ## SMS sends fail
 
-Under **Notifications → Log**, failed rows show the Twilio error code. The
-top three:
+**Test first.** Company **Settings → Notifications → Send a test SMS**
+sends through exactly the provider that company's texts use (its own Twilio,
+else the appliance-wide one) and shows the provider's error. **Appliance →
+Settings** has the same test for the appliance-wide credentials.
 
-- **21211**: invalid "to" number. The employee entered a malformed phone.
-- **21610**: recipient replied STOP. They must text START back to re-enable.
-- **20003**: authentication failed. The Auth Token is wrong — re-save under
-  **Settings → SMS** and the appliance re-encrypts it.
+**Which credentials are used.** A company's own complete Twilio (or
+TextLinkSMS) settings win; otherwise the appliance-wide provider. Sign-in
+links and personal phone verification follow the same rule.
+
+**Rows marked "skipped"** in **Notifications → Log** were never attempted:
+
+- _phone not verified_ / _recipient opted out of sms_ — the employee hasn't
+  verified their number or has SMS off under **Notifications** preferences.
+- _No SMS provider configured…_ — nothing is set up for the company or the
+  appliance.
+
+**Rows marked "failed"** show Twilio's code and a hint. The common ones:
+
+- **20003**: the Account SID or Auth Token is wrong — re-paste both.
+- **21211**: the recipient number is not valid.
+- **21212** / **21606**: the From number isn't a valid SMS-capable number on
+  this account. Use your Twilio number (`+14145551234`; 10-digit US numbers
+  are accepted) or a Messaging Service SID (`MG…`).
+- **21608**: a Twilio **trial** account can only text numbers you've verified
+  in the Twilio console.
+- **21610**: the recipient replied STOP; they must text START.
+- **30034**: US carriers block unregistered senders — register the number for
+  A2P 10DLC in the Twilio console.
 
 ## AI features are down and the log repeats "vibe-ai-router task-class registration failed; will retry"
 

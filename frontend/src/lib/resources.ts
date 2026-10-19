@@ -120,6 +120,12 @@ export const companySettings = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  /** Send a test SMS through the provider this company's messages use. */
+  testSms: (companyId: number, to: string) =>
+    apiFetch<TestSendResponse>(`/companies/${companyId}/notifications/test-sms`, {
+      method: 'POST',
+      body: JSON.stringify({ to }),
+    }),
 };
 
 // ---------------------------------------------------------------------------

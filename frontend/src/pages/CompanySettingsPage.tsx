@@ -111,6 +111,7 @@ export function CompanySettingsPage() {
         )}
         {section === 'notifications' && (
           <NotificationsSection
+            companyId={companyId}
             settings={settingsQ.data}
             onSubmit={updateSettings.mutate}
             saving={updateSettings.isPending}
@@ -464,11 +465,13 @@ function ApprovalSection({
 // ---------------------------------------------------------------------------
 
 function NotificationsSection({
+  companyId,
   settings,
   onSubmit,
   saving,
   error,
 }: {
+  companyId: number;
   settings: CompanySettings;
   onSubmit: (body: UpdateCompanySettingsRequest) => void;
   saving: boolean;
@@ -503,9 +506,11 @@ function NotificationsSection({
       />
       <FormField
         label="From number"
+        hint="Your Twilio number, e.g. +14145551234 (10-digit US numbers are accepted), or a Messaging Service SID starting with MG."
         defaultValue={settings.twilioFromNumber ?? ''}
         onChange={(e) => setForm((f) => ({ ...f, twilioFromNumber: e.target.value || null }))}
       />
+      <TestSmsRow companyId={companyId} />
 
       <h3 className="mt-4 text-sm font-semibold text-slate-900">EmailIt (email)</h3>
       <p className="-mt-2 text-xs text-slate-500">
@@ -700,5 +705,52 @@ function SectionShell({
         </Button>
       </div>
     </section>
+  );
+}
+
+/** Proves this company's SMS settings work end to end — it sends through
+ *  exactly the provider a real employee text would use, and shows the
+ *  provider's own error (e.g. Twilio 21608 on a trial account). Save the
+ *  settings first; it uses what is stored. */
+function TestSmsRow({ companyId }: { companyId: number }) {
+  const [to, setTo] = useState('');
+  const send = useMutation({ mutationFn: () => settingsApi.testSms(companyId, to.trim()) });
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[12rem] flex-1">
+          <FormField
+            label="Send a test SMS to"
+            placeholder="+14145551234"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={to.trim().length < 7}
+          loading={send.isPending}
+          onClick={() => send.mutate()}
+        >
+          Send test
+        </Button>
+      </div>
+      <p className="text-xs text-slate-500">Uses the saved settings — save changes first.</p>
+      {send.data?.ok && (
+        <p className="text-sm text-emerald-700">
+          Sent via {send.data.provider}
+          {send.data.providerMessageId ? ` (${send.data.providerMessageId})` : ''}.
+        </p>
+      )}
+      {send.data && !send.data.ok && (
+        <p className="text-sm text-red-700">Not sent: {send.data.error}</p>
+      )}
+      {send.error && (
+        <p className="text-sm text-red-700">
+          {send.error instanceof ApiError ? send.error.message : 'Test failed.'}
+        </p>
+      )}
+    </div>
   );
 }

@@ -4,10 +4,10 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, NotFound, Unauthorized } from '../http/errors.js';
-import { getResolvedDisplayName, getResolvedSmsProvider } from './appliance-settings.js';
-import { sendViaTextLinkSms } from './notifications/textlinksms-client.js';
-import { sendViaTwilio } from './notifications/twilio-client.js';
-import { normalizeToE164 } from './notifications/phone-verification.js';
+import { getResolvedDisplayName } from './appliance-settings.js';
+import { normalizeToE164 } from './notifications/phone-number.js';
+import { resolveSmsConfig, sendSmsWithConfig } from './notifications/service.js';
+import { SmsDeliveryError } from './notifications/twilio-client.js';
 
 /**
  * User-level (appliance-wide) phone management.
@@ -16,8 +16,8 @@ import { normalizeToE164 } from './notifications/phone-verification.js';
  *   - Writes to `users.phone` / `users.phone_verified_at` (not
  *     `employees.phone`), so the same row serves every company the
  *     user is a member of.
- *   - Sends the code via the appliance-level SMS provider (not the
- *     company-level provider), so SuperAdmins don't need a company
+ *   - Sends the code via the appliance-level SMS provider (falling back
+ *     to a company the user belongs to), so SuperAdmins don't need a company
  *     context to verify.
  *
  * Used by /me/phone/* endpoints on /preferences.
@@ -68,8 +68,9 @@ export async function setUserPhone(userId: number, phone: string | null): Promis
 
 /**
  * Mint a fresh 6-digit code for the user's current phone and send it
- * via the appliance-level SMS provider. Throws if no phone is set, or
- * if the appliance has no SMS provider configured.
+ * via the appliance-level SMS provider, else one of the user's
+ * companies'. Throws (400) if no phone is set, no provider is
+ * configured, or the provider rejects the send.
  */
 export async function requestUserPhoneVerification(userId: number): Promise<{ expiresAt: string }> {
   const user = await db('users')
@@ -78,10 +79,22 @@ export async function requestUserPhoneVerification(userId: number): Promise<{ ex
   if (!user) throw NotFound('User not found');
   if (!user.phone) throw BadRequest('No phone number set — save a number before requesting a code');
 
-  const resolved = await getResolvedSmsProvider();
-  if (!resolved.provider) {
+  // The appliance-wide provider, else the provider of a company the user
+  // belongs to (a firm whose Twilio lives on its own company settings).
+  let config = await resolveSmsConfig(null);
+  if (!config) {
+    const memberships = await db('company_memberships')
+      .where({ user_id: userId })
+      .orderBy('company_id', 'asc')
+      .pluck('company_id');
+    for (const companyId of memberships) {
+      config = await resolveSmsConfig(companyId);
+      if (config) break;
+    }
+  }
+  if (!config) {
     throw BadRequest(
-      'The appliance has no SMS provider configured. Ask a SuperAdmin to set Twilio or TextLinkSMS in Appliance Settings.',
+      'No SMS provider is configured. Ask a SuperAdmin to set Twilio or TextLinkSMS in Appliance Settings or your company settings.',
     );
   }
 
@@ -99,19 +112,14 @@ export async function requestUserPhoneVerification(userId: number): Promise<{ ex
   const appName = await getResolvedDisplayName();
   const body = `Your ${appName} verification code is ${code}. Expires in 10 minutes.`;
 
-  // Dispatch via the appliance-level provider. Parallels
-  // notifications/service.ts#sendSms but bypasses per-company resolver
-  // because user.phone is appliance-scoped.
-  if (resolved.provider === 'twilio') {
-    if (!resolved.twilio) {
-      throw BadRequest('Twilio selected on the appliance but credentials are incomplete');
-    }
-    await sendViaTwilio(resolved.twilio, { to: user.phone, body });
-  } else {
-    if (!resolved.textlinksms) {
-      throw BadRequest('TextLinkSMS selected on the appliance but credentials are incomplete');
-    }
-    await sendViaTextLinkSms(resolved.textlinksms, { to: user.phone, body });
+  try {
+    await sendSmsWithConfig(config, { to: user.phone, body });
+  } catch (err) {
+    // A provider rejection is the user's to read (bad number, trial
+    // account, wrong credentials) — not a 500.
+    throw BadRequest(
+      `The verification code could not be sent: ${err instanceof SmsDeliveryError ? err.message : (err as Error).message}`,
+    );
   }
 
   return { expiresAt: expiresAt.toISOString() };

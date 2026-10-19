@@ -7,6 +7,30 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — SMS
+
+- **A company's own Twilio settings were ignored.** Company settings have no
+  provider picker, so on an appliance without an appliance-wide SMS provider
+  every employee text resolved to "no provider" and was skipped. A company's
+  own complete Twilio (or TextLinkSMS) credentials now win, then the
+  appliance-wide provider. Personal phone verification (Preferences) falls
+  back to the user's company provider the same way.
+- **Twilio numbers and credentials are cleaned up.** The From number is
+  normalized to E.164 on save (a Messaging Service SID `MG…` is accepted too)
+  and again at send time, so `(414) 555-1212` no longer fails every send with
+  21212; pasted Account SID / Auth Token whitespace is trimmed.
+- **Errors say what to do.** Failed sends record Twilio's code plus a hint
+  (e.g. 21608 "trial accounts can only text numbers verified in the Twilio
+  console"). Employee phone verification no longer reports "code sent" when
+  the send failed, and personal phone verification returns the provider's
+  error instead of a 500.
+
+### Added
+
+- **Company test SMS**: Settings → Notifications → "Send a test SMS" sends
+  through the provider that company's texts actually use
+  (`POST /companies/:id/notifications/test-sms`).
+
 ## [1.4.0] — 2026-10-19
 
 ### Added — Personal-device punching across companies

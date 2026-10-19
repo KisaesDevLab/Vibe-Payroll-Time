@@ -9,6 +9,7 @@ import { db } from '../db/knex.js';
 import { env } from '../config/env.js';
 import { setLogLevel } from '../config/logger.js';
 import { decryptSecret, encryptSecret } from './crypto.js';
+import { cleanTwilioCredential, cleanTwilioSender } from './notifications/twilio-client.js';
 
 /**
  * SuperAdmin-editable appliance configuration. DB value (on the
@@ -281,12 +282,14 @@ export async function updateApplianceSettings(
     const s = patch.sms;
     if (s.provider !== undefined) updates.sms_provider = s.provider;
     if (s.twilio) {
-      if (s.twilio.accountSid !== undefined) updates.twilio_account_sid = s.twilio.accountSid;
+      if (s.twilio.accountSid !== undefined)
+        updates.twilio_account_sid = cleanTwilioCredential(s.twilio.accountSid);
       if (s.twilio.authToken !== undefined) {
-        updates.twilio_auth_token_encrypted =
-          s.twilio.authToken === null ? null : encryptSecret(s.twilio.authToken);
+        const token = cleanTwilioCredential(s.twilio.authToken);
+        updates.twilio_auth_token_encrypted = token === null ? null : encryptSecret(token);
       }
-      if (s.twilio.fromNumber !== undefined) updates.twilio_from_number = s.twilio.fromNumber;
+      if (s.twilio.fromNumber !== undefined)
+        updates.twilio_from_number = cleanTwilioSender(s.twilio.fromNumber);
     }
     if (s.textlinksms) {
       if (s.textlinksms.apiKey !== undefined) {
