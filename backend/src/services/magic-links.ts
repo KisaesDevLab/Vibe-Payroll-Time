@@ -316,6 +316,9 @@ interface IssueInput {
    *  the row out of the self-service rate-limit bucket and records who
    *  did it. */
   initiatedByUserId?: number | null;
+  /** The client company an admin sent this from (single sign-on policy:
+   *  see migration 20261019000002_magic_links_company.js). */
+  companyId?: number | null;
 }
 
 interface IssueOutcome {
@@ -344,6 +347,7 @@ async function issueAndDeliver(input: IssueInput): Promise<IssueOutcome> {
     ip: input.ip,
     user_agent: input.userAgent?.slice(0, 512) ?? null,
     initiated_by_user_id: input.initiatedByUserId ?? null,
+    company_id: input.companyId ?? null,
     expires_at: expiresAt,
   });
 
@@ -490,6 +494,10 @@ export interface SendAccountLinkInput {
   origin: string;
   /** The admin pressing the button — recorded on the row. */
   actorUserId: number;
+  /** The company page the admin sent it from, if any. Recorded so that
+   *  under oidc_only a firm user's link from a CLIENT company still works
+   *  (vibe-auth/policy.ts `assertLinkSignInAllowed`). */
+  companyId?: number | null;
   ip: string | null;
   userAgent: string | null;
 }
@@ -549,6 +557,7 @@ export async function sendAccountLink(
     ip: input.ip,
     userAgent: input.userAgent,
     initiatedByUserId: input.actorUserId,
+    companyId: input.companyId ?? null,
   });
 
   return {
@@ -571,7 +580,7 @@ export interface ConsumeMagicLinkInput {
   userAgent: string | null;
   /** Runs on the link's user before the token is burned; throw to refuse
    *  (the single sign-on policy). A refused link stays unconsumed. */
-  authorize?: (userId: number) => Promise<void>;
+  authorize?: (userId: number, link: { companyId: number | null }) => Promise<void>;
 }
 
 /**
@@ -597,13 +606,14 @@ export async function consumeMagicLink(input: ConsumeMagicLinkInput): Promise<Au
       purpose: LinkPurpose;
       expires_at: Date;
       consumed_at: Date | null;
+      company_id: number | null;
     }>();
 
     if (!row || row.consumed_at || new Date(row.expires_at) < new Date()) {
       throw Unauthorized('Invalid or expired login link');
     }
 
-    if (input.authorize) await input.authorize(row.user_id);
+    if (input.authorize) await input.authorize(row.user_id, { companyId: row.company_id });
 
     await trx('magic_links').where({ id: row.id }).update({ consumed_at: trx.fn.now() });
 

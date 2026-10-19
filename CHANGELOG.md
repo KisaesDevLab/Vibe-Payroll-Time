@@ -7,6 +7,17 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Client-company sign-in links follow the company
+
+- Under `oidc_only`, a sign-in or reset link an admin sends from a **client
+  company's** Team or Employees page now works for a firm user who also
+  belongs to that company (previously refused as "firm accounts sign in with
+  single sign-on"). The link records the company (`magic_links.company_id`,
+  migration `20261019000002_magic_links_company.js`) and consuming it
+  re-checks that the company is still a client company and the person still
+  belongs to it. Links sent from the internal company or the appliance-wide
+  People page, and self-service links, keep the firm rule.
+
 ## [1.3.0] — 2026-10-19
 
 ### Upgrade notes

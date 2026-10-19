@@ -203,7 +203,7 @@ authRouter.post('/magic/consume', authRateLimiter, async (req, res, next) => {
     // consumed, so a link issued ahead of the switch is not burned.
     const session = await consumeMagicLink({
       token: body.token,
-      authorize: assertLinkSignInAllowed,
+      authorize: (userId, link) => assertLinkSignInAllowed(userId, { companyId: link.companyId }),
       ip: req.ip ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });
