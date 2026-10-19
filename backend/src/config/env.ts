@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import 'dotenv-flow/config';
 import { z } from 'zod';
 
@@ -77,21 +76,21 @@ const envSchema = z.object({
   PUBLIC_URL: optionalEnvString(),
 
   /** Redis connection string for BullMQ. Required when MIGRATIONS_AUTO
-   *  is true and the four core background jobs (auto-clockout,
-   *  missed-punch, license-heartbeat, retention-sweep) need to run.
+   *  is true and the three core background jobs (auto-clockout,
+   *  missed-punch, retention-sweep) need to run.
    *  Standalone install.sh provisions a redis:7-alpine container by
    *  default. Falls back to localhost:6379 in dev. */
   REDIS_URL: z.string().default('redis://localhost:6379'),
 
   /** Per-worker concurrency for BullMQ consumers. Two is plenty for
-   *  the four cron-style jobs Payroll-Time runs; bump if customer
+   *  the three cron-style jobs Payroll-Time runs; bump if customer
    *  workload grows. */
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
 
   /** Master switch for background-job runtime. When false, the
    *  scheduler and workers don't start; Redis is never contacted. Used
    *  by the test suite (no Redis fixture) and by dev environments
-   *  that haven't provisioned Redis yet. The four `run*()` business
+   *  that haven't provisioned Redis yet. The three `run*()` business
    *  functions remain directly callable. */
   WORKERS_ENABLED: z
     .string()
@@ -241,24 +240,6 @@ const envSchema = z.object({
   VIBE_AI_ROUTER_URL: optionalEnvString(),
   /** app token minted in the router console — never a provider key */
   VIBE_AI_TOKEN: optionalEnvString(),
-
-  // ---------- Licensing ----------
-  /** Master switch. When false (the default), the license middleware
-   *  short-circuits every check to pass — the appliance runs fully
-   *  unlicensed. Flip to true once the customer goes live and the
-   *  license portal is reachable. */
-  LICENSING_ENFORCED: z
-    .string()
-    .default('false')
-    .transform((v) => v === 'true'),
-
-  /** Override the bundled kisaes-license-portal RSA public key (PEM).
-   *  Leave blank in dev; set in prod via the appliance installer. */
-  LICENSE_PUBKEY_PEM: optionalEnvString(),
-
-  /** URL of the license portal's heartbeat endpoint. When unset the
-   *  daily heartbeat cron is a no-op, useful for air-gapped previews. */
-  LICENSE_PORTAL_HEARTBEAT_URL: optionalEnvString(),
 });
 
 const envSchemaChecked = envSchema.superRefine((v, ctx) => {

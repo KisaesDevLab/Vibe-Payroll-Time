@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Pure unit tests for the manual-edit authorization matrix.
  * 12 combinations = (super_admin / company_admin / supervisor / employee) ×

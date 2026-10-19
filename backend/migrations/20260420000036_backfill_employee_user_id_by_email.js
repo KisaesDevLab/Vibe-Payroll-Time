@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Backfill `employees.user_id` for rows that were created with a
  * matching email but without a user_id link. Pre-fix, createEmployee

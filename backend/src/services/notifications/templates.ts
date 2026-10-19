@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Notification templates. Hand-rolled string interpolation —
  * `{{key}}` placeholders in the template are replaced with the

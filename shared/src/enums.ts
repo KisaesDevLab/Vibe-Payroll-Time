@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 export const GlobalRole = {
   SuperAdmin: 'super_admin',
   None: 'none',
@@ -68,15 +67,6 @@ export const RoundingMode = {
   FifteenMinute: '15min',
 } as const;
 export type RoundingMode = (typeof RoundingMode)[keyof typeof RoundingMode];
-
-export const LicenseState = {
-  InternalFree: 'internal_free',
-  Trial: 'trial',
-  Licensed: 'licensed',
-  Grace: 'grace',
-  Expired: 'expired',
-} as const;
-export type LicenseState = (typeof LicenseState)[keyof typeof LicenseState];
 
 export const AuditAction = {
   Create: 'create',

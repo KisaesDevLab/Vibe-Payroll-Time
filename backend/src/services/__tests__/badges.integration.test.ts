@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Badge-service integration tests. Skipped when Postgres isn't reachable,
  * same convention as the punch integration tests.
@@ -72,7 +71,6 @@ async function seed() {
       timezone: 'UTC',
       pay_period_type: 'bi_weekly',
       is_internal: true,
-      license_state: 'internal_free',
     })
     .returning<Array<{ id: number }>>('id');
   const [cb] = await db('companies')
@@ -82,7 +80,6 @@ async function seed() {
       timezone: 'UTC',
       pay_period_type: 'bi_weekly',
       is_internal: false,
-      license_state: 'internal_free',
     })
     .returning<Array<{ id: number }>>('id');
   companyA = ca!.id;

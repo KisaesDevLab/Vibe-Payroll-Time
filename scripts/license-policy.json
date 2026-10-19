@@ -1,10 +1,8 @@
 {
-  "_comment": "Machine-readable license policy for Vibe Payroll Time (PolyForm Internal Use License 1.0.0). Mirrors the TB and MB policies so the three products stay in sync.",
-  "_updated": "2026-04-21",
-
-  "projectLicense": "PolyForm-Internal-Use-1.0.0",
-  "projectLicenseSpdx": "SEE LICENSE IN LICENSE",
-
+  "_comment": "Machine-readable license policy for Vibe Payroll Time (MIT License).",
+  "_updated": "2026-10-19",
+  "projectLicense": "MIT",
+  "projectLicenseSpdx": "MIT",
   "allowed": [
     "MIT",
     "MIT/X11",
@@ -28,7 +26,6 @@
     "(MPL-2.0 OR Apache-2.0)",
     "(Unlicense OR Apache-2.0)"
   ],
-
   "reviewRequired": [
     "LGPL-2.0",
     "LGPL-2.1",
@@ -40,7 +37,6 @@
     "CC-BY-4.0",
     "MIT*"
   ],
-
   "denied": [
     "GPL-2.0-only",
     "GPL-2.0",
@@ -53,7 +49,6 @@
     "Commercial",
     "UNLICENSED"
   ],
-
   "knownIssues": [
     {
       "package": "caniuse-lite",
@@ -74,17 +69,11 @@
       "notes": "Runtime dep of the kiosk PIN flow. Safe."
     }
   ],
-
-  "polyformRequirements": {
+  "projectLicenseRequirements": {
     "licenseFile": {
       "required": true,
       "path": "LICENSE",
-      "status": "PRESENT — full PolyForm Internal Use License 1.0.0 text with Kisaes LLC licensor preamble"
-    },
-    "commercialLicenseFile": {
-      "required": true,
-      "path": "LICENSE-COMMERCIAL.md",
-      "status": "PRESENT — reseller / client-portal tier described separately so the internal-use terms in LICENSE stay unambiguous"
+      "status": "PRESENT — MIT License text, Copyright (c) 2026 Kisaes LLC"
     },
     "noticeFile": {
       "required": true,
@@ -93,13 +82,8 @@
     },
     "sourceHeaders": {
       "required": true,
-      "status": "ENFORCED — every first-party source file carries the PolyForm header; check-license-headers.sh runs in npm run check and as a lint-staged pre-commit hook.",
-      "note": "PolyForm Internal Use requires that licensing notices not be removed or obscured where present. Extensions covered: .ts, .tsx, .js, .jsx, .mjs, .cjs, .sql, .sh, .py."
-    },
-    "noDistribution": {
-      "required": true,
-      "status": "ENFORCED — PolyForm Internal Use prohibits distribution of the software",
-      "note": "Distribution restriction is a core term of the license. LICENSE-COMMERCIAL.md covers the separately-negotiated commercial tier."
+      "status": "ENFORCED — every first-party source file carries `Copyright 2026 Kisaes LLC` + `SPDX-License-Identifier: MIT`; check-license-headers.sh runs in npm run check and as a lint-staged pre-commit hook.",
+      "note": "Extensions covered: .ts, .tsx, .js, .jsx, .mjs, .cjs, .sql, .sh, .py."
     }
   }
 }

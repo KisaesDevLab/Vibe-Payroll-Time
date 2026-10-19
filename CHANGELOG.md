@@ -7,6 +7,38 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — License is now MIT
+
+- **The project is MIT-licensed** (`LICENSE`), replacing PolyForm Internal
+  Use 1.0.0. `LICENSE-COMMERCIAL.md` is gone; every source file's header is
+  now `Copyright 2026 Kisaes LLC` + `SPDX-License-Identifier: MIT`.
+
+### Removed — License enforcement
+
+- The in-app licensing feature: the enforcement middleware (402
+  `license_expired`), license upload/status routes, the License card on
+  **Appliance → Settings** and the license banner/page, the daily
+  `license-heartbeat` job, and the `LICENSING_ENFORCED` /
+  `LICENSE_PUBKEY_PEM` / heartbeat env vars. Migration
+  `20261019000001_remove_licensing.js` drops the license columns.
+  `companies.is_internal` stays — it marks the firm's own company.
+
+### Changed — Single sign-on is for firm users only
+
+- Vibe Auth now covers only the firm's users: SuperAdmins and staff of the
+  internal company. Client-company admins, supervisors and employees sign in
+  with password or emailed link in every mode, `oidc_only` included; the SSO
+  callback refuses them without linking an identity or syncing a role
+  (`login_failure` / `sso_client_company_user`). Role sync and just-in-time
+  provisioning write only the internal company's membership, in either
+  `TENANT_MODE`. Under `oidc_only` a firm user's password is refused only
+  after it verifies, and link requests answer 204 without sending.
+- **SSO moved to its own page, `/firm`.** `/login` shows only email /
+  password and link sign-in, in every mode, so client-company users never see
+  an identity-provider button. `/firm` carries the SSO button (and the local
+  forms while the mode allows), is the engine's `loginPath`, and is where the
+  SSO hand-off lands. Add `/firm` to the appliance's public paths.
+
 ## [1.2.0] — 2026-10-05
 
 ### Added — Punch location (opt-in)

@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateCompanyRequest } from '@vibept/shared';
 import { useMemo, useState } from 'react';
@@ -10,7 +9,7 @@ import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { TopBar } from '../components/TopBar';
 import { ApiError, apiFetch } from '../lib/api';
-import { companies as companiesApi, licensing } from '../lib/resources';
+import { companies as companiesApi, internalFlag } from '../lib/resources';
 
 const TZ_GUESS = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Chicago';
 
@@ -73,7 +72,7 @@ export function CompaniesListPage() {
 
   const toggleInternal = useMutation({
     mutationFn: ({ id, isInternal }: { id: number; isInternal: boolean }) =>
-      licensing.setInternalFlag(id, isInternal),
+      internalFlag.set(id, isInternal),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
   });
 
@@ -119,7 +118,6 @@ export function CompaniesListPage() {
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Company</th>
                 <th className="px-4 py-3 text-left font-medium">Type</th>
-                <th className="px-4 py-3 text-left font-medium">License</th>
                 <th className="px-4 py-3 text-left font-medium">Pay period</th>
                 <th className="px-4 py-3 text-right font-medium">Employees</th>
                 <th className="px-4 py-3" />
@@ -147,8 +145,8 @@ export function CompaniesListPage() {
                         if (
                           confirm(
                             next
-                              ? `Mark "${c.name}" as internal? Licensing will no longer apply to this company.`
-                              : `Unmark "${c.name}" as internal? It will revert to trial and need a license.`,
+                              ? `Mark "${c.name}" as internal (the firm's own company)? Its users will sign in through the firm's single sign-on.`
+                              : `Unmark "${c.name}" as internal? It becomes a client company and its users sign in locally.`,
                           )
                         )
                           toggleInternal.mutate({ id: c.id, isInternal: next });
@@ -164,7 +162,6 @@ export function CompaniesListPage() {
                       {c.isInternal ? 'Internal' : 'Client'}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{c.licenseState.replace('_', ' ')}</td>
                   <td className="px-4 py-3 text-slate-700">{c.payPeriodType.replace('_', '-')}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-900">
                     {c.employeeCount ?? 0}
@@ -255,7 +252,7 @@ export function CompaniesListPage() {
               checked={!!form.isInternal}
               onChange={(e) => setForm((f) => ({ ...f, isInternal: e.target.checked }))}
             />
-            Internal firm company (never licensed)
+            Internal firm company (the firm's own staff)
           </label>
 
           {create.isError && (

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 Kisaes LLC
-# Licensed under the PolyForm Internal Use License 1.0.0.
-# You may not distribute this software. See LICENSE for terms.
+# SPDX-License-Identifier: MIT
 # Vibe Payroll Time — one-shot appliance installer.
 #
 # Installs Docker + the app stack on a fresh Ubuntu Server 24.04 LTS box
@@ -474,12 +473,6 @@ NOTIFICATIONS_DISABLED=false
 
 # Payroll CSV export directory (relative to the api container's cwd).
 EXPORTS_DIR=./exports
-
-# Licensing — off by default. Turn on once the kisaes-license-portal is
-# live for this product and LICENSE_PUBKEY_PEM is pinned.
-LICENSING_ENFORCED=false
-LICENSE_PUBKEY_PEM=
-LICENSE_PORTAL_HEARTBEAT_URL=
 
 # EmailIt appliance-wide fallback, AI fallback, retention, and log level
 # are all edited from the SuperAdmin UI at /appliance/settings. They are

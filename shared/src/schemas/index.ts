@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 export * from './common.js';
 export * from './ai.js';
 export * from './appliance-settings.js';
@@ -12,7 +11,6 @@ export * from './badges.js';
 export * from './grids.js';
 export * from './jobs.js';
 export * from './kiosk.js';
-export * from './licensing.js';
 export * from './magic-links.js';
 export * from './manual-entries.js';
 export * from './notifications.js';

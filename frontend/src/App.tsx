@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { OfflineBanner } from './components/OfflineBanner';
@@ -21,7 +20,6 @@ import { JobsPage } from './pages/JobsPage';
 import { KiosksPage } from './pages/KiosksPage';
 import { KioskPairPage } from './pages/kiosk/KioskPairPage';
 import { KioskRoot } from './pages/kiosk/KioskRoot';
-import { LicensePage } from './pages/LicensePage';
 import { LoginPage } from './pages/LoginPage';
 import { MagicLinkConsumePage } from './pages/MagicLinkConsumePage';
 import { MyPunchPage } from './pages/MyPunchPage';
@@ -233,7 +231,6 @@ export function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="exports" element={<PayrollExportsPage />} />
           <Route path="notifications-log" element={<NotificationsLogPage />} />
-          <Route path="license" element={<LicensePage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="kiosks" element={<KiosksPage />} />

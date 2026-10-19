@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Knex config — plain CommonJS JS so `knex` CLI can load it directly without a
  * TS loader. Migrations themselves are plain `.js` under ./migrations for

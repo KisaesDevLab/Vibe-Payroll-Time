@@ -107,8 +107,8 @@ services:
       start_period: 30s
 
   # Phase 14 — dedicated worker container. Same image as the API,
-  # different entrypoint. Splits the four BullMQ queues (auto-clockout,
-  # missed-punch, license-heartbeat, retention-sweep) onto their own
+  # different entrypoint. Splits the three BullMQ queues (auto-clockout,
+  # missed-punch, retention-sweep) onto their own
   # process so a hot punch endpoint can't starve background work.
   vibe-payroll-worker:
     image: ghcr.io/kisaesdevlab/vibe-payroll-time-server:${VIBE_PAYROLL_TAG:-latest}

@@ -58,15 +58,6 @@ documented waiver, or blocks the release.
 - [ ] Both task classes remain on local-only tiers in the router policy, or
       the widening has a documented waiver
 
-## Licensing
-
-- [ ] `LICENSING_ENFORCED=false` makes every enforcement call a no-op
-- [ ] With enforcement on, expired licenses block mutation endpoints only —
-      GET and export endpoints still serve
-- [ ] Internal-flagged companies bypass enforcement entirely
-- [ ] License JWTs are verified with RS256 against `LICENSE_PUBKEY_PEM`;
-      tokens without a pub key configured fail closed in prod
-
 ## Backups + restore
 
 - [ ] Level-2 backup script tested on a fresh host against a real dump

@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /** API path prefix for all backend endpoints. */
 export const API_PREFIX = '/api/v1';
 
@@ -25,24 +24,6 @@ export const KIOSK_IDLE_LOCK_SECONDS = 30;
 
 /** Reject offline punches older than this when flushed. */
 export const OFFLINE_PUNCH_MAX_AGE_SECONDS = 72 * 60 * 60;
-
-/** Company license grace period. */
-export const LICENSE_GRACE_DAYS = 60;
-
-/** Trial duration for first client-portal company. */
-export const LICENSE_TRIAL_DAYS = 14;
-
-/**
- * Appliance-wide free tier. Up to this many client (non-internal)
- * companies run for free — ranked by created_at ascending so a firm
- * can't cycle through deletes to stay under the cap. Companies beyond
- * this cap fall through to the appliance-wide license state
- * (trial/licensed/grace/expired).
- *
- * Remote access (personal-device PWA from anywhere) is feature-complete
- * regardless of tier — it ships enabled for every company.
- */
-export const FREE_CLIENT_COMPANY_CAP = 5;
 
 /** FLSA weekly overtime threshold in hours. */
 export const FLSA_OT_THRESHOLD_HOURS = 40;

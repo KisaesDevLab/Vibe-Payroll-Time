@@ -1,7 +1,6 @@
 #!/bin/sh
 # Copyright 2026 Kisaes LLC
-# Licensed under the PolyForm Internal Use License 1.0.0.
-# You may not distribute this software. See LICENSE for terms.
+# SPDX-License-Identifier: MIT
 #
 # Vibe Payroll Time web container — runs as a /docker-entrypoint.d/ hook
 # before nginx starts (the upstream nginx:1.27-alpine image's

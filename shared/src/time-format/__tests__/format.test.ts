@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { describe, expect, it } from 'vitest';
 import { formatHours, formatHoursDual, minutesToHHMM, secondsToHHMM } from '../format.js';
 import { parseHours } from '../parse.js';

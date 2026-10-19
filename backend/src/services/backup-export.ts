@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import archiver from 'archiver';
 import type { Writable } from 'node:stream';
 import { db } from '../db/knex.js';
@@ -47,7 +46,6 @@ const REDACT_COLUMNS_BY_TABLE: Record<string, Set<string>> = {
     'emailit_api_key_encrypted',
     'ai_api_key_encrypted',
   ]),
-  companies: new Set(['license_key_encrypted']),
   kiosk_devices: new Set(['token_hash']),
 };
 

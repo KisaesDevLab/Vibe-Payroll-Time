@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import {
   approvePeriodRequestSchema,
   createCorrectionRequestSchema,
@@ -38,23 +37,8 @@ import {
 } from '../../services/timesheets.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth, requireCompanyRole } from '../middleware/auth.js';
-import { enforceLicense } from '../middleware/license.js';
 
 export const timesheetsRouter: Router = Router();
-
-// Per BUILD_PLAN: an expired-license company is read-only — no edits,
-// approvals, or new entries. The other mutation surfaces (punch.ts,
-// manual-entries.ts, kiosk.ts) already enforce this; the timesheet
-// edit/approve routes were the gap. companyId here lives on the query
-// string for every mutation route in this router, so reuse one factory.
-// `enforceLicense` short-circuits when LICENSING_ENFORCED is false
-// (the v1 default), so this is future-proofing — no runtime change
-// today, but flipping the env flag instantly closes the hole.
-const licenseFromQuery = enforceLicense((req) => {
-  const raw = req.query.companyId;
-  const n = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-});
 
 /**
  * Shared helper: extract companyId from query/body and check the caller
@@ -213,7 +197,7 @@ timesheetsRouter.get('/current', requireAuth, async (req, res, next) => {
 
 const approveQuery = z.object({ companyId: z.coerce.number().int().positive() });
 
-timesheetsRouter.post('/approve', requireAuth, licenseFromQuery, async (req, res, next) => {
+timesheetsRouter.post('/approve', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
     const { companyId } = approveQuery.parse(req.query);
@@ -230,7 +214,7 @@ timesheetsRouter.post('/approve', requireAuth, licenseFromQuery, async (req, res
   }
 });
 
-timesheetsRouter.post('/unapprove', requireAuth, licenseFromQuery, async (req, res, next) => {
+timesheetsRouter.post('/unapprove', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
     const { companyId } = approveQuery.parse(req.query);
@@ -247,7 +231,7 @@ timesheetsRouter.post('/unapprove', requireAuth, licenseFromQuery, async (req, r
 // Entry edit + delete — authorized via edit matrix
 // ---------------------------------------------------------------------------
 
-timesheetsRouter.post('/entries', requireAuth, licenseFromQuery, async (req, res, next) => {
+timesheetsRouter.post('/entries', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
     const { companyId } = approveQuery.parse(req.query);
@@ -271,68 +255,58 @@ timesheetsRouter.post('/entries', requireAuth, licenseFromQuery, async (req, res
   }
 });
 
-timesheetsRouter.patch(
-  '/entries/:entryId',
-  requireAuth,
-  licenseFromQuery,
-  async (req, res, next) => {
-    try {
-      if (!req.user) return next(Unauthorized());
-      const { companyId } = approveQuery.parse(req.query);
-      const body = editEntryRequestSchema.parse(req.body);
-      const entryId = Number(req.params.entryId);
+timesheetsRouter.patch('/entries/:entryId', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const { companyId } = approveQuery.parse(req.query);
+    const body = editEntryRequestSchema.parse(req.body);
+    const entryId = Number(req.params.entryId);
 
-      const ctx = await loadEditContext(
-        { userId: req.user.id, roleGlobal: req.user.roleGlobal },
-        companyId,
-        entryId,
-      );
-      assertCanEdit(ctx);
+    const ctx = await loadEditContext(
+      { userId: req.user.id, roleGlobal: req.user.roleGlobal },
+      companyId,
+      entryId,
+    );
+    assertCanEdit(ctx);
 
-      const patch: EditEntryPatch = {};
-      if (body.startedAt !== undefined) patch.startedAt = body.startedAt;
-      if (body.endedAt !== undefined) patch.endedAt = body.endedAt;
-      if (body.jobId !== undefined) patch.jobId = body.jobId;
-      if (body.entryType !== undefined) patch.entryType = body.entryType;
+    const patch: EditEntryPatch = {};
+    if (body.startedAt !== undefined) patch.startedAt = body.startedAt;
+    if (body.endedAt !== undefined) patch.endedAt = body.endedAt;
+    if (body.jobId !== undefined) patch.jobId = body.jobId;
+    if (body.entryType !== undefined) patch.entryType = body.entryType;
 
-      const updated = await editEntry(
-        entryId,
-        patch,
-        { userId: req.user.id, companyId },
-        body.reason,
-      );
-      res.json({ data: updated });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+    const updated = await editEntry(
+      entryId,
+      patch,
+      { userId: req.user.id, companyId },
+      body.reason,
+    );
+    res.json({ data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
 
-timesheetsRouter.delete(
-  '/entries/:entryId',
-  requireAuth,
-  licenseFromQuery,
-  async (req, res, next) => {
-    try {
-      if (!req.user) return next(Unauthorized());
-      const { companyId } = approveQuery.parse(req.query);
-      const body = deleteEntryRequestSchema.parse(req.body ?? {});
-      const entryId = Number(req.params.entryId);
+timesheetsRouter.delete('/entries/:entryId', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const { companyId } = approveQuery.parse(req.query);
+    const body = deleteEntryRequestSchema.parse(req.body ?? {});
+    const entryId = Number(req.params.entryId);
 
-      const ctx = await loadEditContext(
-        { userId: req.user.id, roleGlobal: req.user.roleGlobal },
-        companyId,
-        entryId,
-      );
-      assertCanDelete(ctx);
+    const ctx = await loadEditContext(
+      { userId: req.user.id, roleGlobal: req.user.roleGlobal },
+      companyId,
+      entryId,
+    );
+    assertCanDelete(ctx);
 
-      await deleteEntry(entryId, { userId: req.user.id, companyId }, body.reason);
-      res.status(204).end();
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+    await deleteEntry(entryId, { userId: req.user.id, companyId }, body.reason);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Audit trail
@@ -398,38 +372,28 @@ correctionsRouter.get(
 );
 
 // Employee creates a request — scoped to the acting user's employee row.
-timesheetsRouter.post(
-  '/correction-requests',
-  requireAuth,
-  licenseFromQuery,
-  async (req, res, next) => {
-    try {
-      if (!req.user) return next(Unauthorized());
-      const { companyId } = approveQuery.parse(req.query);
-      const body = createCorrectionRequestSchema.parse(req.body);
+timesheetsRouter.post('/correction-requests', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const { companyId } = approveQuery.parse(req.query);
+    const body = createCorrectionRequestSchema.parse(req.body);
 
-      const employee = await db('employees')
-        .where({ company_id: companyId, user_id: req.user.id, status: 'active' })
-        .first<{ id: number }>();
-      if (!employee) return next(Forbidden('Not an active employee at this company'));
+    const employee = await db('employees')
+      .where({ company_id: companyId, user_id: req.user.id, status: 'active' })
+      .first<{ id: number }>();
+    if (!employee) return next(Forbidden('Not an active employee at this company'));
 
-      const created = await createCorrectionRequest(companyId, employee.id, req.user.id, body);
-      res.status(201).json({ data: created });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
-
-// Default extractor reads req.params.companyId from the route — perfect
-// for the nested correctionsRouter mounted at /companies/:companyId/...
-const correctionsLicense = enforceLicense();
+    const created = await createCorrectionRequest(companyId, employee.id, req.user.id, body);
+    res.status(201).json({ data: created });
+  } catch (err) {
+    next(err);
+  }
+});
 
 correctionsRouter.post(
   '/:companyId/correction-requests/:id/approve',
   requireAuth,
   requireCompanyRole(['company_admin', 'supervisor']),
-  correctionsLicense,
   async (req, res, next) => {
     try {
       if (!req.user) return next(Unauthorized());
@@ -448,7 +412,6 @@ correctionsRouter.post(
   '/:companyId/correction-requests/:id/reject',
   requireAuth,
   requireCompanyRole(['company_admin', 'supervisor']),
-  correctionsLicense,
   async (req, res, next) => {
     try {
       if (!req.user) return next(Unauthorized());

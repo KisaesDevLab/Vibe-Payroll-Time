@@ -3,9 +3,8 @@
 # Vibe Payroll Time
 
 A self-hosted, multi-tenant **employee time tracking** appliance for hourly and
-shift workers. Designed for CPA firms tracking their own staff hours (free,
-internal use) and for CPA firms reselling it to their small-business clients
-(commercial tier). Narrower and simpler than QuickBooks Time, OnTheClock, or
+shift workers. Designed for CPA firms tracking their own staff hours and the
+hours of their small-business clients. Narrower and simpler than QuickBooks Time, OnTheClock, or
 Homebase — punch-in/out, timesheet approval, payroll export, nothing more.
 
 **Explicit non-goals (v1):** payroll processing, scheduling, geofencing,
@@ -108,14 +107,11 @@ The `api` + `web` containers join `vibe_ingress` and serve under the
 - [`BUILD_PLAN.md`](./BUILD_PLAN.md) — phased, checklist-driven build plan
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — branching, commits, and PR flow
 
-## Licensing
+## License
 
-- Source: [PolyForm Internal Use 1.0.0](./LICENSE) — free for internal
-  staff-only use
-- Client-portal and reseller use: see
-  [`LICENSE-COMMERCIAL.md`](./LICENSE-COMMERCIAL.md)
-- Commercial keys vended by the shared
-  [`kisaes-license-portal`](https://licensing.kisaes.com)
+[MIT](./LICENSE) — free to use, modify, and redistribute, including for
+client-company (client-portal) use. There is no commercial tier and no
+license key: every feature is available on every appliance.
 
 ## Stack
 

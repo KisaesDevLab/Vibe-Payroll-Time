@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * End-to-end API security tests for Phase 4.5 badges. Spins up the real
  * Express app on an ephemeral port and drives it via fetch, exercising
@@ -95,7 +94,6 @@ async function seed(): Promise<void> {
       timezone: 'UTC',
       pay_period_type: 'bi_weekly',
       is_internal: true,
-      license_state: 'internal_free',
     })
     .returning<Array<{ id: number }>>('id');
   const [cb] = await db('companies')
@@ -105,7 +103,6 @@ async function seed(): Promise<void> {
       timezone: 'UTC',
       pay_period_type: 'bi_weekly',
       is_internal: false,
-      license_state: 'internal_free',
     })
     .returning<Array<{ id: number }>>('id');
   companyA = ca!.id;

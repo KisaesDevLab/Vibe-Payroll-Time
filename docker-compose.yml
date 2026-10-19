@@ -35,7 +35,7 @@ services:
       retries: 10
 
   # Phase 14: Redis backs BullMQ queues (auto-clockout, missed-punch,
-  # license-heartbeat, retention-sweep). The four background jobs that
+  # retention-sweep). The background jobs that
   # used to be in-process node-cron now run through this. Standalone
   # customers get it auto-provisioned; appliance deployments share the
   # parent appliance's Redis instead via the appliance overlay.

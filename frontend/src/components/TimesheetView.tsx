@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import type { TimeEntry, TimesheetResponse } from '@vibept/shared';
 import { useMemo, useState } from 'react';
 import { formatCoords, mapLinkFor } from '../lib/punch-location';

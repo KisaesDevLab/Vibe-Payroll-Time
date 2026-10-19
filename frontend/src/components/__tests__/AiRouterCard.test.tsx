@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { AiRouterHealth } from '../../lib/resources';

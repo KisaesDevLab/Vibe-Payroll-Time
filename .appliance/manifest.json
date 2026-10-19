@@ -144,7 +144,7 @@
   "workers": {
     "container": "vibe-payroll-worker",
     "redisPrefix": "vpt",
-    "queues": ["auto-clockout", "missed-punch", "license-heartbeat", "retention-sweep"],
+    "queues": ["auto-clockout", "missed-punch", "retention-sweep"],
     "note": "BullMQ-backed background jobs. Redis keys land under `vpt:<queue>:*` via BullMQ's prefix option (BullMQ ≥5.76 rejects `:` in queue names themselves). The api container runs WORKER_ROLE=scheduler; the worker container runs WORKER_ROLE=worker. /api/v1/health reports per-queue heartbeat status under .data.workers."
   }
 }

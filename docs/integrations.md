@@ -58,15 +58,6 @@ Router"). See `docs/ai-router.md` for provisioning and verification.
 When AI is off, no provider is called — not for corrections, not for the
 support chat. See `docs/security-review.md` for the full data-flow.
 
-## Licensing — kisaes-license-portal
-
-Commercial tiers (per-firm annual, per-company monthly, per-company capped)
-are vended by the shared Kisaes license portal at **licensing.kisaes.com**.
-
-Paste the JWT under **License → Upload license**. The appliance verifies the
-RS256 signature against a bundled public key. Internal-firm companies don't
-need a license and the admin never sees a banner for them.
-
 ## What we **don't** integrate with
 
 - **Gross-to-net** / tax filings / direct deposit — out of scope for v1

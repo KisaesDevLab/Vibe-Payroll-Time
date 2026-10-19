@@ -463,10 +463,19 @@ Requirement (from Kurt): logins for **client-company admins and employees must n
 - [x] `oidc_only` policy (`services/vibe-auth/policy.ts`): refuse local sign-in only for firm users; client-company users keep password / magic link / reset in every mode. Checked on the known user (after the password verifies; against the link's user) so refusals leak nothing
 - [x] SSO callback: refuse a sign-in that resolves to a client-company user (reported to the engine as inactive — nothing linked or synced), with a message pointing to local sign-in and a `login_failure` / `sso_client_company_user` audit row
 - [x] JIT provisioning + role sync write memberships only in the internal company, never in a client company (`services/vibe-auth/users.ts`)
-- [x] Login page: SSO button labelled "Firm staff — sign in with …"; local forms shown in every mode
+- [x] SSO moved to `/firm` (button, engine `loginPath`, hand-off landing); `/login` is local-only in every mode; `/firm` added to the manifest's public paths
 - [x] Admin "send a sign-in link" actions stay available for client-company users under `oidc_only`
 - [x] Integration tests in `services/vibe-auth/__tests__/` covering firm vs client users in `both` / `oidc_only`
 - [x] Update `docs/sso.md` (Scope, Modes, Roles) and the CLAUDE.md auth-surfaces note; remove the "pending" callouts
+
+## Phase 16 — MIT license; licensing feature removed
+
+Requirement (from Kurt): remove the license, make the project MIT.
+
+- [x] `LICENSE` → MIT; `LICENSE-COMMERCIAL.md` removed; `NOTICE`, README, CLAUDE.md, operator docs updated
+- [x] Source headers → `Copyright 2026 Kisaes LLC` + `SPDX-License-Identifier: MIT`; header check/fix scripts updated
+- [x] License enforcement removed end to end (middleware, routes, verifier, heartbeat job, UI card/banner/page, env vars); `is_internal` kept
+- [x] Migration `20261019000001_remove_licensing.js` drops the license columns (reversible)
 
 ---
 

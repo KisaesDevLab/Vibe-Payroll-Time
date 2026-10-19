@@ -263,6 +263,6 @@ Run this audit when:
 Recommended hardening on top of today's fixes (future work, not required for release):
 
 - Turn on a restrictive CSP in `helmet()` once the frontend's asset-loading story is finalized.
-- Add an egress allowlist on the appliance firewall (rules for outbound: only the license portal, EmailIt, Twilio/TextLinkSMS, Anthropic API, GitHub releases).
+- Add an egress allowlist on the appliance firewall (rules for outbound: only EmailIt, Twilio/TextLinkSMS, Anthropic API, GitHub releases).
 - Integrate `gitleaks` or similar in CI to catch a future `.env` leak.
 - Periodic re-run of `npm audit` in CI with a blocking threshold on HIGH/CRITICAL in production deps.

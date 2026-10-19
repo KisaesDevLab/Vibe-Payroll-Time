@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Single sign-on (Vibe Auth) end to end: the real Express app, a real
  * Postgres, and an in-process fake OpenID Provider (./fake-idp.ts). Walks
@@ -104,7 +103,6 @@ async function seed(): Promise<void> {
       timezone: 'UTC',
       pay_period_type: 'bi_weekly',
       is_internal: true,
-      license_state: 'internal_free',
     })
     .returning<Array<{ id: number }>>('id');
   companyId = Number(co!.id);
@@ -251,7 +249,6 @@ async function seedClientCompany(): Promise<{ clientCompanyId: number; clientUse
       timezone: 'UTC',
       pay_period_type: 'bi_weekly',
       is_internal: false,
-      license_state: 'trial',
     })
     .returning<Array<{ id: number }>>('id');
   const clientCompanyId = Number(co!.id);

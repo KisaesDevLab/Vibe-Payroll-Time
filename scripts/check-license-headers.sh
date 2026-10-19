@@ -1,14 +1,13 @@
 #!/bin/bash
 # Copyright 2026 Kisaes LLC
-# Licensed under the PolyForm Internal Use License 1.0.0.
-# You may not distribute this software. See LICENSE for terms.
+# SPDX-License-Identifier: MIT
 # scripts/check-license-headers.sh [file1 file2 ...]
-# Fails if any source file is missing the PolyForm Internal Use license header.
+# Fails if any source file is missing the MIT license header.
 # Without arguments: scans every source file under shared/, backend/, frontend/
 # (full audit mode). With arguments: scans only the supplied files
 # (lint-staged / CI diff mode).
 
-HEADER_PATTERN="Licensed under the PolyForm Internal Use License"
+HEADER_PATTERN="SPDX-License-Identifier: MIT"
 EXTENSIONS=("ts" "tsx" "js" "jsx" "mjs" "cjs" "sql" "sh" "py")
 SEARCH_ROOTS=("shared" "backend" "frontend" "scripts")
 EXCLUDE_DIRS=("node_modules" ".git" "dist" "build" ".next" "coverage" ".vite")
@@ -52,7 +51,7 @@ fi
 
 if [ $MISSING -gt 0 ]; then
   echo ""
-  echo "ERROR: $MISSING file(s) missing PolyForm license header."
+  echo "ERROR: $MISSING file(s) missing the MIT license header."
   echo "Run: npm run license:headers:fix"
   exit 1
 fi

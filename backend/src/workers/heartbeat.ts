@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import os from 'node:os';
 import { logger } from '../config/logger.js';
 import { getRedisConnection } from './connection.js';
@@ -51,7 +50,7 @@ export type WorkerHeartbeatStatus = {
  * /api/v1/health to report whether at least one consumer is processing
  * each queue.
  *
- * Runs the four KEYS lookups in parallel and races each against a
+ * Runs the per-queue KEYS lookups in parallel and races each against a
  * 1.5s budget so a slow Redis can't stretch /health past the 3s
  * upstream LB threshold. KEYS is O(N) on the Redis keyspace but at
  * appliance scale (a handful of heartbeat keys total) it stays well

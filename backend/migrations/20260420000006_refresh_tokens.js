@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Refresh tokens. The actual token value is never stored — only a SHA-256
  * hash so a DB read doesn't leak live tokens. Each refresh rotates the token

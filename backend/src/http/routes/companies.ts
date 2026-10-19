@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import {
   bulkIssueBadgesRequestSchema,
   createCompanyRequestSchema,
@@ -9,6 +8,7 @@ import {
   createKioskPairingCodeRequestSchema,
   csvImportRequestSchema,
   inviteMembershipRequestSchema,
+  markInternalRequestSchema,
   renameKioskDeviceLocationRequestSchema,
   renameKioskDeviceRequestSchema,
   revokeBadgeRequestSchema,
@@ -96,10 +96,7 @@ async function callerIsCompanyAdmin(
 // ---------------------------------------------------------------------------
 
 // All authenticated users can list companies — the service scopes results
-// to companies the caller is a member of. Sensitive commercial detail
-// (license claims / tier / seat cap) is NOT in this payload — it only
-// surfaces via /api/v1/companies/:id/license, which gates claims on
-// company_admin role.
+// to companies the caller is a member of.
 companiesRouter.get('/', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
@@ -157,6 +154,11 @@ companiesRouter.patch(
   async (req, res, next) => {
     try {
       const body = updateCompanyRequestSchema.parse(req.body);
+      // `is_internal` decides who single sign-on is for (vibe-auth/realm.ts),
+      // so only a SuperAdmin may change it — via /internal-flag below.
+      if (body.isInternal !== undefined && req.user?.roleGlobal !== 'super_admin') {
+        return next(Forbidden('Only a SuperAdmin can change whether a company is internal'));
+      }
       const company = await updateCompany(companyIdFromParams(req), body);
       res.json({ data: company });
     } catch (err) {
@@ -165,9 +167,31 @@ companiesRouter.patch(
   },
 );
 
+/**
+ * Flip a company's is_internal flag — whether it is the firm's own
+ * company. SuperAdmin-only: it decides who signs in with single sign-on
+ * (services/vibe-auth/realm.ts).
+ */
+companiesRouter.patch(
+  '/:companyId/internal-flag',
+  requireAuth,
+  requireSuperAdmin,
+  async (req, res, next) => {
+    try {
+      const body = markInternalRequestSchema.parse(req.body);
+      const company = await updateCompany(companyIdFromParams(req), {
+        isInternal: body.isInternal,
+      });
+      res.json({ data: company });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // SuperAdmin-only active/inactive toggle. "Inactive" is a soft flag that
-// hides the company from default views and excludes it from license
-// counts — data is preserved for audit / export.
+// hides the company from default views — data is preserved for audit /
+// export.
 const companyStatusBodySchema = z.object({ active: z.boolean() });
 companiesRouter.post(
   '/:companyId/status',

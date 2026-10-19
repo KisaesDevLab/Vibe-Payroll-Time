@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import bcrypt from 'bcrypt';
 
 /** Cost factor for user passwords. 2^12 ≈ 250 ms on a NucBox M6 — safely

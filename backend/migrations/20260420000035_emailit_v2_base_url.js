@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * An earlier EmailIt client shipped with `https://api.emailit.com/v1`
  * as both the hardcoded default and the placeholder in the admin UI.

@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * VENDORED from KisaesDevLab/Vibe-AI-Router packages/sdk @ sdk-v0.2.0 — DO NOT EDIT HERE.
  * The SDK is deliberately a single dependency-free file (global fetch only) precisely so

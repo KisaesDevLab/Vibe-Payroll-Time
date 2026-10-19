@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import type {
   ApprovePeriodRequest,
   ApprovePeriodResponse,
@@ -41,7 +40,6 @@ import type {
   Job,
   KioskDevice,
   KioskPairingCodeResponse,
-  LicenseStatus,
   Membership,
   AISettings,
   ChatRequest,
@@ -509,20 +507,14 @@ export const ai = {
 };
 
 // ---------------------------------------------------------------------------
-// Licensing
+// Internal flag (SuperAdmin only)
 // ---------------------------------------------------------------------------
 
-export const licensing = {
-  /**
-   * Read the derived license status for a single company. Internal
-   * companies always show `internal_free`; everyone else mirrors the
-   * appliance-wide license state. Upload and clear have moved to
-   * admin.uploadLicense / admin.clearLicense — this surface is
-   * read-only now.
-   */
-  getStatus: (companyId: number) => apiFetch<LicenseStatus>(`/companies/${companyId}/license`),
-  setInternalFlag: (companyId: number, isInternal: boolean) =>
-    apiFetch<LicenseStatus>(`/companies/${companyId}/license/internal-flag`, {
+export const internalFlag = {
+  /** Mark a company as the firm's own (or not). Decides who signs in with
+   *  single sign-on. */
+  set: (companyId: number, isInternal: boolean) =>
+    apiFetch<Company>(`/companies/${companyId}/internal-flag`, {
       method: 'PATCH',
       body: JSON.stringify({ isInternal }),
     }),
@@ -554,7 +546,6 @@ export interface ApplianceHealth {
   };
   checks: {
     db: 'ok' | 'fail';
-    licensingEnforced: boolean;
     notificationsDisabled: boolean;
     aiProviderDefault: string;
   };
@@ -564,7 +555,6 @@ export interface ApplianceHealth {
     name: string;
     slug: string;
     isInternal: boolean;
-    licenseState: string;
     employeeCount: number;
   }>;
   runtime: {
@@ -580,13 +570,6 @@ export const admin = {
     const apiBase = `${import.meta.env.BASE_URL}api/v1`;
     return `${apiBase}/admin/companies/${companyId}/export-all`;
   },
-  licenseStatus: () => apiFetch<LicenseStatus>('/admin/license'),
-  uploadLicense: (jwt: string) =>
-    apiFetch<LicenseStatus>('/admin/license', {
-      method: 'POST',
-      body: JSON.stringify({ jwt }),
-    }),
-  clearLicense: () => apiFetch<void>('/admin/license', { method: 'DELETE' }),
   updateStatus: () => apiFetch<UpdateStatusResponse>('/admin/update/status'),
   updateCheck: () =>
     apiFetch<UpdateCheckResponse>('/admin/update/check', {

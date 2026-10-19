@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import {
   bulkMembershipsRequestSchema,
   sendAccountLinkRequestSchema,
@@ -8,7 +7,6 @@ import {
   testSmsRequestSchema,
   updateApplianceSettingsRequestSchema,
   updateTunnelRequestSchema,
-  uploadLicenseRequestSchema,
 } from '@vibept/shared';
 import { Router } from 'express';
 import { db } from '../../db/knex.js';
@@ -18,12 +16,6 @@ import {
   updateApplianceSettings,
 } from '../../services/appliance-settings.js';
 import { exportCompanyAll } from '../../services/backup-export.js';
-import {
-  clearLicense,
-  getApplianceLicenseStatus,
-  uploadLicense,
-} from '../../services/licensing/state.js';
-import { LicenseVerifyError } from '../../services/licensing/verifier.js';
 import {
   checkLatestRelease,
   getRunningVersion,
@@ -45,7 +37,7 @@ export const adminRouter: Router = Router();
  * SuperAdmin appliance health snapshot. Surfaces everything the ops UI
  * needs to show a green/yellow/red dot without pulling from 10 places:
  *   - DB connectivity + row counts per tenant
- *   - License enforcement flag + per-company license state
+ *   - Per-company row counts
  *   - Background cron wiring (indirectly, via last-run timestamps)
  *   - Notification log tail counts (last 24h success/failure)
  */
@@ -75,7 +67,6 @@ adminRouter.get('/health', requireAuth, requireSuperAdmin, async (_req, res, nex
               name: string;
               slug: string;
               is_internal: boolean;
-              license_state: string;
               employee_count: string;
             }>
           >(
@@ -83,7 +74,6 @@ adminRouter.get('/health', requireAuth, requireSuperAdmin, async (_req, res, nex
             'companies.name',
             'companies.slug',
             'companies.is_internal',
-            'companies.license_state',
             db.raw('count(employees.id)::text as employee_count'),
           )
           .orderBy('companies.name')
@@ -117,7 +107,6 @@ adminRouter.get('/health', requireAuth, requireSuperAdmin, async (_req, res, nex
         },
         checks: {
           db: dbOk ? 'ok' : 'fail',
-          licensingEnforced: env.LICENSING_ENFORCED,
           notificationsDisabled: env.NOTIFICATIONS_DISABLED,
           aiProviderDefault: env.AI_PROVIDER_DEFAULT,
         },
@@ -133,7 +122,6 @@ adminRouter.get('/health', requireAuth, requireSuperAdmin, async (_req, res, nex
           name: c.name,
           slug: c.slug,
           isInternal: c.is_internal,
-          licenseState: c.license_state,
           employeeCount: Number(c.employee_count),
         })),
         runtime: {
@@ -399,45 +387,6 @@ adminRouter.patch('/tunnel', requireAuth, requireSuperAdmin, async (req, res, ne
     if ((err as { code?: string }).code === 'updater_not_wired') {
       return next(new HttpError(503, 'updater_not_wired', (err as Error).message));
     }
-    next(err);
-  }
-});
-
-// ---- Appliance-wide license (SuperAdmin only) ----
-// Licensing is per-appliance, not per-company. One JWT covers every
-// non-internal company on the appliance; internal companies always
-// bypass enforcement regardless.
-adminRouter.get('/license', requireAuth, requireSuperAdmin, async (_req, res, next) => {
-  try {
-    const data = await getApplianceLicenseStatus();
-    res.json({ data });
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.post('/license', requireAuth, requireSuperAdmin, async (req, res, next) => {
-  try {
-    const body = uploadLicenseRequestSchema.parse(req.body);
-    try {
-      const data = await uploadLicense(body.jwt);
-      res.status(201).json({ data });
-    } catch (err) {
-      if (err instanceof LicenseVerifyError) {
-        throw new HttpError(400, `license_${err.code}`, err.message);
-      }
-      throw err;
-    }
-  } catch (err) {
-    next(err);
-  }
-});
-
-adminRouter.delete('/license', requireAuth, requireSuperAdmin, async (_req, res, next) => {
-  try {
-    await clearLicense();
-    res.status(204).end();
-  } catch (err) {
     next(err);
   }
 });
