@@ -7,6 +7,13 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — Grid views drew a page inside a page
+
+- The weekly grid and the all-employees grid render inside the company layout,
+  which already supplies the top bar and page container, but each drew its own
+  top bar and container again, so the header appeared twice. They now render
+  as plain page content.
+
 ### Added — Time off from My timesheet
 
 - **+ Time off** on the My timesheet list view opens a popup for date, type

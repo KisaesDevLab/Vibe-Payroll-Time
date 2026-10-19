@@ -8,7 +8,6 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
 import { FormatToggle } from '../components/FormatToggle';
-import { TopBar } from '../components/TopBar';
 import { ApiError } from '../lib/api';
 import { grids, timesheets, userPreferences } from '../lib/resources';
 
@@ -119,20 +118,10 @@ export function MultiEmployeeGridPage(): JSX.Element {
   }, [gridQ.data, filter]);
 
   if (gridQ.isLoading) {
-    return (
-      <>
-        <TopBar />
-        <main className="p-6 text-sm text-slate-500">Loading…</main>
-      </>
-    );
+    return <p className="py-6 text-sm text-slate-500">Loading…</p>;
   }
   if (gridQ.error || !gridQ.data) {
-    return (
-      <>
-        <TopBar />
-        <main className="p-6 text-sm text-red-600">Failed to load grid.</main>
-      </>
-    );
+    return <p className="py-6 text-sm text-red-600">Failed to load grid.</p>;
   }
 
   const grid = gridQ.data;
@@ -147,8 +136,9 @@ export function MultiEmployeeGridPage(): JSX.Element {
 
   return (
     <>
-      <TopBar />
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      {/* Rendered inside CompanyLayout, which supplies the TopBar and the
+          page container. */}
+      <div>
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
@@ -337,7 +327,7 @@ export function MultiEmployeeGridPage(): JSX.Element {
             </tbody>
           </table>
         </div>
-      </main>
+      </div>
 
       {drilldown && (
         <Drawer

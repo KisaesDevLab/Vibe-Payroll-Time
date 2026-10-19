@@ -10,7 +10,6 @@ import { Button } from '../components/Button';
 import { CellEditPopover } from '../components/CellEditPopover';
 import { FormatToggle } from '../components/FormatToggle';
 import { HoursCell } from '../components/HoursCell';
-import { TopBar } from '../components/TopBar';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
 import {
@@ -368,20 +367,10 @@ export function WeeklyGridPage(): JSX.Element {
   }
 
   if (gridQ.isLoading) {
-    return (
-      <>
-        <TopBar />
-        <main className="p-6 text-sm text-slate-500">Loading…</main>
-      </>
-    );
+    return <p className="py-6 text-sm text-slate-500">Loading…</p>;
   }
   if (gridQ.error || !gridQ.data) {
-    return (
-      <>
-        <TopBar />
-        <main className="p-6 text-sm text-red-600">Failed to load weekly grid.</main>
-      </>
-    );
+    return <p className="py-6 text-sm text-red-600">Failed to load weekly grid.</p>;
   }
 
   const grid = gridQ.data;
@@ -521,8 +510,9 @@ export function WeeklyGridPage(): JSX.Element {
 
   return (
     <>
-      <TopBar />
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      {/* Rendered inside CompanyLayout, which supplies the TopBar and the
+          page container. */}
+      <div>
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
@@ -827,7 +817,7 @@ export function WeeklyGridPage(): JSX.Element {
         </div>
 
         <ExceptionsPanel entries={grid.entries} />
-      </main>
+      </div>
 
       {undo && (
         <UndoToast
