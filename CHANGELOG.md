@@ -7,6 +7,17 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-10-19
+
+### Upgrade notes
+
+- Run migrations (`20261019000001_remove_licensing.js` drops the license
+  columns). `LICENSING_ENFORCED`, `LICENSE_PUBKEY_PEM` and
+  `LICENSE_PORTAL_HEARTBEAT_URL` are no longer read; remove them at leisure.
+- Appliance ingress: add `/firm` to the public paths (the in-tree
+  `.appliance/manifest.json` already lists it). Firm staff sign in with SSO
+  at `/firm`; `/login` is local-only.
+
 ### Changed — License is now MIT
 
 - **The project is MIT-licensed** (`LICENSE`), replacing PolyForm Internal
