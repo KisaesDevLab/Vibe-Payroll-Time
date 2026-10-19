@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import type { PayrollFormat, PreflightEmployeeStatus, PreflightResponse } from '@vibept/shared';
 import { buildTimesheetSummary } from '@vibept/shared';
 import { db } from '../../db/knex.js';
@@ -17,8 +16,7 @@ import { rowToTimeEntry, type TimeEntryRow } from '../punch.js';
  * can chase the specific problems down. A non-ready preflight does NOT
  * prevent an admin from forcing the export — but the UI warns loudly
  * and the run endpoint refuses unless `acknowledgeReExport` or an
- * explicit override flag is set (we gate on ready for now; override
- * path is a Phase 12 consideration with licensing).
+ * explicit override flag is set (we gate on ready for now).
  */
 export async function runPreflight(
   companyId: number,

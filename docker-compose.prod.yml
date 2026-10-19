@@ -77,8 +77,8 @@ services:
     # it via the `internal` network only. Operators who need direct psql
     # access can drop a docker-compose.override.yml that publishes 5432.
 
-  # Phase 14: Redis backs BullMQ queues for the four background jobs
-  # (auto-clockout, missed-punch, license-heartbeat, retention-sweep).
+  # Phase 14: Redis backs BullMQ queues for the three background jobs
+  # (auto-clockout, missed-punch, retention-sweep).
   # Internal-network-only — never exposed to the host. The default
   # WORKER_ROLE=all has the api container run scheduler+worker
   # in-process; an operator scaling out can set WORKER_ROLE=scheduler

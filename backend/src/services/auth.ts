@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import type { AuthResponse, AuthUser, LoginRequest } from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { BadRequest, NotFound, Unauthorized } from '../http/errors.js';
@@ -67,6 +66,11 @@ async function mintSession(
 export async function loginWithPassword(
   body: LoginRequest,
   ctx: RequestContext,
+  opts: {
+    /** Runs once the password has verified, before any session is minted;
+     *  throw to refuse (the single sign-on policy). */
+    authorize?: (user: UserRow) => Promise<void>;
+  } = {},
 ): Promise<AuthResponse> {
   // The login form admits the bare break-glass username; map it to the
   // address that account actually lives under.
@@ -92,6 +96,21 @@ export async function loginWithPassword(
       metadata: { reason: 'bad_password' },
     });
     throw Unauthorized('Invalid email or password');
+  }
+
+  if (opts.authorize) {
+    try {
+      await opts.authorize(user);
+    } catch (err) {
+      await recordAuthEvent({
+        eventType: 'login_failure',
+        userId: user.id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        metadata: { reason: 'local_login_disabled' },
+      });
+      throw err;
+    }
   }
 
   // Self-heal any employees rows that match this user by email but

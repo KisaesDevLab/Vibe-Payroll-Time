@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Thin HTTP client for TextLinkSMS — an alternative SMS provider to
  * Twilio. TextLinkSMS runs on end-user Android SIM cards (BYO device),

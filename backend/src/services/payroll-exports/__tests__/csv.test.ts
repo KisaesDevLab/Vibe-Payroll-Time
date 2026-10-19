@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Locks in CSV-injection neutralization for payroll exports + the basic
  * RFC-4180 quoting that runs alongside it. Cells whose first character

@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { LoginPanel } from '@kisaesdevlab/vibe-auth/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type {
@@ -10,7 +9,7 @@ import type {
   MagicLinkRequest,
 } from '@vibept/shared';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { useApplianceName } from '../hooks/useApplianceName';
@@ -27,16 +26,22 @@ import { SSO_BASE_PATH, takeSsoHandoffError } from '../lib/sso';
  * The options endpoint is public (the page needs it before the user is
  * authenticated) and returns `{ emailEnabled, smsEnabled }`.
  *
- * Single sign-on (Vibe Auth) wraps all of it in <LoginPanel>, which reads
- * GET /auth/status: it adds the "Sign in with …" button when SSO is on and
- * hides the local forms entirely once the firm has gone SSO-only. The SSO
- * flow ends on a redirect carrying the session in the URL fragment, which
- * main.tsx consumes before this page ever renders (lib/sso.ts).
+ * Three variants, one per route, so the people who use the app most —
+ * client-company admins, supervisors and employees — never meet single
+ * sign-on:
  *
- * `/login/local` renders this page with `breakglass`: the password form
- * even in SSO-only mode, for the one account that may still use it. The
- * magic-link options are dropped there — the server refuses them in that
- * mode, and the break-glass address is undeliverable by design.
+ *   - `/login` (standard): the product's own forms only, in every mode. No
+ *     identity-provider button. A firm user refused here under oidc_only
+ *     gets a link to /firm.
+ *   - `/firm` (firm): the firm's staff sign-in. <LoginPanel> reads GET
+ *     /auth/status and shows the "Sign in with …" button when SSO is on,
+ *     the local forms beside it in `local` / `both`, and hides them once
+ *     the firm has gone SSO-only. The SSO flow ends on a redirect back here
+ *     carrying the session in the URL fragment, which main.tsx consumes
+ *     before this page ever renders (lib/sso.ts).
+ *   - `/login/local` (breakglass): the password form even in SSO-only
+ *     mode, for the one account that may still use it. The magic-link
+ *     options are dropped — the break-glass address is undeliverable.
  */
 
 type MagicChannel = 'email' | 'sms';
@@ -46,7 +51,13 @@ type MagicChannel = 'email' | 'sms';
  *  and forces a new password before letting the user through. */
 type LinkFlow = 'login' | 'password_reset';
 
-export function LoginPage({ breakglass = false }: { breakglass?: boolean }) {
+export type LoginVariant = 'standard' | 'firm' | 'breakglass';
+
+/** The firm's staff sign-in route (single sign-on). */
+export const FIRM_LOGIN_PATH = '/firm';
+
+export function LoginPage({ variant = 'standard' }: { variant?: LoginVariant }) {
+  const breakglass = variant === 'breakglass';
   const navigate = useNavigate();
   const [ssoError] = useState(takeSsoHandoffError);
   const applianceName = useApplianceName();
@@ -107,8 +118,9 @@ export function LoginPage({ breakglass = false }: { breakglass?: boolean }) {
   const showSms = !breakglass && (options.data?.smsEnabled ?? false);
   const showAnyMagic = showEmail || showSms;
 
-  // The product's own forms, exactly as before SSO existed. Handed to
-  // <LoginPanel> as children so it can hide the lot in SSO-only mode.
+  // The product's own forms, exactly as before SSO existed. On /firm they
+  // are handed to <LoginPanel> as children so it can hide the lot in
+  // SSO-only mode.
   const localSignIn = magicChannel ? (
     <MagicLinkForm
       channel={magicChannel}
@@ -185,6 +197,16 @@ export function LoginPage({ breakglass = false }: { breakglass?: boolean }) {
             {login.error instanceof ApiError
               ? login.error.message
               : 'Sign in failed — please retry.'}
+            {login.error instanceof ApiError &&
+              login.error.code === 'local_login_disabled' &&
+              variant === 'standard' && (
+                <>
+                  {' '}
+                  <Link to={FIRM_LOGIN_PATH} className="font-medium underline">
+                    Go to firm sign-in
+                  </Link>
+                </>
+              )}
           </div>
         )}
 
@@ -245,13 +267,18 @@ export function LoginPage({ breakglass = false }: { breakglass?: boolean }) {
     </>
   );
 
+  const subtitle =
+    variant === 'breakglass'
+      ? 'Break-glass sign-in with a local password'
+      : variant === 'firm'
+        ? 'Firm staff sign-in'
+        : 'Sign in to continue';
+
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-12">
       <header className="text-center">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{applianceName}</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          {breakglass ? 'Break-glass sign-in with a local password' : 'Sign in to continue'}
-        </p>
+        <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
       </header>
 
       {ssoError && (
@@ -260,23 +287,37 @@ export function LoginPage({ breakglass = false }: { breakglass?: boolean }) {
         </div>
       )}
 
-      <LoginPanel
-        basePath={SSO_BASE_PATH}
-        // Anywhere works — main.tsx reads the session off the fragment
-        // before routing — but /login is the one route guaranteed to
-        // render without a session if the hand-off fails.
-        returnTo={`${SSO_BASE_PATH}/login`}
-        breakglass={breakglass}
-        classNames={{
-          root: 'flex flex-col gap-6',
-          button:
-            'block rounded-md bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white shadow-sm hover:bg-slate-800 aria-disabled:opacity-60',
-          divider: 'text-center text-xs font-medium uppercase tracking-widest text-slate-400',
-          note: 'text-center text-xs text-slate-500',
-        }}
-      >
-        {localSignIn}
-      </LoginPanel>
+      {variant === 'standard' ? (
+        <div className="flex flex-col gap-6">{localSignIn}</div>
+      ) : (
+        <LoginPanel
+          basePath={SSO_BASE_PATH}
+          // Anywhere works — main.tsx reads the session off the fragment
+          // before routing — but /firm renders without a session if the
+          // hand-off fails, and it is where the person started.
+          returnTo={`${SSO_BASE_PATH}${FIRM_LOGIN_PATH}`}
+          breakglass={breakglass}
+          classNames={{
+            root: 'flex flex-col gap-6',
+            button:
+              'block rounded-md bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white shadow-sm hover:bg-slate-800 aria-disabled:opacity-60',
+            divider: 'text-center text-xs font-medium uppercase tracking-widest text-slate-400',
+            note: 'text-center text-xs text-slate-500',
+          }}
+        >
+          {localSignIn}
+        </LoginPanel>
+      )}
+
+      {variant === 'firm' && (
+        <p className="text-center text-xs text-slate-500">
+          Not on the firm&apos;s staff?{' '}
+          <Link to="/login" className="underline hover:text-slate-900">
+            Sign in here
+          </Link>
+          .
+        </p>
+      )}
     </main>
   );
 }

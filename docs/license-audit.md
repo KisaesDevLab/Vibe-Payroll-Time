@@ -1,5 +1,10 @@
 # License Audit Report — Vibe Payroll Time
 
+> **Historical (2026-04-21).** The project has since been relicensed under
+> **MIT** (`LICENSE`); `LICENSE-COMMERCIAL.md` and the PolyForm headers are
+> gone, replaced by `SPDX-License-Identifier: MIT`. The dependency findings
+> below still apply — MIT is compatible with every permissive license listed.
+
 | Field           | Value                                      |
 | --------------- | ------------------------------------------ |
 | Date            | 2026-04-21                                 |
@@ -68,8 +73,7 @@ The HIGH findings were policy-compliance gaps, not OSS-license conflicts: PolyFo
 
   ```ts
   // Copyright 2026 Kisaes LLC
-  // Licensed under the PolyForm Internal Use License 1.0.0.
-  // You may not distribute this software. See LICENSE for terms.
+  // SPDX-License-Identifier: MIT
   ```
 
   MB enforces this via `scripts/check-license-headers.sh` in CI and as a pre-commit hook, backed by `scripts/add-license-header.sh` to insert headers in bulk.

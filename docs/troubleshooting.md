@@ -60,13 +60,6 @@ top three:
 - **20003**: authentication failed. The Auth Token is wrong — re-save under
   **Settings → SMS** and the appliance re-encrypts it.
 
-## License upload says `license_bad_signature`
-
-The JWT was not signed by the public key configured via
-`LICENSE_PUBKEY_PEM`. Either you pasted a dev-generated JWT against a prod
-public key, or the portal rotated its signing key — request a fresh JWT from
-`licensing.kisaes.com`.
-
 ## AI features are down and the log repeats "vibe-ai-router task-class registration failed; will retry"
 
 An endless retry loop (warn lines with a growing `attempt`) is almost always

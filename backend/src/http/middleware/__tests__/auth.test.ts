@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import type { Request, Response } from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { issueAccessToken } from '../../../services/tokens.js';

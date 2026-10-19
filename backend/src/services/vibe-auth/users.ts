@@ -1,6 +1,6 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
+import { AsyncLocalStorage } from 'node:async_hooks';
 import crypto from 'node:crypto';
 import type {
   AuditSink,
@@ -11,12 +11,12 @@ import type {
 } from '@kisaesdevlab/vibe-auth';
 import { BREAKGLASS_EMAIL, BREAKGLASS_USERNAME, type CompanyRole } from '@vibept/shared';
 import type { Knex } from 'knex';
-import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { db } from '../../db/knex.js';
 import { recordAuthEvent } from '../auth-events.js';
 import { hashPassword, verifyPassword } from '../passwords.js';
 import { anySuperAdminHasExisted, healEmployeeLinksForUser, type UserRow } from '../users.js';
+import { firmCompanyId, signInRealmForUser } from './realm.js';
 
 /**
  * The two Vibe Auth adapters that only need the database: the UserAdapter
@@ -31,14 +31,16 @@ import { anySuperAdminHasExisted, healEmployeeLinksForUser, type UserRow } from 
  *     super_admin > company_admin > supervisor > employee
  *
  * where `super_admin` is role_global and the other three are the user's
- * membership. On the appliance TENANT_MODE=single, so "the membership" is
- * unambiguous: there is exactly one company, and role sync writes to it.
- * Under TENANT_MODE=multi the package cannot know which company an SSO
- * user belongs to, so sync only ever touches role_global there and an
- * admin assigns companies by hand (docs/sso.md).
+ * membership in the FIRM's internal company. Role sync and just-in-time
+ * provisioning only ever write there (./realm.ts `firmCompanyId`); with no
+ * single internal company to write to, sync only touches role_global and
+ * an admin assigns companies by hand (docs/sso.md).
  *
- * Only the staff realm is here. Kiosk employees (device token + PIN/badge)
- * have no `users` row and never meet this code.
+ * Only firm users are here. A client company's admins, supervisors and
+ * employees are presented to the engine as inactive, so it refuses them
+ * before linking an identity or syncing a role — they sign in locally.
+ * Kiosk employees (device token + PIN/badge) have no `users` row and never
+ * meet this code.
  */
 
 /** Most privileged first — the order the package resolves ties in. */
@@ -83,18 +85,35 @@ function userId(id: string): number {
   return n;
 }
 
-/** The user's most privileged membership across active companies. */
+/** The user's most privileged membership across active INTERNAL companies —
+ *  the only memberships the IdP's groups describe (client-company roles are
+ *  the client's business, never synced). */
 async function membershipRole(id: number): Promise<CompanyRole | null> {
   const rows = await db('company_memberships as cm')
     .join('companies as c', 'c.id', 'cm.company_id')
     .where('cm.user_id', id)
+    .where('c.is_internal', true)
     .whereNull('c.disabled_at')
     .select<Array<{ role: CompanyRole }>>('cm.role');
   return COMPANY_ROLES.find((r) => rows.some((row) => row.role === r)) ?? null;
 }
 
+/**
+ * Set around each engine request (./engine.ts) so a refusal of a client-
+ * company user can be told apart from a disabled account: the package's
+ * error page says "Your account is disabled", and the engine swaps in a
+ * message that sends the person to the local sign-in form instead.
+ */
+export const ssoRequestContext = new AsyncLocalStorage<{ refusedClientUserId: number | null }>();
+
 async function toVibeUser(row: UserRow): Promise<VibeUser> {
   const isBreakglass = row.email.toLowerCase() === BREAKGLASS_EMAIL;
+  const ctx = ssoRequestContext.getStore();
+  // Single sign-on is for firm users only. Reporting a client-company user
+  // as inactive makes the engine refuse them at every step — existing
+  // link, email link, admin checks — with nothing written.
+  const clientUser = (await signInRealmForUser(row.id)) === 'client';
+  if (clientUser && !row.disabled_at && ctx) ctx.refusedClientUserId = row.id;
   const role =
     row.role_global === 'super_admin' ? 'super_admin' : ((await membershipRole(row.id)) ?? '');
   return {
@@ -103,19 +122,10 @@ async function toVibeUser(row: UserRow): Promise<VibeUser> {
     // '' when the user holds no membership anywhere: no product role yet, so
     // the first SSO login's role sync assigns one.
     role,
-    active: !row.disabled_at,
+    active: !row.disabled_at && !clientUser,
     local: !row.sso_provisioned_at,
     ...(isBreakglass ? { username: BREAKGLASS_USERNAME } : {}),
   };
-}
-
-/** The one company of a single-tenant appliance; null under TENANT_MODE=multi. */
-async function singleCompanyId(q: Knex | Knex.Transaction): Promise<number | null> {
-  if (env.TENANT_MODE !== 'single') return null;
-  const row = await q('companies').whereNull('disabled_at').orderBy('id', 'asc').first<{
-    id: number;
-  }>('id');
-  return row?.id ?? null;
 }
 
 async function upsertMembership(
@@ -212,7 +222,7 @@ export function createVibeUsers(): UserAdapter {
           .returning<UserRow[]>('*');
         if (!created) throw new Error('vibe-auth: failed to create user');
 
-        const companyId = await singleCompanyId(trx);
+        const companyId = await firmCompanyId(trx);
         if (companyId) {
           // A super_admin gets the same company_admin membership the setup
           // wizard gives its own, so the company nav renders for them.
@@ -238,6 +248,9 @@ export function createVibeUsers(): UserAdapter {
       return db.transaction(async (trx) => {
         const user = await trx<UserRow>('users').where({ id: uid }).forUpdate().first();
         if (!user) throw new Error(`vibe-auth: user ${uid} not found`);
+        // Never reached through the engine (client users are inactive to
+        // it), but the IdP must not be able to touch a client user's roles.
+        if ((await signInRealmForUser(uid, trx)) === 'client') return false;
 
         if (role === 'super_admin') {
           await trx('users')
@@ -264,8 +277,8 @@ export function createVibeUsers(): UserAdapter {
             .update({ role_global: 'none', updated_at: trx.fn.now() });
         }
 
-        const companyId = await singleCompanyId(trx);
-        if (!companyId) return true; // TENANT_MODE=multi — companies are assigned by hand.
+        const companyId = await firmCompanyId(trx);
+        if (!companyId) return true; // No single internal company — assigned by hand.
         await upsertMembership(trx, uid, companyId, role);
         await healEmployeeLinksForUser(uid, user.email, trx);
         return true;

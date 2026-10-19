@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Companies. One appliance hosts many companies. `is_internal = true` marks
  * the firm's own staff-only company (free tier, never licensed). Everything

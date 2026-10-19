@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { z } from 'zod';
 
 const slugRegex = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
@@ -14,8 +13,6 @@ export const companySchema = z.object({
   payPeriodType: z.enum(['weekly', 'bi_weekly', 'semi_monthly', 'monthly']),
   payPeriodAnchor: z.string().nullable(),
   isInternal: z.boolean(),
-  licenseState: z.enum(['internal_free', 'trial', 'licensed', 'grace', 'expired']),
-  licenseExpiresAt: z.string().datetime().nullable(),
   disabledAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   employeeCount: z.number().int().nonnegative().optional(),
@@ -35,6 +32,12 @@ export type CreateCompanyRequest = z.infer<typeof createCompanyRequestSchema>;
 
 export const updateCompanyRequestSchema = createCompanyRequestSchema.partial();
 export type UpdateCompanyRequest = z.infer<typeof updateCompanyRequestSchema>;
+
+/** SuperAdmin-only toggle of `is_internal` (the firm's own company). */
+export const markInternalRequestSchema = z.object({
+  isInternal: z.boolean(),
+});
+export type MarkInternalRequest = z.infer<typeof markInternalRequestSchema>;
 
 // ---------------------------------------------------------------------------
 // Company settings

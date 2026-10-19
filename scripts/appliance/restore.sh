@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 Kisaes LLC
-# Licensed under the PolyForm Internal Use License 1.0.0.
-# You may not distribute this software. See LICENSE for terms.
+# SPDX-License-Identifier: MIT
 # Vibe Payroll Time — restore a Level-2 backup into a fresh Postgres.
 #
 # Usage:

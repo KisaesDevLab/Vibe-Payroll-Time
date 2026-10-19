@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import {
   chatRequestSchema,
   nlCorrectionApplyRequestSchema,
@@ -14,14 +13,6 @@ import { ProviderError } from '../../services/ai/provider.js';
 import { supportChat } from '../../services/ai/support-chat.js';
 import { HttpError, Unauthorized } from '../errors.js';
 import { requireAuth, requireCompanyRole } from '../middleware/auth.js';
-import { enforceLicense } from '../middleware/license.js';
-
-// nl-correction/apply funnels through editEntry / deleteEntry — those are
-// the same chokepoints punch.ts and timesheets.ts call, so an expired
-// license must block this path too. Default extractor reads
-// req.params.companyId, which matches our route shape.
-// Short-circuits when LICENSING_ENFORCED=false (the v1 default).
-const aiLicense = enforceLicense();
 
 export const aiRouter: Router = Router({ mergeParams: true });
 
@@ -107,7 +98,6 @@ aiRouter.post(
   '/:companyId/ai/nl-correction/apply',
   requireAuth,
   requireCompanyRole(['company_admin', 'supervisor', 'employee']),
-  aiLicense,
   async (req, res, next) => {
     try {
       if (!req.user) return next(Unauthorized());

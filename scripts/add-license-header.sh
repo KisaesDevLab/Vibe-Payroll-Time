@@ -1,9 +1,8 @@
 #!/bin/bash
 # Copyright 2026 Kisaes LLC
-# Licensed under the PolyForm Internal Use License 1.0.0.
-# You may not distribute this software. See LICENSE for terms.
+# SPDX-License-Identifier: MIT
 # scripts/add-license-header.sh
-# Adds the PolyForm Internal Use license header to source files that are missing it.
+# Adds the MIT license header to source files that are missing it.
 #
 # Scans first-party source trees: shared/, backend/, frontend/, plus knex
 # migration files under backend/migrations/. Skips node_modules/, dist/,
@@ -11,18 +10,15 @@
 #
 # Usage: ./scripts/add-license-header.sh
 
-HEADER_PATTERN="Licensed under the PolyForm Internal Use License"
+HEADER_PATTERN="SPDX-License-Identifier: MIT"
 HEADER_SLASH='// Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 '
 HEADER_DASH='-- Copyright 2026 Kisaes LLC
--- Licensed under the PolyForm Internal Use License 1.0.0.
--- You may not distribute this software. See LICENSE for terms.
+-- SPDX-License-Identifier: MIT
 '
 HEADER_HASH='# Copyright 2026 Kisaes LLC
-# Licensed under the PolyForm Internal Use License 1.0.0.
-# You may not distribute this software. See LICENSE for terms.
+# SPDX-License-Identifier: MIT
 '
 # ext:comment-style pairs
 declare -A EXT_STYLE=(

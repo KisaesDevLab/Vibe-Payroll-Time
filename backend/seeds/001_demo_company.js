@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Demo company seed.
  *
@@ -123,8 +122,7 @@ exports.seed = async function seed(knex) {
     await knex('companies').where({ id: existing.id }).del();
   }
 
-  // 2. Company — marked internal so the demo exercises the
-  //    internal_free license state (firm-use, never licensed).
+  // 2. Company — marked internal (the firm's own company).
   const [company] = await knex('companies')
     .insert({
       name: 'Acme Plumbing Co',
@@ -133,7 +131,6 @@ exports.seed = async function seed(knex) {
       week_start_day: 0,
       pay_period_type: 'bi_weekly',
       is_internal: true,
-      license_state: 'internal_free',
     })
     .returning(['id']);
 

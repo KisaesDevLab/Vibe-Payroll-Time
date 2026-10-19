@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * An earlier textlinksms client had the wrong default base URL hardcoded
  * (`https://app.textlinksms.com/api/v1`). If an operator saved that

@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import crypto from 'node:crypto';
 import {
   createPgStores,
@@ -19,6 +18,7 @@ import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { parseAllowedOriginEntries } from '../../config/public-url.js';
 import { db } from '../../db/knex.js';
+import { recordAuthEvent } from '../auth-events.js';
 import { decryptSecret, encryptSecret } from '../crypto.js';
 import {
   issueAccessToken,
@@ -32,6 +32,7 @@ import {
   VIBE_PT_ROLE_MAP,
   VIBE_PT_ROLES,
   createVibeUsers,
+  ssoRequestContext,
   vibeAuditSink,
 } from './users.js';
 
@@ -53,9 +54,11 @@ import {
  *     client secret wrapped with the appliance's AES-GCM key
  *     (services/crypto.ts), audit events into auth_events.
  *
- * Staff realm only. The kiosk realm (device token + PIN/badge) lives under
- * /api/v1/kiosk/* and this engine only ever claims /auth/*, so kiosk
- * pairing and punches are untouched in every mode.
+ * Firm users only (./realm.ts). A client company's admins, supervisors and
+ * employees are refused here and sign in locally in every mode. The kiosk
+ * realm (device token + PIN/badge) lives under /api/v1/kiosk/* and this
+ * engine only ever claims /auth/*, so kiosk pairing and punches are
+ * untouched in every mode.
  *
  * Paths. Every deployment strips the SPA prefix before the API sees a
  * request, so the engine routes on `/auth/*` with an empty basePath. The
@@ -67,6 +70,11 @@ import {
  */
 
 const AUTH_PREFIX = '/auth';
+
+/** The SPA's firm staff sign-in route (frontend LoginPage `FIRM_LOGIN_PATH`). */
+export const FIRM_LOGIN_PATH = '/firm';
+/** The SPA's ordinary sign-in route, for everyone else. */
+const LOGIN_PATH = '/login';
 
 /**
  * The settings page opens the test-connection popup by plain navigation,
@@ -337,11 +345,13 @@ export function getVibeAuth(): VibeAuth {
     },
     audit: vibeAuditSink,
     basePath: '',
-    loginPath: `${spaPrefix}/login`,
+    // SSO lives on the firm's own sign-in page, /firm — never on /login,
+    // which is what client-company users see (docs/sso.md § Scope).
+    loginPath: `${spaPrefix}${FIRM_LOGIN_PATH}`,
     breakglassLoginPath: `${spaPrefix}/login/local`,
-    // The SPA reads the tokens off the fragment wherever it lands, but
-    // /login is the one route guaranteed to render without a session.
-    defaultReturnTo: `${spaPrefix}/login`,
+    // The SPA reads the tokens off the fragment wherever it lands; /firm
+    // renders without a session and is where the person started.
+    defaultReturnTo: `${spaPrefix}${FIRM_LOGIN_PATH}`,
     ...(publicUrl ? { publicUrl } : {}),
     trustProxy: true,
     syncRoles: true,
@@ -431,10 +441,41 @@ function cookieIsSecure(req: Request): boolean {
   return env.COOKIE_SECURE === 'auto' ? req.secure : env.COOKIE_SECURE;
 }
 
+/** What a client-company user sees instead of the package's "Your account
+ *  is disabled": they are not disabled, they are at the wrong door. */
+export const CLIENT_USER_SSO_MESSAGE =
+  'Single sign-on is for firm staff. Your company account signs in on the regular sign-in page with your email and password, or an emailed sign-in link.';
+const DISABLED_MESSAGE = 'Your account is disabled.';
+
 async function handleAuthRequest(req: Request, res: Response): Promise<boolean> {
   const auth = getVibeAuth();
-  const r: HttpResponse | null = await auth.handle(toHttpRequest(req, res));
+  const ctx = { refusedClientUserId: null as number | null };
+  const r: HttpResponse | null = await ssoRequestContext.run(ctx, () =>
+    auth.handle(toHttpRequest(req, res)),
+  );
   if (!r) return false;
+
+  // A client-company user reached the IdP's sign-in. The engine refused
+  // them as inactive (./users.ts); say why, and record it as ours.
+  if (
+    ctx.refusedClientUserId !== null &&
+    req.path === `${AUTH_PREFIX}/oidc/callback` &&
+    typeof r.body === 'string'
+  ) {
+    // …and send their "Back to sign-in" to /login, not the firm's page.
+    r.body = r.body
+      .split(DISABLED_MESSAGE)
+      .join(CLIENT_USER_SSO_MESSAGE)
+      .split(`href="${spaPrefix}${FIRM_LOGIN_PATH}"`)
+      .join(`href="${spaPrefix}${LOGIN_PATH}"`);
+    await recordAuthEvent({
+      eventType: 'login_failure',
+      userId: ctx.refusedClientUserId,
+      ip: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+      metadata: { reason: 'sso_client_company_user' },
+    });
+  }
 
   // Post-login hand-off: the session adapter minted the pair.
   const tokens = res.locals.vibeAuthTokens as SsoTokens | undefined;

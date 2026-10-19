@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import {
   copyLastWeekRequestSchema,
   createManualEntryRequestSchema,
@@ -18,11 +17,8 @@ import {
 } from '../../services/manual-entries.js';
 import { Forbidden, Unauthorized } from '../errors.js';
 import { requireAuth } from '../middleware/auth.js';
-import { enforceLicense } from '../middleware/license.js';
 
 export const manualEntriesRouter: Router = Router();
-
-const licenseFromBody = enforceLicense((req) => req.body?.companyId as number | undefined);
 
 async function assertCallerOwnsCompany(
   userId: number,
@@ -40,7 +36,7 @@ async function assertCallerOwnsCompany(
 // POST /manual-entries — create
 // ---------------------------------------------------------------------------
 
-manualEntriesRouter.post('/', requireAuth, licenseFromBody, async (req, res, next) => {
+manualEntriesRouter.post('/', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
     const body = createManualEntryRequestSchema.parse(req.body);
@@ -71,7 +67,7 @@ manualEntriesRouter.post('/', requireAuth, licenseFromBody, async (req, res, nex
 // PATCH /manual-entries/:id — update duration and/or reason
 // ---------------------------------------------------------------------------
 
-manualEntriesRouter.patch('/:id', requireAuth, licenseFromBody, async (req, res, next) => {
+manualEntriesRouter.patch('/:id', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
     const id = z.coerce.number().int().positive().parse(req.params.id);
@@ -96,7 +92,7 @@ manualEntriesRouter.patch('/:id', requireAuth, licenseFromBody, async (req, res,
 // DELETE /manual-entries/:id — soft-delete + restore superseded punches
 // ---------------------------------------------------------------------------
 
-manualEntriesRouter.delete('/:id', requireAuth, licenseFromBody, async (req, res, next) => {
+manualEntriesRouter.delete('/:id', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) return next(Unauthorized());
     const id = z.coerce.number().int().positive().parse(req.params.id);
@@ -119,31 +115,26 @@ manualEntriesRouter.delete('/:id', requireAuth, licenseFromBody, async (req, res
 // POST /manual-entries/copy-last-week — bulk duplicate prior week into current
 // ---------------------------------------------------------------------------
 
-manualEntriesRouter.post(
-  '/copy-last-week',
-  requireAuth,
-  licenseFromBody,
-  async (req, res, next) => {
-    try {
-      if (!req.user) return next(Unauthorized());
-      const body = copyLastWeekRequestSchema.parse(req.body);
-      await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, body.companyId);
+manualEntriesRouter.post('/copy-last-week', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const body = copyLastWeekRequestSchema.parse(req.body);
+    await assertCallerOwnsCompany(req.user.id, req.user.roleGlobal, body.companyId);
 
-      const result = await copyLastWeek({
-        companyId: body.companyId,
-        employeeId: body.employeeId,
-        weekStart: body.weekStart,
-        reason: body.reason,
-        actor: {
-          userId: req.user.id,
-          roleGlobal: req.user.roleGlobal,
-          sourceIp: req.ip ?? null,
-          sourceUserAgent: req.headers['user-agent']?.slice(0, 512) ?? null,
-        },
-      });
-      res.status(201).json({ data: result });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+    const result = await copyLastWeek({
+      companyId: body.companyId,
+      employeeId: body.employeeId,
+      weekStart: body.weekStart,
+      reason: body.reason,
+      actor: {
+        userId: req.user.id,
+        roleGlobal: req.user.roleGlobal,
+        sourceIp: req.ip ?? null,
+        sourceUserAgent: req.headers['user-agent']?.slice(0, 512) ?? null,
+      },
+    });
+    res.status(201).json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});

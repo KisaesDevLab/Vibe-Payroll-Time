@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -112,10 +111,6 @@ export function DashboardPage() {
                 <dt>Employees</dt>
                 <dd className="text-right font-medium text-slate-800">
                   {c.employeeCount ?? 0} active
-                </dd>
-                <dt>License</dt>
-                <dd className="text-right font-medium text-slate-800">
-                  {c.licenseState.replace('_', ' ')}
                 </dd>
               </dl>
               <Link

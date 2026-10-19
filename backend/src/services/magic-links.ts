@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import crypto from 'node:crypto';
 import type {
   AuthResponse,
@@ -22,6 +21,7 @@ import { notify } from './notifications/service.js';
 import type { NotificationType } from './notifications/templates.js';
 import { issueAccessToken, issueRefreshToken } from './tokens.js';
 import { findUserById, healEmployeeLinksForUser, type UserRow } from './users.js';
+import { linkSignInAllowedFor } from './vibe-auth/policy.js';
 
 /**
  * Single-use link tokens. One table backs three flows:
@@ -429,6 +429,10 @@ async function selfServiceRequest(
   try {
     const recipient = await resolveByIdentifier(identifier, input.channel);
     if (!recipient) return;
+    // Under oidc_only a firm user signs in through the IdP; a link could
+    // not be used, so none is sent. Client-company users still get theirs.
+    // Silent like every other miss — the 204 reveals nothing.
+    if (!(await linkSignInAllowedFor(recipient.user.id))) return;
 
     // Rate limit: no more than N SELF-SERVICE requests for this
     // identifier per hour. Admin-initiated rows are excluded (they
@@ -565,6 +569,9 @@ export interface ConsumeMagicLinkInput {
   token: string;
   ip: string | null;
   userAgent: string | null;
+  /** Runs on the link's user before the token is burned; throw to refuse
+   *  (the single sign-on policy). A refused link stays unconsumed. */
+  authorize?: (userId: number) => Promise<void>;
 }
 
 /**
@@ -595,6 +602,8 @@ export async function consumeMagicLink(input: ConsumeMagicLinkInput): Promise<Au
     if (!row || row.consumed_at || new Date(row.expires_at) < new Date()) {
       throw Unauthorized('Invalid or expired login link');
     }
+
+    if (input.authorize) await input.authorize(row.user_id);
 
     await trx('magic_links').where({ id: row.id }).update({ consumed_at: trx.fn.now() });
 

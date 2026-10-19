@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -74,11 +73,6 @@ export function ApplianceHealthPage() {
                   {data.checks.db === 'ok' ? 'connected' : 'unreachable'}
                 </p>
               </Card>
-              <Card label="Licensing">
-                <p className="text-slate-900">
-                  {data.checks.licensingEnforced ? 'enforced' : 'off (pre-live)'}
-                </p>
-              </Card>
               <Card label="Open punches">
                 <p className="font-mono text-2xl text-slate-900">{data.runtime.openTimeEntries}</p>
                 <p className="text-xs text-slate-500">employees currently on the clock</p>
@@ -97,7 +91,6 @@ export function ApplianceHealthPage() {
                   <tr>
                     <th className="py-2 font-medium">Name</th>
                     <th className="py-2 font-medium">Type</th>
-                    <th className="py-2 font-medium">License</th>
                     <th className="py-2 text-right font-medium">Employees</th>
                     <th className="py-2 text-right font-medium">Export</th>
                   </tr>
@@ -112,7 +105,6 @@ export function ApplianceHealthPage() {
                       <td className="py-2 text-slate-700">
                         {c.isInternal ? 'Internal' : 'Client'}
                       </td>
-                      <td className="py-2 text-slate-700">{c.licenseState.replace('_', ' ')}</td>
                       <td className="py-2 text-right font-mono">{c.employeeCount}</td>
                       <td className="py-2 text-right">
                         <ExportZipButton companyId={c.id} companySlug={c.slug} />

@@ -2,16 +2,11 @@ Vibe Payroll Time
 Copyright 2026 Kisaes LLC
 
 Vibe Payroll Time is a self-hosted, multi-tenant employee time-tracking
-appliance for hourly and shift workers, targeted at CPA firms tracking
-their own staff hours (internal use, free) and CPA firms reselling the
-appliance to their small-business clients (commercial tier).
+appliance for hourly and shift workers, built for CPA firms tracking their
+own staff hours and the hours of their small-business clients.
 
-This product is licensed under the PolyForm Internal Use License 1.0.0.
-See the LICENSE file in the project root for the full license text.
-Distribution of the software is not permitted under this license.
-
-For commercial licensing (client-portal / reseller access), see
-LICENSE-COMMERCIAL.md or contact: licensing@kisaes.com
+This product is licensed under the MIT License. See the LICENSE file in
+the project root for the full license text.
 
 ---
 

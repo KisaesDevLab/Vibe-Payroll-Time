@@ -1,7 +1,6 @@
 #!/bin/sh
 # Copyright 2026 Kisaes LLC
-# Licensed under the PolyForm Internal Use License 1.0.0.
-# You may not distribute this software. See LICENSE for terms.
+# SPDX-License-Identifier: MIT
 #
 # Phase 14.3 — substitute the build-version sentinel in the service
 # worker so each release uses a unique cache name and the activate

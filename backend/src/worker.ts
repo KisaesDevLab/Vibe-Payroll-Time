@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { logger } from './config/logger.js';
 import { closeDb } from './db/knex.js';
 import { waitForDb } from './db/wait.js';

@@ -1,11 +1,9 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { Worker, type Processor } from 'bullmq';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { runAutoClockoutSweep } from '../services/auto-clockout.js';
-import { runLicenseHeartbeat } from '../services/licensing/heartbeat.js';
 import { runMissedPunchSweep } from '../services/notifications/missed-punch-cron.js';
 import { runRetentionSweep } from '../services/retention.js';
 import { getRedisConnection } from './connection.js';
@@ -23,10 +21,6 @@ const processors: Record<QueueName, Processor> = {
   [QUEUE_NAMES.missedPunch]: async () => {
     const sent = await runMissedPunchSweep();
     return { sent };
-  },
-  [QUEUE_NAMES.licenseHeartbeat]: async () => {
-    const ok = await runLicenseHeartbeat();
-    return { ok };
   },
   [QUEUE_NAMES.retentionSweep]: async () => {
     await runRetentionSweep();
@@ -49,7 +43,7 @@ export function startWorkers(): Worker[] {
       concurrency: env.WORKER_CONCURRENCY,
     });
 
-    // The four run*() functions already log their own info-level
+    // The three run*() functions already log their own info-level
     // summary lines when there's something to report. Job-level
     // completion logging at info level would produce 1000+ noise
     // lines per day on a quiet appliance — keep it at debug.

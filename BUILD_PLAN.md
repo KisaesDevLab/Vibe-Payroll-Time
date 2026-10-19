@@ -455,6 +455,28 @@ Goal: same GHCR images run cleanly in two deployment modes — today's standalon
   - [x] Detect HTTP origin → skip SW registration (no broken PWA install)
 - [ ] Acceptance: parent appliance test brings up `time.<test-domain>` with manager / employee / kiosk all working over primary + Tailscale; emergency `:5192` allows manager but blocks kiosk with the explainer page _(deferred to appliance integration smoke)_
 
+## Phase 15 — SSO scoped to firm users only
+
+Requirement (from Kurt): logins for **client-company admins and employees must not flow through Vibe Auth**. Only the **firm's** users — SuperAdmins and members of the internal company (`companies.is_internal = true`) — sign in through the IdP to access the companies they serve.
+
+- [x] Define "firm user" in code (super_admin, or any tie to an `is_internal` company) — `services/vibe-auth/realm.ts`, one helper used by every check below
+- [x] `oidc_only` policy (`services/vibe-auth/policy.ts`): refuse local sign-in only for firm users; client-company users keep password / magic link / reset in every mode. Checked on the known user (after the password verifies; against the link's user) so refusals leak nothing
+- [x] SSO callback: refuse a sign-in that resolves to a client-company user (reported to the engine as inactive — nothing linked or synced), with a message pointing to local sign-in and a `login_failure` / `sso_client_company_user` audit row
+- [x] JIT provisioning + role sync write memberships only in the internal company, never in a client company (`services/vibe-auth/users.ts`)
+- [x] SSO moved to `/firm` (button, engine `loginPath`, hand-off landing); `/login` is local-only in every mode; `/firm` added to the manifest's public paths
+- [x] Admin "send a sign-in link" actions stay available for client-company users under `oidc_only`
+- [x] Integration tests in `services/vibe-auth/__tests__/` covering firm vs client users in `both` / `oidc_only`
+- [x] Update `docs/sso.md` (Scope, Modes, Roles) and the CLAUDE.md auth-surfaces note; remove the "pending" callouts
+
+## Phase 16 — MIT license; licensing feature removed
+
+Requirement (from Kurt): remove the license, make the project MIT.
+
+- [x] `LICENSE` → MIT; `LICENSE-COMMERCIAL.md` removed; `NOTICE`, README, CLAUDE.md, operator docs updated
+- [x] Source headers → `Copyright 2026 Kisaes LLC` + `SPDX-License-Identifier: MIT`; header check/fix scripts updated
+- [x] License enforcement removed end to end (middleware, routes, verifier, heartbeat job, UI card/banner/page, env vars); `is_internal` kept
+- [x] Migration `20261019000001_remove_licensing.js` drops the license columns (reversible)
+
 ---
 
 ## Running counts

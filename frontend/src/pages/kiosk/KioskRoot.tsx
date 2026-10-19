@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { Navigate } from 'react-router-dom';
 import { useKiosk } from '../../hooks/useKiosk';
 import { isSecureContext } from '../../lib/secure-context';

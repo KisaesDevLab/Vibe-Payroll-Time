@@ -5,22 +5,58 @@ Vibe Payroll Time can sign staff in through the firm's identity provider
 `@kisaesdevlab/vibe-auth` package. Local sign-in keeps working until a
 SuperAdmin decides otherwise.
 
-**Scope: the staff realm only.** SSO covers `users` — SuperAdmins, company
-admins, supervisors, and employees who sign in on their own device. The
-**kiosk realm is untouched**: a paired kiosk authenticates with its device
-token and employees identify by PIN or QR badge, in every mode, with no
-identity-provider account. The SSO engine only ever handles `/auth/*`;
-kiosk traffic lives under `/api/v1/kiosk/*` and cannot pass through it.
+**Scope: the firm's users only.** SSO covers the firm — SuperAdmins and
+the staff of the firm's internal company (`companies.is_internal = true`),
+who sign in to reach the client companies they serve. The identity
+provider is the firm's directory, so:
+
+- **Client-company users never flow through Vibe Auth.** The admins,
+  supervisors and employees of a client company sign in with their email
+  and password or an emailed link, in **every** mode, `oidc_only`
+  included. If one of them reaches the IdP and signs in there, the
+  callback refuses them ("Single sign-on is for firm staff…"), links no
+  identity, syncs no role, and writes a `login_failure` row with reason
+  `sso_client_company_user`.
+- **The kiosk realm is untouched**: a paired kiosk authenticates with its
+  device token and employees identify by PIN or QR badge, in every mode,
+  with no identity-provider account. The SSO engine only ever handles
+  `/auth/*`; kiosk traffic lives under `/api/v1/kiosk/*` and cannot pass
+  through it.
+
+**Two sign-in pages.** So end users are never confused by an identity-
+provider button, SSO lives on its own route:
+
+- **`/login`** — the ordinary page, for everyone: email + password and
+  emailed links. It never shows the SSO button. A firm user refused there
+  under `oidc_only` is pointed to `/firm`.
+- **`/firm`** — the firm's staff sign-in: the "Sign in with …" button, plus
+  the local forms while the mode is `local` / `both`. It is the engine's
+  `loginPath` (its error pages' "Back to sign-in", the post-sign-out
+  landing) and where the SSO hand-off redirect lands. A refused
+  client-company user's "Back to sign-in" is rewritten to `/login`.
+- **`/login/local`** — break-glass, unchanged.
+
+Who counts as which (`services/vibe-auth/realm.ts`):
+
+| User                                                                | Realm  |
+| ------------------------------------------------------------------- | ------ |
+| `role_global = super_admin`                                         | firm   |
+| any membership or active employee row in an active internal company | firm   |
+| no tie to any active company yet                                    | firm   |
+| ties only to active client companies                                | client |
+
+A firm user who also belongs to a client company is a firm user; role sync
+still only touches their internal-company membership.
 
 ---
 
 ## Modes
 
-| Mode              | Password / login link                  | "Sign in with …" button |
-| ----------------- | -------------------------------------- | ----------------------- |
-| `local` (default) | yes                                    | hidden                  |
-| `both`            | yes                                    | shown                   |
-| `oidc_only`       | refused — except break-glass, password | shown                   |
+| Mode              | Firm users: password / login link      | Client-company users | SSO button on `/firm` |
+| ----------------- | -------------------------------------- | -------------------- | --------------------- |
+| `local` (default) | yes                                    | password / link      | hidden                |
+| `both`            | yes                                    | password / link      | shown                 |
+| `oidc_only`       | refused — except break-glass, password | password / link      | shown                 |
 
 Set from **Appliance → Authentication** (SuperAdmin), from the Vibe
 Appliance console's Identity panel, or with `VIBE_AUTH_MODE`. A value saved
@@ -32,24 +68,34 @@ On boot, `oidc_only` without an active break-glass account **aborts
 startup** with the package's message — starting anyway would leave an IdP
 outage with no way in.
 
-Under `oidc_only` the server refuses, with `403 local_login_disabled`:
+Under `oidc_only`, for **firm users** only (`services/vibe-auth/policy.ts`):
 
-- `POST /api/v1/auth/login` for everyone but break-glass
-- `POST /api/v1/auth/magic/request`, `…/password-reset/request`, and
-  `…/magic/consume` for everyone (a link is a local credential)
-- the three admin "send a sign-in link" actions (nobody could use the link)
+- `POST /api/v1/auth/login` answers `403 local_login_disabled` for anyone
+  but break-glass — checked once the password has verified, so a wrong
+  password is still a plain 401 and nothing about an address's realm leaks
+- `POST /api/v1/auth/magic/request` and `…/password-reset/request` still
+  answer 204 but send nothing (a link is a local credential)
+- `POST /api/v1/auth/magic/consume` refuses a firm user's link with 403
+  without burning it
+- the three admin "send a sign-in link" actions refuse a firm user with 403
+  (for a brand-new login, refused when the company is the internal one)
+
+`/login` keeps the email / password and link forms in every mode, because
+client-company users need them; `/firm` hides them under `oidc_only`.
 
 ## Roles
 
 The product has two layers — `users.role_global` (`super_admin | none`) and
-a per-company membership role. The identity provider's groups map onto them:
+a per-company membership role. The identity provider's groups map onto
+`role_global` and the user's membership in the firm's **internal** company —
+never a client company's:
 
 | Vibe Auth group         | Becomes                                    |
 | ----------------------- | ------------------------------------------ |
 | `vibe-admin`, `vibe-it` | `super_admin` (appliance-wide)             |
-| `vibe-partner`          | `company_admin` membership                 |
-| `vibe-manager`          | `supervisor` membership                    |
-| `vibe-staff`            | `employee` membership                      |
+| `vibe-partner`          | `company_admin` in the internal company    |
+| `vibe-manager`          | `supervisor` in the internal company       |
+| `vibe-staff`            | `employee` in the internal company         |
 | anything else           | sign-in refused ("not assigned to a role") |
 
 The map is explicit in code (`VIBE_PT_ROLE_MAP`). Do **not** rely on the
@@ -67,14 +113,16 @@ Roles are re-synced from the IdP on every sign-in, with two safeguards:
   asks `countOtherActiveAdmins` first; the adapter's `setRole` re-checks
   under a row lock and returns `false`, which is the guard that holds. The break-glass account does not count as "another
   SuperAdmin" — it is an outage tool, not somebody's account.
-- Per-company memberships are only written when `TENANT_MODE=single` (the
-  appliance default), where "the company" is unambiguous.
+- Memberships are only written in the firm's internal company, and only
+  when there is exactly one active internal company (`realm.ts`
+  `firmCompanyId`) — in either `TENANT_MODE`. Access to client companies is
+  never synced from the IdP: a SuperAdmin grants it under **People**.
 
-**`TENANT_MODE=multi`.** The package cannot know which company an SSO user
-belongs to. SuperAdmin promotion/demotion still syncs; company memberships
-do not. A user provisioned by SSO arrives with no memberships and a
-SuperAdmin assigns them under **People**. Set `VIBE_OIDC_DEFAULT_ROLE` if
-users without a mapped group should still be admitted.
+**No single internal company** (none, or more than one). SuperAdmin
+promotion/demotion still syncs; company memberships do not. A user
+provisioned by SSO arrives with no memberships and a SuperAdmin assigns
+them. Set `VIBE_OIDC_DEFAULT_ROLE` if users without a mapped group should
+still be admitted.
 
 ## Accounts created by SSO
 
@@ -153,7 +201,7 @@ Sessions are bearer tokens in the browser, not cookies. A successful SSO
 login ends with a redirect to
 
 ```
-<base>/login#sso_token=<access>&sso_refresh=<refresh>
+<base>/firm#sso_token=<access>&sso_refresh=<refresh>
 ```
 
 The pair rides the URL **fragment**, which is never sent to a server or

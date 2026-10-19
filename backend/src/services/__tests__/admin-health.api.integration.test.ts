@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Route-level tests for the SuperAdmin appliance health snapshot, focused on
  * the aiRouter registration field: direct mode reports 'disabled', and a

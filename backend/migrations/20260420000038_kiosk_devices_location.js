@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 /**
  * Phase 14.3 — `kiosk_devices.location_label` lets the operator
  * record a free-text label for a paired tablet ("Front Counter",

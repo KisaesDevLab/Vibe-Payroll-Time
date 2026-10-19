@@ -10,8 +10,8 @@ A self-hosted, multi-tenant **employee time tracking** application for hourly/sh
 
 **Target users:**
 
-- **Internal path:** CPA firm staff tracking their own hours (PolyForm Internal Use, free)
-- **Commercial path (client-portal):** CPA firms reselling it to their small-business clients; small-business owners deploying the appliance direct (PolyForm commercial tier)
+- **Internal path:** CPA firm staff tracking their own hours
+- **Client-portal path:** CPA firms hosting their small-business clients on the same appliance; small-business owners deploying the appliance direct
 
 **Explicit non-goals (v1):**
 
@@ -31,23 +31,23 @@ A self-hosted, multi-tenant **employee time tracking** application for hourly/sh
 
 Identical to Vibe Trial Balance / Vibe MyBooks conventions unless noted.
 
-| Layer         | Tech                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frontend      | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, TanStack Table                                                                                                                                                                                                                                                                                                    |
-| PWA           | Workbox, IndexedDB (offline punch queue), Background Sync API                                                                                                                                                                                                                                                                                                               |
-| Backend       | Node.js 20, Express, Knex.js (plain JS migrations for Windows compat), Zod                                                                                                                                                                                                                                                                                                  |
-| Database      | PostgreSQL 16                                                                                                                                                                                                                                                                                                                                                               |
-| Queue / cron  | BullMQ + Redis 7 for scheduled background jobs (auto-clock-out, missed-punch reminders, license heartbeat, retention sweep). Phase 14 reversed the v1 "no BullMQ" stance for parity with sibling Vibe apps and to enable horizontal scaling under the appliance overlay. Standalone runs scheduler+worker in-process (single container); the appliance compose splits them. |
-| Auth          | JWT (access + refresh), bcrypt for passwords, `otplib` for PIN TOTP rotation (kiosk); optional OIDC single sign-on via `@kisaesdevlab/vibe-auth` (private, GitHub Packages — builds need a `NODE_AUTH_TOKEN`)                                                                                                                                                               |
-| AI            | Multi-provider LLM abstraction (ported from Vibe TB): Anthropic / Ollama / OpenAI-compatible                                                                                                                                                                                                                                                                                |
-| Email         | EmailIt.com transactional API (BYO API key per company, appliance-wide fallback)                                                                                                                                                                                                                                                                                            |
-| SMS           | Twilio SDK, BYO credentials per company                                                                                                                                                                                                                                                                                                                                     |
-| Ingress       | Cloudflare Tunnel (`cloudflared`) and/or Tailscale Funnel, bundled as sidecar containers                                                                                                                                                                                                                                                                                    |
-| Reverse proxy | Caddy (auto-TLS for non-tunnel deployments)                                                                                                                                                                                                                                                                                                                                 |
-| Deployment    | Docker Compose, distributed as appliance for GMKtec NucBox M6 (Ubuntu Server 24.04 LTS)                                                                                                                                                                                                                                                                                     |
-| QR decoding   | `@zxing/library` + `@zxing/browser` on the tablet; `qrcode` npm package server-side for generation                                                                                                                                                                                                                                                                          |
-| PDF / print   | Print-based HTML with `@media print` — no puppeteer / headless chromium (same discipline as Phase 13 PDF exports)                                                                                                                                                                                                                                                           |
-| Time format   | `shared/time-format/` — pure-function parser + formatter (decimal / HH:MM / labeled). Same module used by frontend and backend.                                                                                                                                                                                                                                             |
+| Layer         | Tech                                                                                                                                                                                                                                                                                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend      | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, TanStack Table                                                                                                                                                                                                                                                                                 |
+| PWA           | Workbox, IndexedDB (offline punch queue), Background Sync API                                                                                                                                                                                                                                                                                            |
+| Backend       | Node.js 20, Express, Knex.js (plain JS migrations for Windows compat), Zod                                                                                                                                                                                                                                                                               |
+| Database      | PostgreSQL 16                                                                                                                                                                                                                                                                                                                                            |
+| Queue / cron  | BullMQ + Redis 7 for scheduled background jobs (auto-clock-out, missed-punch reminders, retention sweep). Phase 14 reversed the v1 "no BullMQ" stance for parity with sibling Vibe apps and to enable horizontal scaling under the appliance overlay. Standalone runs scheduler+worker in-process (single container); the appliance compose splits them. |
+| Auth          | JWT (access + refresh), bcrypt for passwords, `otplib` for PIN TOTP rotation (kiosk); optional OIDC single sign-on via `@kisaesdevlab/vibe-auth` (private, GitHub Packages — builds need a `NODE_AUTH_TOKEN`)                                                                                                                                            |
+| AI            | Multi-provider LLM abstraction (ported from Vibe TB): Anthropic / Ollama / OpenAI-compatible                                                                                                                                                                                                                                                             |
+| Email         | EmailIt.com transactional API (BYO API key per company, appliance-wide fallback)                                                                                                                                                                                                                                                                         |
+| SMS           | Twilio SDK, BYO credentials per company                                                                                                                                                                                                                                                                                                                  |
+| Ingress       | Cloudflare Tunnel (`cloudflared`) and/or Tailscale Funnel, bundled as sidecar containers                                                                                                                                                                                                                                                                 |
+| Reverse proxy | Caddy (auto-TLS for non-tunnel deployments)                                                                                                                                                                                                                                                                                                              |
+| Deployment    | Docker Compose, distributed as appliance for GMKtec NucBox M6 (Ubuntu Server 24.04 LTS)                                                                                                                                                                                                                                                                  |
+| QR decoding   | `@zxing/library` + `@zxing/browser` on the tablet; `qrcode` npm package server-side for generation                                                                                                                                                                                                                                                       |
+| PDF / print   | Print-based HTML with `@media print` — no puppeteer / headless chromium (same discipline as Phase 13 PDF exports)                                                                                                                                                                                                                                        |
+| Time format   | `shared/time-format/` — pure-function parser + formatter (decimal / HH:MM / labeled). Same module used by frontend and backend.                                                                                                                                                                                                                          |
 
 ---
 
@@ -60,18 +60,11 @@ Identical to Vibe Trial Balance / Vibe MyBooks conventions unless noted.
 
 ---
 
-## Licensing
+## License
 
-- Source license: **PolyForm Internal Use 1.0.0**
-  - Free for internal staff-only use (CPA firm tracking its own hours)
-  - Client-portal use (serving client companies on the same appliance) requires a commercial license
-- Commercial tiers: align with Vibe MyBooks
-  - Per-firm unlimited annual (priced by total employee seats across all companies)
-  - Per-firm capped annual (priced by company count cap)
-  - Per-company monthly
-- License portal: **shared `kisaes-license-portal`** at `licensing.kisaes.com`
-- In-app enforcement: JWT + bundled RSA public key, per-**company** license state (not per-appliance — the appliance hosts both free internal and paid client-portal companies)
-- Philosophy: staff never locked out, paying customers over limits get warnings not lockouts, data export always accessible regardless of license state
+- Source license: **MIT** (`LICENSE`). Every file carries a two-line header: `Copyright 2026 Kisaes LLC` + `SPDX-License-Identifier: MIT` (`npm run license:headers` checks, `npm run license:headers:fix` adds).
+- No commercial tier, no license keys, no in-app enforcement: every feature works for every company on every appliance, internal or client. The pre-1.3 license machinery (JWT verifier, `kisaes-license-portal` heartbeat, per-company `license_state`) was removed — don't reintroduce it.
+- `companies.is_internal` survives: it marks the firm's own company (single sign-on is for its users, see Auth surfaces), not a pricing tier.
 
 ---
 
@@ -84,13 +77,11 @@ One appliance hosts **many companies**. This is the most important architectural
 ```
 Appliance (one Docker stack, one Postgres)
 ├── Super Admin (appliance-level, manages companies + global settings)
-├── Company: "Kisaes CPA" (internal — free, staff-only)
-│   ├── CompanyAdmin, Supervisors, Employees
-│   └── License state: internal_free
-├── Company: "Acme Plumbing" (client — commercial)
-│   ├── CompanyAdmin, Supervisors, Employees
-│   └── License state: licensed | trial | grace | expired
-└── Company: "Bob's Landscaping" (client — commercial)
+├── Company: "Kisaes CPA" (internal — is_internal = true, the firm's own staff)
+│   └── CompanyAdmin, Supervisors, Employees
+├── Company: "Acme Plumbing" (client)
+│   └── CompanyAdmin, Supervisors, Employees
+└── Company: "Bob's Landscaping" (client)
     └── ...
 ```
 
@@ -106,7 +97,7 @@ Three distinct login paths:
 
 Admin toggles per-company: "personal device only", "kiosk only", "both allowed". Default for internal path = personal device; default for client-portal = both.
 
-**Single sign-on (optional, staff realm only).** Paths 1 and 2 can also sign in through the firm's identity provider via `@kisaesdevlab/vibe-auth` (`backend/src/services/vibe-auth/`, operator guide `docs/sso.md`). Modes `local` (default) / `both` / `oidc_only`, set by a SuperAdmin at Appliance → Authentication. An SSO login mints the same access + refresh pair a password login does and hands it to the SPA on the URL fragment; SSO access tokens carry a `sid` claim. Path 3 (kiosk) is never SSO's to gate. One local account, `vibe-breakglass`, survives `oidc_only` for IdP outages.
+**Single sign-on (optional, firm users only).** The firm's users on paths 1 and 2 — SuperAdmins and staff of the internal company (`is_internal`) — can also sign in through the firm's identity provider via `@kisaesdevlab/vibe-auth` (`backend/src/services/vibe-auth/`, operator guide `docs/sso.md`). Modes `local` (default) / `both` / `oidc_only`, set by a SuperAdmin at Appliance → Authentication. An SSO login mints the same access + refresh pair a password login does and hands it to the SPA on the URL fragment; SSO access tokens carry a `sid` claim. Path 3 (kiosk) is never SSO's to gate. **Client-company admins, supervisors and employees never flow through Vibe Auth**: they sign in locally in every mode, `oidc_only` included, and the SSO callback refuses them (`services/vibe-auth/realm.ts` decides who is which). The SSO button lives only on **`/firm`** (the engine's `loginPath`); `/login` is local-only so end users never see it. One local account, `vibe-breakglass`, survives `oidc_only` for IdP outages.
 
 ### Punch model
 
@@ -265,7 +256,8 @@ docker compose -f docker-compose.prod.yml build
 - **Don't silently normalize ambiguous input.** `"5 48"` (whitespace-separated numbers) is ambiguous and must return an error. Guessing is how manual entries become wage-and-hour claims.
 - **Don't hard-delete a manual entry.** Soft-delete via `deleted_at`; restoration of superseded punches must happen in the same transaction so a crash between steps can't leave the punch dangling.
 - **Don't route `/auth/*` wholesale to the API.** The SSO engine lives at `/auth/oidc/*`, `/auth/status`, `/auth/me`, `/auth/settings[/*]` — but the SPA owns `/auth/magic` and `/auth/reset`, and a blanket matcher breaks every emailed login/reset link. The path list lives in both Caddyfiles, the Vite dev proxy, and the appliance manifest; change all four together.
-- **Don't add a local sign-in path that skips the SSO policy.** Anything that mints a session without the IdP (password, magic link, reset, a future passkey) must call `services/vibe-auth/policy.ts` — `assertLocalLoginAllowed` / `assertLinkSignInAllowed` before, `noteLocalLogin` after. A path that skips it is a hole in `oidc_only`.
+- **Don't add a local sign-in path that skips the SSO policy.** Anything that mints a session without the IdP (password, magic link, reset, a future passkey) must call `services/vibe-auth/policy.ts` — `assertLocalLoginAllowed` / `assertLinkSignInAllowed` on the known user before minting, `noteLocalLogin` after. A path that skips it is a hole in `oidc_only`.
+- **Don't route a client-company user through SSO.** The IdP is the firm's directory. `realm.ts` classifies users; the adapter reports client users to the engine as inactive (so nothing is linked or synced), role sync writes only the internal company's membership, and the policy keeps client users' local sign-in open in every mode.
 - **Don't let an SSO-provisioned account bootstrap a local credential.** `users.sso_provisioned_at` marks just-in-time accounts; the self-service link lookups in `magic-links.ts` filter on it. Only an admin-sent link may grant such an account a password.
 - **Don't trust the vibe-auth package's default role map.** It would make every `vibe-partner` an appliance `super_admin`. The map is explicit (`VIBE_PT_ROLE_MAP`), and `setRole` refuses to demote the last SuperAdmin.
 - **Don't provision accounts before first-run setup.** Any `super_admin` row locks `/setup` for ever; break-glass and JIT creation check `assertSetupComplete` first.
@@ -278,15 +270,14 @@ docker compose -f docker-compose.prod.yml build
 ## Related projects
 
 - **Vibe Trial Balance** (KisaesDevLab/Vibe-Trial-Balance) — tax workpaper app; shares stack conventions, multi-provider LLM abstraction, four-level backup pattern, SEO/landing-page approach
-- **Vibe MyBooks** (vibemb.com) — bookkeeping app; shares PolyForm licensing, `kisaes-license-portal`, JWT enforcement middleware pattern, grace-period state machine, appliance deployment playbook
-- **kisaes-license-portal** — Stripe-powered license vending at `licensing.kisaes.com`; same one services Vibe PT
+- **Vibe MyBooks** (vibemb.com) — bookkeeping app; shares the appliance deployment playbook
 
 ## Where to look when you're stuck
 
 1. `BUILD_PLAN.md` — the phased checklist; find the current phase and the specific item
 2. `CHANGELOG.md` — what v1.0.0 actually shipped with, grouped by phase
 3. `docs/` — operator + user-facing guides (`sso`, `admin-guide`, `employee-guide`, `kiosk-setup`, `integrations`, `security`, `security-review`, `restore`, `troubleshooting`, `deployment`, `exports/`)
-4. Vibe MyBooks source for: JWT enforcement, license state machine, company/employee data patterns
+4. Vibe MyBooks source for: company/employee data patterns
 5. Vibe TB source for: LLM abstraction, migrations style, TanStack Table patterns, four-level backup
 6. This file
 
@@ -296,16 +287,15 @@ docker compose -f docker-compose.prod.yml build
 
 Changes from the pre-v1 BUILD_PLAN assumptions, captured so they don't drift:
 
-- **Phase 14 reversed "BullMQ not used v1".** The four background jobs (auto-clockout, missed-punch, license heartbeat, retention sweep) now run through BullMQ + Redis. The `run*()` business functions in `services/` stayed put; only the transport changed. Standalone customers gain a Redis container in `docker-compose.yml` but no operator behavior changes (`WORKER_ROLE=all` keeps scheduler+consumer in-process).
+- **Phase 14 reversed "BullMQ not used v1".** The background jobs (auto-clockout, missed-punch, retention sweep; the license heartbeat was removed with licensing) now run through BullMQ + Redis. The `run*()` business functions in `services/` stayed put; only the transport changed. Standalone customers gain a Redis container in `docker-compose.yml` but no operator behavior changes (`WORKER_ROLE=all` keeps scheduler+consumer in-process).
 - **Phase 14 env renames are deprecation-aliased, not hard renames.** `CORS_ORIGIN`→`ALLOWED_ORIGIN` and `MIGRATE_ON_BOOT`→`MIGRATIONS_AUTO`. Both names work; if only the legacy name is set, a single `[deprecated]` log line fires at boot. Removal target: a future minor release.
 - **Phase 14 image-rename: dual-publish.** GHCR now publishes both `vibe-payroll-time-{server,client}` (new canonical) and `vibe-payroll-{api,web}` (legacy aliases) for one minor-release cycle. `docker-compose.prod.yml` continues to reference the legacy names so existing customers' upgrades are no-ops; the appliance overlay uses the new names.
 
 - **Email transport is EmailIt.com, not Nodemailer.** Fetch-based HTTP client, BYO API key per company, appliance-wide fallback. Rationale: no SMTP relay to run, good per-tenant API-key story, one less moving piece.
-- **Licensing ships disabled (`LICENSING_ENFORCED=false`).** The machinery is wired end-to-end but the middleware short-circuits. Flip to `true` once the license portal is live for this product.
-- **No license public key is bundled in the image.** `LICENSE_PUBKEY_PEM` must be set explicitly before enforcement will accept any JWT. Prevents a leaked dev key from signing prod licenses.
+- **Licensing removed; the project is MIT.** The enforcement middleware, license routes/pages, heartbeat job, `LICENSING_ENFORCED` / `LICENSE_PUBKEY_PEM` env, and license columns are gone (migration `20261019000001_remove_licensing.js`).
 - **Four-level backup:** Level 1 = WAL archive (continuous), Level 2 = `pg_dump` nightly, Level 3 = rclone to S3 weekly, Level 4 = per-company logical ZIP on demand. See `docs/restore.md`.
 - **Retention sweep** runs nightly at 03:41 UTC and prunes `auth_events` (365d), `notifications_log` (180d), `ai_correction_usage` (90d), `kiosk_pairing_codes` (30d), and export files on disk (365d). `time_entries` + `time_entry_audit` are never pruned.
 - **PDF export is print-based**, not server-rendered. `@media print` CSS + a Print/PDF button that opens the browser's Save-as-PDF dialog. Rationale: no puppeteer, no headless chromium, works on constrained appliances.
 - **SuperAdmin appliance health** is a single `/admin/health` endpoint + a `/appliance` dashboard route. No Prometheus / external observability in v1.
-- **Types:** we renamed `time-math/summary.ts` exports to `DaySummaryInternal` + `WeekSummaryInternal` to avoid a collision with HTTP types in `schemas/timesheets.ts`. Don't re-export `LicenseState` from `schemas/licensing.ts` — it lives in `enums.ts`.
+- **Types:** we renamed `time-math/summary.ts` exports to `DaySummaryInternal` + `WeekSummaryInternal` to avoid a collision with HTTP types in `schemas/timesheets.ts`.
 - **tsconfig:** no `composite: true`, no project references. `tsc --noEmit` at build time; `tsx` at runtime for both dev and prod.

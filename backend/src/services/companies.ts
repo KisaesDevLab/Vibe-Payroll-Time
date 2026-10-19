@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import type {
   Company,
   CompanyRole,
@@ -20,8 +19,6 @@ interface CompanyRow {
   pay_period_type: Company['payPeriodType'];
   pay_period_anchor: string | null;
   is_internal: boolean;
-  license_state: Company['licenseState'];
-  license_expires_at: Date | null;
   disabled_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -37,8 +34,6 @@ function rowToCompany(row: CompanyRow, employeeCount?: number): Company {
     payPeriodType: row.pay_period_type,
     payPeriodAnchor: row.pay_period_anchor,
     isInternal: row.is_internal,
-    licenseState: row.license_state,
-    licenseExpiresAt: row.license_expires_at?.toISOString() ?? null,
     disabledAt: row.disabled_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
     ...(employeeCount !== undefined ? { employeeCount } : {}),
@@ -75,8 +70,6 @@ export async function createCompany(
         pay_period_type: body.payPeriodType,
         pay_period_anchor: body.payPeriodAnchor ?? null,
         is_internal: body.isInternal,
-        license_state: body.isInternal ? 'internal_free' : 'trial',
-        license_expires_at: body.isInternal ? null : t.raw("now() + interval '14 days'"),
       })
       .returning<CompanyRow[]>('*');
 
@@ -172,8 +165,7 @@ export async function updateCompany(
 /**
  * Mark a company active or inactive. Inactive companies keep every row
  * (time entries, audit trail, payroll exports) — this is a soft-state
- * flag, not a delete. Licensing ignores inactive companies in its
- * aggregate counts, and the UI hides them from default views.
+ * flag, not a delete. The UI hides them from default views.
  */
 export async function setCompanyActive(companyId: number, active: boolean): Promise<Company> {
   await db('companies')

@@ -8,8 +8,8 @@ checklist before new releases, see `docs/security-review.md`.
 - **PostgreSQL** — runs inside the Docker stack on an internal network, never
   exposed to the host or the public internet. Backed by a host volume
   (`pgdata`) — encrypt the host disk.
-- **Secrets** — Twilio auth token, EmailIt API key, AI API key, and license
-  JWT are stored encrypted with **AES-256-GCM** keyed on
+- **Secrets** — Twilio auth token, EmailIt API key, and AI API key are
+  stored encrypted with **AES-256-GCM** keyed on
   `SECRETS_ENCRYPTION_KEY` (32-byte hex). Losing this key renders the
   encrypted secrets unrecoverable — include it in your backup procedure.
 - **Passwords** — bcrypt cost 12.
@@ -130,18 +130,6 @@ every request so revoking a role takes effect immediately.
 - Template HTML escapes interpolated values (`firstName`, `reason`,
   `reviewNote`, custom `appName`) so a correction-note that contains
   HTML tags doesn't execute in an admin's inbox preview.
-
-## Licensing
-
-- RS256 JWTs issued by the **kisaes-license-portal**.
-- Verified against a public key configured via `LICENSE_PUBKEY_PEM`; no key is
-  bundled in the image.
-- License state is stored per-company; SuperAdmin can mark a company as
-  `internal` to exempt it.
-- Enforcement is gated by `LICENSING_ENFORCED=true`. With enforcement off,
-  every check short-circuits to pass — useful pre-launch.
-- Expired licenses block new punches + edits but **never** read or export
-  (data always accessible, staff never locked out).
 
 ## AI data flow
 

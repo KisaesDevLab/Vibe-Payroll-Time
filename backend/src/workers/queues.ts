@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import { Queue } from 'bullmq';
 import { getRedisConnection } from './connection.js';
 
@@ -16,7 +15,6 @@ export const QUEUE_PREFIX = 'vpt';
 export const QUEUE_NAMES = {
   autoClockout: 'auto-clockout',
   missedPunch: 'missed-punch',
-  licenseHeartbeat: 'license-heartbeat',
   retentionSweep: 'retention-sweep',
 } as const;
 
@@ -30,7 +28,6 @@ function buildQueues(): Record<QueueName, Queue> {
   return {
     [QUEUE_NAMES.autoClockout]: new Queue(QUEUE_NAMES.autoClockout, opts),
     [QUEUE_NAMES.missedPunch]: new Queue(QUEUE_NAMES.missedPunch, opts),
-    [QUEUE_NAMES.licenseHeartbeat]: new Queue(QUEUE_NAMES.licenseHeartbeat, opts),
     [QUEUE_NAMES.retentionSweep]: new Queue(QUEUE_NAMES.retentionSweep, opts),
   };
 }

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Copyright 2026 Kisaes LLC
-# Licensed under the PolyForm Internal Use License 1.0.0.
-# You may not distribute this software. See LICENSE for terms.
+# SPDX-License-Identifier: MIT
 # =============================================================================
 # license-audit.sh — Automated license compliance audit for Vibe Payroll Time
-# License: PolyForm Internal Use 1.0.0 (SEE LICENSE IN LICENSE)
+# License: MIT (see LICENSE)
 #
 # Usage:  ./scripts/license-audit.sh [--quiet] [--json]
 #   --quiet   Suppress passing checks; show only warnings and failures
@@ -54,15 +53,8 @@ header "1. Required project files"
 if [[ -f "$ROOT/LICENSE" ]]; then
   pass "LICENSE file present"
 else
-  fail "LICENSE file MISSING — required for PolyForm Internal Use compliance"
+  fail "LICENSE file MISSING — the MIT license text must ship with the source"
   bump_fail
-fi
-
-if [[ -f "$ROOT/LICENSE-COMMERCIAL.md" ]]; then
-  pass "LICENSE-COMMERCIAL.md present (reseller / client-portal tier)"
-else
-  warn "LICENSE-COMMERCIAL.md missing — required for commercial-tier deployments"
-  bump_warn
 fi
 
 if [[ -f "$ROOT/NOTICE" ]]; then
@@ -90,10 +82,10 @@ else
   bump_fail
 fi
 
-# ── 3. PolyForm source file headers ──────────────────────────────────────────
+# ── 3. Source file headers ───────────────────────────────────────────────────
 header "3. Source file headers"
 
-HEADER_PATTERN="Licensed under the PolyForm Internal Use License|Copyright.*Kisaes"
+HEADER_PATTERN="SPDX-License-Identifier: MIT|Copyright.*Kisaes"
 
 # Scan first-party source trees only. Exclude build output, caches,
 # node_modules. Using a function + array here rather than an `eval`-ed
@@ -120,7 +112,7 @@ info "$HEADERS_FOUND / $TS_FILES source files have license headers"
 
 if [[ "$HEADERS_FOUND" -eq 0 ]]; then
   fail "No source files contain license headers"
-  fail "Required header:  // Licensed under the PolyForm Internal Use License 1.0.0"
+  fail "Required header:  // SPDX-License-Identifier: MIT"
   fail "Run: bash scripts/add-license-header.sh"
   bump_fail
 elif [[ "$HEADERS_FOUND" -lt "$TS_FILES" ]]; then
@@ -234,10 +226,10 @@ else
   warn "license-policy.json not found or node unavailable"
 fi
 
-info "PolyForm Internal Use requirements:"
+info "Project license requirements:"
 POLICY_PATH="$POLICY" node -e '
   const p = require(process.env.POLICY_PATH);
-  const r = p.polyformRequirements || {};
+  const r = p.projectLicenseRequirements || {};
   Object.entries(r).forEach(([k, v]) => {
     const status = v.status || "";
     const ok = status.toLowerCase().includes("missing") ||

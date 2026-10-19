@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import {
   changePasswordRequestSchema,
   loginRequestSchema,
@@ -37,7 +36,6 @@ import {
   assertLocalLoginAllowed,
   noteLocalLogin,
 } from '../../services/vibe-auth/policy.js';
-import { emailForLoginIdentifier } from '../../services/vibe-auth/users.js';
 import { NotFound } from '../errors.js';
 import { originForRequest } from '../outbound-origin.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -49,10 +47,11 @@ authRouter.post('/login', authRateLimiter, async (req, res, next) => {
   try {
     const body = loginRequestSchema.parse(req.body);
     const ctx = { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null };
-    // Single sign-on policy: under oidc_only only the break-glass account
-    // may use a password. Checked before any bcrypt work is spent.
-    assertLocalLoginAllowed(emailForLoginIdentifier(body.email));
-    const session = await loginWithPassword(body, ctx);
+    // Single sign-on policy: under oidc_only a firm user may not use a
+    // password (break-glass excepted); client-company users always may.
+    // Checked once the password verified, so a refusal reveals nothing to
+    // someone who does not already hold the credential.
+    const session = await loginWithPassword(body, ctx, { authorize: assertLocalLoginAllowed });
     await noteLocalLogin(session.user, ctx.ip);
     res.json({ data: session });
   } catch (err) {
@@ -152,7 +151,8 @@ authRouter.get('/magic/options', async (_req, res, next) => {
 authRouter.post('/magic/request', authRateLimiter, async (req, res, next) => {
   try {
     const body = magicLinkRequestSchema.parse(req.body);
-    assertLinkSignInAllowed();
+    // The single sign-on policy runs inside: under oidc_only no link goes
+    // to a firm user, and the answer is the same 204 either way.
     await requestMagicLink({
       identifier: body.identifier,
       channel: body.channel,
@@ -178,7 +178,7 @@ authRouter.post('/magic/request', authRateLimiter, async (req, res, next) => {
 authRouter.post('/password-reset/request', authRateLimiter, async (req, res, next) => {
   try {
     const body = passwordResetRequestSchema.parse(req.body);
-    assertLinkSignInAllowed();
+    // Single sign-on policy applied inside, silently (see /magic/request).
     await requestPasswordReset({
       identifier: body.identifier,
       channel: body.channel,
@@ -199,11 +199,11 @@ authRouter.post('/password-reset/request', authRateLimiter, async (req, res, nex
 authRouter.post('/magic/consume', authRateLimiter, async (req, res, next) => {
   try {
     const body = magicLinkConsumeRequestSchema.parse(req.body);
-    // Refuse BEFORE consuming, so a link issued ahead of the switch to
-    // oidc_only is not burned by the attempt.
-    assertLinkSignInAllowed();
+    // The policy refuses a firm user's link under oidc_only BEFORE it is
+    // consumed, so a link issued ahead of the switch is not burned.
     const session = await consumeMagicLink({
       token: body.token,
+      authorize: assertLinkSignInAllowed,
       ip: req.ip ?? null,
       userAgent: req.headers['user-agent'] ?? null,
     });

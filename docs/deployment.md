@@ -5,8 +5,7 @@ equivalent x86_64 mini PC) running Ubuntu Server 24.04 LTS. Any Docker-capable
 Linux host will work; the NucBox M6 is the reference hardware Kurt ships.
 
 **Phase coverage:** Phase 1 of `BUILD_PLAN.md`. Expect later phases to tighten
-this doc with hardening, backup automation (Phase 13), and licensing ingress
-(Phase 12).
+this doc with hardening and backup automation (Phase 13).
 
 ---
 
@@ -91,7 +90,7 @@ curl -s https://<your-domain>/api/v1/version | jq
 All three endpoints return JSON with a `data` envelope. The frontend loads
 at `https://<your-domain>/`. The `workers` array on `/health` should show one
 live consumer per queue (`vpt:auto-clockout`, `vpt:missed-punch`,
-`vpt:license-heartbeat`, `vpt:retention-sweep`); each `liveCount` is the
+`vpt:retention-sweep`); each `liveCount` is the
 number of worker processes currently heartbeating. `liveCount: 0` on a
 queue means background jobs aren't being processed — check `docker logs
 vibept-api` and `docker logs vibept-redis`.
@@ -205,6 +204,4 @@ must target the container name.
 
 - Phase 2 will add a SuperAdmin setup wizard that runs on first boot when the
   appliance detects no admins exist yet.
-- Phase 12 will add licensing enforcement; until then, every company is
-  unlicensed but fully functional.
 - See `BUILD_PLAN.md` for the full phase list.

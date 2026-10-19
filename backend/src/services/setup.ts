@@ -1,6 +1,5 @@
 // Copyright 2026 Kisaes LLC
-// Licensed under the PolyForm Internal Use License 1.0.0.
-// You may not distribute this software. See LICENSE for terms.
+// SPDX-License-Identifier: MIT
 import crypto from 'node:crypto';
 import type { AuthResponse, SetupInitialRequest } from '@vibept/shared';
 import type { Knex } from 'knex';
@@ -127,7 +126,6 @@ export async function runInitialSetup(
         week_start_day: body.company.weekStartDay,
         pay_period_type: body.company.payPeriodType,
         is_internal: true,
-        license_state: 'internal_free',
       })
       .returning<Array<{ id: number }>>('id');
 
