@@ -11,7 +11,7 @@ import type {
   MagicLinkOptionsResponse,
   UpdateEmployeeRequest,
 } from '@vibept/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
@@ -19,7 +19,12 @@ import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { SendLinkMenu } from '../components/SendLinkMenu';
 import { ApiError, apiFetch } from '../lib/api';
-import { badges as badgesApi, employees as employeesApi } from '../lib/resources';
+import { renderBadgeCardPng } from '../lib/badge-card';
+import {
+  badges as badgesApi,
+  companies as companiesApi,
+  employees as employeesApi,
+} from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
 export function EmployeesPage() {
@@ -230,7 +235,12 @@ export function EmployeesPage() {
       )}
 
       {issuedBadge && (
-        <IssuedBadgeModal issued={issuedBadge} onClose={() => setIssuedBadge(null)} />
+        <IssuedBadgeModal
+          companyId={companyId}
+          issued={issuedBadge}
+          employee={(roster.data ?? []).find((e) => e.id === issuedBadge.employeeId) ?? selected}
+          onClose={() => setIssuedBadge(null)}
+        />
       )}
 
       {revealedPin && (
@@ -1073,12 +1083,44 @@ function badgeEventLabel(ev: BadgeEvent): string {
 }
 
 function IssuedBadgeModal({
+  companyId,
   issued,
+  employee,
   onClose,
 }: {
+  companyId: number;
   issued: IssueBadgeResponse;
+  employee: Employee | null;
   onClose: () => void;
 }) {
+  const company = useQuery({
+    queryKey: ['company', companyId],
+    queryFn: () => companiesApi.get(companyId),
+  });
+  const [cardPng, setCardPng] = useState<string | null>(null);
+  const [cardError, setCardError] = useState<string | null>(null);
+
+  const employeeName = employee ? `${employee.firstName} ${employee.lastName}`.trim() : '';
+  const employeeNumber = employee?.employeeNumber ?? null;
+  const companyName = company.data?.name;
+  const filename = `badge-${(employeeName || String(issued.employeeId)).replace(/[^\w-]+/g, '_')}-v${issued.version}-card.png`;
+
+  useEffect(() => {
+    if (!companyName || !employeeName) return;
+    let cancelled = false;
+    renderBadgeCardPng({
+      companyName,
+      employeeName,
+      employeeNumber,
+      qrDataUrl: issued.qrDataUrl,
+    })
+      .then((png) => !cancelled && setCardPng(png))
+      .catch((err) => !cancelled && setCardError(err instanceof Error ? err.message : 'Failed'));
+    return () => {
+      cancelled = true;
+    };
+  }, [companyName, employeeName, employeeNumber, issued.qrDataUrl]);
+
   return (
     <Modal
       open
@@ -1107,8 +1149,21 @@ function IssuedBadgeModal({
             href={issued.qrDataUrl}
             download={`badge-${issued.employeeId}-v${issued.version}.png`}
           >
-            Download PNG
+            Download QR only
           </a>
+          {cardPng ? (
+            <a
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              href={cardPng}
+              download={filename}
+            >
+              Download badge PNG
+            </a>
+          ) : (
+            <span className="px-3 py-2 text-xs text-slate-400">
+              {cardError ?? 'Preparing badge PNG…'}
+            </span>
+          )}
           <button
             type="button"
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
