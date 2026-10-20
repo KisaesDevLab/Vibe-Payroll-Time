@@ -7,6 +7,17 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-20
+
+### Added — Badge PNG
+
+- **Download badge PNG.** The badge-issued dialog now offers a card-sized PNG
+  (CR80, 3.375" x 2.125" at 300 dpi) with the company name, employee name,
+  employee number and QR code, ready for a standard badge holder or card
+  printer. Drawn in the browser (`lib/badge-card.ts`) because the raw badge
+  payload is never stored server-side. The old QR-only download is kept as
+  "Download QR only".
+
 ### Changed — Kiosk legibility
 
 - **Kiosk buttons were dark-on-dark.** Enter, Clock in, Clock out, End break and
