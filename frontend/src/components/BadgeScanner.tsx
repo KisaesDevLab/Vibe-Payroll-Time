@@ -163,7 +163,7 @@ export function BadgeScanner({
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-4">
-      <p className="text-sm uppercase tracking-widest text-slate-400">
+      <p className="text-lg font-medium uppercase tracking-widest text-slate-200">
         Hold your badge up to the camera
       </p>
 
@@ -172,7 +172,7 @@ export function BadgeScanner({
           'relative aspect-square w-full overflow-hidden rounded-xl border-2 transition-colors ' +
           (flashSuccess
             ? 'border-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.6)]'
-            : 'border-slate-700')
+            : 'border-slate-500')
         }
       >
         <video
@@ -182,24 +182,24 @@ export function BadgeScanner({
           className="absolute inset-0 h-full w-full object-cover"
         />
         {state !== 'ready' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 p-6 text-center text-sm text-slate-200">
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 p-6 text-center text-lg text-slate-100">
             {state === 'initializing' && 'Starting camera…'}
             {state === 'denied' && (
               <div>
                 <p className="font-semibold text-white">Camera blocked</p>
-                <p className="mt-2 text-slate-300">{errorText}</p>
+                <p className="mt-2 text-slate-200">{errorText}</p>
               </div>
             )}
             {state === 'no_camera' && (
               <div>
                 <p className="font-semibold text-white">No camera found</p>
-                <p className="mt-2 text-slate-300">Use your PIN instead.</p>
+                <p className="mt-2 text-slate-200">Use your PIN instead.</p>
               </div>
             )}
             {state === 'error' && (
               <div>
                 <p className="font-semibold text-white">Camera error</p>
-                <p className="mt-2 text-slate-300">{errorText}</p>
+                <p className="mt-2 text-slate-200">{errorText}</p>
               </div>
             )}
           </div>
@@ -208,7 +208,7 @@ export function BadgeScanner({
       </div>
 
       {message && (
-        <p className="rounded-md border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">
+        <p className="rounded-md border border-amber-300 bg-amber-950 px-4 py-3 text-base font-medium text-amber-100">
           {message}
         </p>
       )}
@@ -217,7 +217,7 @@ export function BadgeScanner({
         <button
           type="button"
           onClick={onUsePin}
-          className="mt-1 text-sm text-slate-400 hover:text-slate-200"
+          className="mt-1 min-h-14 rounded-xl border-2 border-slate-400 bg-slate-700 px-6 text-lg font-semibold text-white transition hover:bg-slate-600 focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300"
         >
           Can't scan? Use PIN →
         </button>

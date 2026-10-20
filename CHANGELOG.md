@@ -7,6 +7,17 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — Kiosk legibility
+
+- **Kiosk buttons were dark-on-dark.** Enter, Clock in, Clock out, End break and
+  Pair tablet used the shared primary style (slate-900) on the kiosk's slate-900
+  background. The kiosk now has its own high-contrast buttons and fields
+  (`pages/kiosk/kiosk-ui.tsx`): green for clock in / enter, red for clock out,
+  bordered slate for secondary actions, underlined links, 56-64px tap targets
+  and a visible focus ring.
+- Larger, brighter text on the PIN keypad, employee menu, confirmation screen,
+  badge scanner and pairing form; opaque error and warning boxes.
+
 ### Changed — Performance
 
 - **Weekly grid no longer re-renders every second.** The "Saved 4s ago"

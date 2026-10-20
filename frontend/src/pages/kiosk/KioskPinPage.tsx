@@ -5,11 +5,11 @@ import type { KioskEmployeeContext } from '@vibept/shared';
 import { KIOSK_IDLE_LOCK_SECONDS } from '@vibept/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BadgeScanner } from '../../components/BadgeScanner';
-import { Button } from '../../components/Button';
 import { useKiosk } from '../../hooks/useKiosk';
 import { ApiError } from '../../lib/api';
 import { kioskApi } from '../../lib/kiosk-api';
 import { kioskStore } from '../../lib/kiosk-store';
+import { KioskButton } from './kiosk-ui';
 
 type AuthMode = 'pin' | 'qr' | 'both';
 type Screen = 'pin' | 'scan' | 'menu' | 'confirmation';
@@ -216,14 +216,14 @@ export function KioskPinPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-900 text-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-800 px-6 py-3 text-xs">
+      <header className="flex items-center justify-between border-b border-slate-700 px-6 py-2 text-base">
         <div>
-          <span className="font-semibold text-slate-200">{kiosk.companyName}</span>
-          <span className="ml-2 text-slate-500">· {kiosk.deviceName}</span>
+          <span className="font-semibold text-white">{kiosk.companyName}</span>
+          <span className="ml-2 text-slate-300">· {kiosk.deviceName}</span>
         </div>
-        <button type="button" onClick={clearKiosk} className="text-slate-500 hover:text-slate-300">
+        <KioskButton variant="link" onClick={clearKiosk} className="min-h-11 text-sm">
           Unpair
-        </button>
+        </KioskButton>
       </header>
 
       <main className="flex flex-1 items-center justify-center p-6">
@@ -250,17 +250,16 @@ export function KioskPinPage() {
               error={error}
             />
             {authMode === 'both' && (
-              <button
-                type="button"
+              <KioskButton
+                variant="link"
                 onClick={() => {
                   setPin('');
                   setError(null);
                   setScreen('scan');
                 }}
-                className="text-sm text-slate-400 hover:text-slate-200"
               >
                 ← Scan badge instead
-              </button>
+              </KioskButton>
             )}
           </div>
         )}
@@ -305,10 +304,13 @@ function PinKeypad({
   const masked = '•'.repeat(pin.length).padEnd(PIN_LEN_MAX, '○');
   return (
     <div className="flex w-full max-w-sm flex-col items-center gap-6">
-      <p className="text-sm uppercase tracking-widest text-slate-400">Enter your PIN</p>
-      <div className="font-mono text-4xl tracking-[0.5em] text-white">{masked}</div>
+      <p className="text-lg font-medium uppercase tracking-widest text-slate-200">Enter your PIN</p>
+      <div className="font-mono text-5xl tracking-[0.4em] text-white">{masked}</div>
       {error && (
-        <p className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-200">
+        <p
+          role="alert"
+          className="rounded-lg border border-red-400 bg-red-950 px-4 py-3 text-base font-medium text-red-100"
+        >
           {error}
         </p>
       )}
@@ -325,12 +327,12 @@ function PinKeypad({
           0
         </KeyButton>
         <KeyButton onClick={onBack} disabled={submitting} variant="muted">
-          ←
+          <span aria-label="Backspace">⌫</span>
         </KeyButton>
       </div>
-      <Button type="button" className="w-full py-4 text-lg" onClick={onSubmit} loading={submitting}>
+      <KioskButton className="w-full" onClick={onSubmit} loading={submitting}>
         Enter
-      </Button>
+      </KioskButton>
     </div>
   );
 }
@@ -352,10 +354,11 @@ function KeyButton({
       onClick={onClick}
       disabled={disabled}
       className={
-        'flex h-20 items-center justify-center rounded-lg text-2xl font-medium shadow-sm transition ' +
+        'flex h-20 items-center justify-center rounded-xl text-3xl font-semibold shadow-md transition select-none ' +
+        'focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300 active:scale-95 ' +
         (variant === 'muted'
-          ? 'bg-slate-700 text-slate-200 hover:bg-slate-600'
-          : 'bg-slate-100 text-slate-900 hover:bg-white') +
+          ? 'border-2 border-slate-400 bg-slate-700 text-xl text-white hover:bg-slate-600 active:bg-slate-800'
+          : 'bg-slate-100 text-slate-900 hover:bg-white active:bg-slate-300') +
         ' disabled:opacity-60'
       }
     >
@@ -387,53 +390,47 @@ function EmployeeMenu({
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-      <p className="text-sm uppercase tracking-widest text-slate-400">Welcome</p>
-      <h2 className="text-3xl font-semibold text-white">
+      <p className="text-lg font-medium uppercase tracking-widest text-slate-200">Welcome</p>
+      <h2 className="text-4xl font-semibold text-white">
         {ctx.firstName} {ctx.lastName}
       </h2>
-      <p className="text-sm text-slate-400">Today: {hours} hrs worked</p>
+      <p className="text-lg text-slate-200">Today: {hours} hrs worked</p>
 
       <div className="grid w-full gap-3">
         {isClockedOut && (
-          <Button className="py-5 text-lg" loading={pending} onClick={() => onAction('clockIn')}>
+          <KioskButton loading={pending} onClick={() => onAction('clockIn')}>
             Clock in
-          </Button>
+          </KioskButton>
         )}
         {isClockedIn && (
           <>
-            <Button className="py-5 text-lg" loading={pending} onClick={() => onAction('clockOut')}>
+            <KioskButton variant="danger" loading={pending} onClick={() => onAction('clockOut')}>
               Clock out
-            </Button>
-            <Button
-              variant="secondary"
-              className="py-4 text-base"
-              loading={pending}
-              onClick={() => onAction('breakIn')}
-            >
+            </KioskButton>
+            <KioskButton variant="secondary" loading={pending} onClick={() => onAction('breakIn')}>
               Start break
-            </Button>
+            </KioskButton>
           </>
         )}
         {isOnBreak && (
-          <Button className="py-5 text-lg" loading={pending} onClick={() => onAction('breakOut')}>
+          <KioskButton loading={pending} onClick={() => onAction('breakOut')}>
             End break
-          </Button>
+          </KioskButton>
         )}
       </div>
 
       {error && (
-        <p className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-200">
+        <p
+          role="alert"
+          className="rounded-lg border border-red-400 bg-red-950 px-4 py-3 text-base font-medium text-red-100"
+        >
           {error}
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={onCancel}
-        className="mt-2 text-sm text-slate-400 hover:text-slate-200"
-      >
+      <KioskButton variant="link" onClick={onCancel} className="mt-2">
         Not me — cancel
-      </button>
+      </KioskButton>
     </div>
   );
 }
@@ -449,12 +446,14 @@ function Confirmation({
 }) {
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
-      <div className="rounded-full bg-emerald-500/20 p-6 text-6xl">✓</div>
-      <h2 className="text-3xl font-semibold text-white">{message}</h2>
-      <p className="text-sm text-slate-400">Returning to the PIN screen in {seconds}s</p>
-      <Button variant="secondary" onClick={onDismiss}>
+      <div className="flex h-28 w-28 items-center justify-center rounded-full bg-emerald-500 text-6xl font-bold text-slate-950">
+        ✓
+      </div>
+      <h2 className="text-4xl font-semibold text-white">{message}</h2>
+      <p className="text-base text-slate-200">Returning to the start screen in {seconds}s</p>
+      <KioskButton variant="secondary" onClick={onDismiss} className="min-w-40">
         Done
-      </Button>
+      </KioskButton>
     </div>
   );
 }
