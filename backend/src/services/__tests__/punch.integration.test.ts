@@ -145,6 +145,58 @@ describe.skipIf(!dbReachable)('punch service (DB-backed)', () => {
     expect(closed.durationSeconds).not.toBeNull();
   });
 
+  it('clockOut with a 30 minute lunch splits the stretch and deducts it', async () => {
+    const opened = await clockIn(ctx(), { jobId: jobA });
+    await db('time_entries')
+      .where({ id: opened.id })
+      .update({ started_at: new Date(Date.now() - 8 * 3600 * 1000) });
+    await clockOut(ctx(), { lunchMinutes: 30 });
+
+    const rows = await db('time_entries').where({ shift_id: opened.shiftId }).orderBy('started_at');
+    expect(rows.map((r) => r.entry_type)).toEqual(['work', 'break', 'work']);
+    expect(rows.every((r) => r.ended_at !== null)).toBe(true);
+    expect(rows.every((r) => r.job_id === (r.entry_type === 'work' ? jobA : null))).toBe(true);
+    expect(Number(rows[1]!.duration_seconds)).toBe(30 * 60);
+    const worked = rows
+      .filter((r) => r.entry_type === 'work')
+      .reduce((n, r) => n + Number(r.duration_seconds), 0);
+    expect(worked).toBeGreaterThanOrEqual(7.5 * 3600 - 2);
+    expect(worked).toBeLessThanOrEqual(7.5 * 3600 + 2);
+  });
+
+  it('clockOut with lunchMinutes 0 leaves one entry and audits it', async () => {
+    const opened = await clockIn(ctx());
+    await db('time_entries')
+      .where({ id: opened.id })
+      .update({ started_at: new Date(Date.now() - 8 * 3600 * 1000) });
+    await clockOut(ctx(), { lunchMinutes: 0 });
+    const rows = await db('time_entries').where({ shift_id: opened.shiftId });
+    expect(rows).toHaveLength(1);
+    const audit = await db('time_entry_audit').where({
+      time_entry_id: opened.id,
+      field: 'ended_at',
+    });
+    expect(audit[0]?.reason).toBe('worked_through_lunch');
+  });
+
+  it('ignores a lunch answer when the company turned the prompt off', async () => {
+    await db('company_settings')
+      .where({ company_id: companyId })
+      .update({ lunch_prompt_enabled: false });
+    const opened = await clockIn(ctx());
+    await db('time_entries')
+      .where({ id: opened.id })
+      .update({ started_at: new Date(Date.now() - 8 * 3600 * 1000) });
+    await clockOut(ctx(), { lunchMinutes: 30 });
+    const rows = await db('time_entries').where({ shift_id: opened.shiftId });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('refuses a lunch deduction on a short stretch', async () => {
+    await clockIn(ctx());
+    await expect(clockOut(ctx(), { lunchMinutes: 30 })).rejects.toThrow(/longer stretch/i);
+  });
+
   it('break cycle shares shift_id and resumes the prior job', async () => {
     const opened = await clockIn(ctx(), { jobId: jobA });
     const broke = await breakIn(ctx());

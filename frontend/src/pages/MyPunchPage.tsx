@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CurrentPunchResponse, OpenShift } from '@vibept/shared';
-import { useEffect, useRef } from 'react';
+import { KIOSK_LUNCH_PROMPT_SECONDS } from '@vibept/shared';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { TopBar } from '../components/TopBar';
 import { usePunchCompany } from '../hooks/usePunchCompany';
@@ -72,9 +73,9 @@ export function MyPunchPage() {
    * In `required` mode a refused or failed fix throws before anything
    * is sent or queued.
    */
-  const post = async (endpoint: string) => {
+  const post = async (endpoint: string, extra: Record<string, unknown> = {}) => {
     const fields = await capturePunchLocation(locationMode);
-    const body = { companyId, ...fields };
+    const body = { companyId, ...fields, ...extra };
     try {
       return await apiFetch(endpoint, {
         method: 'POST',
@@ -97,9 +98,14 @@ export function MyPunchPage() {
     mutationFn: () => post('/punch/clock-in'),
     onSuccess: invalidate,
   });
+  const [askLunch, setAskLunch] = useState(false);
   const clockOut = useMutation({
-    mutationFn: () => post('/punch/clock-out'),
-    onSuccess: invalidate,
+    mutationFn: (lunchMinutes?: 0 | 30 | 60) =>
+      post('/punch/clock-out', lunchMinutes === undefined ? {} : { lunchMinutes }),
+    onSuccess: () => {
+      setAskLunch(false);
+      invalidate();
+    },
   });
   const breakIn = useMutation({
     mutationFn: () => post('/punch/break-in'),
@@ -201,7 +207,20 @@ export function MyPunchPage() {
             snapshot={current.data}
             pending={pending}
             onClockIn={() => clockIn.mutate()}
-            onClockOut={() => clockOut.mutate()}
+            onClockOut={() => {
+              // A long unbroken stretch gets the lunch question first.
+              const open = current.data?.openEntry;
+              const long =
+                current.data?.lunchPromptEnabled !== false &&
+                open?.entryType === 'work' &&
+                (Date.now() - new Date(open.startedAt).getTime()) / 1000 >=
+                  KIOSK_LUNCH_PROMPT_SECONDS;
+              if (long) setAskLunch(true);
+              else clockOut.mutate(undefined);
+            }}
+            askLunch={askLunch}
+            onLunch={(m) => clockOut.mutate(m)}
+            onLunchBack={() => setAskLunch(false)}
             onBreakIn={() => breakIn.mutate()}
             onBreakOut={() => breakOut.mutate()}
           />
@@ -237,8 +256,14 @@ function PunchCard({
   onClockOut,
   onBreakIn,
   onBreakOut,
+  askLunch,
+  onLunch,
+  onLunchBack,
 }: {
   snapshot: CurrentPunchResponse;
+  askLunch: boolean;
+  onLunch: (minutes: 0 | 30 | 60) => void;
+  onLunchBack: () => void;
   pending: boolean;
   onClockIn: () => void;
   onClockOut: () => void;
@@ -280,7 +305,33 @@ function PunchCard({
           Clock in
         </Button>
       )}
-      {type === 'work' && (
+      {type === 'work' && askLunch && (
+        <>
+          <p className="text-center text-lg font-medium text-slate-800">Did you take lunch?</p>
+          <p className="text-center text-sm text-slate-600">
+            You have been on the clock for over 6 hours. Your time will be adjusted and you will be
+            clocked out.
+          </p>
+          <Button className="w-full py-4 text-lg" loading={pending} onClick={() => onLunch(30)}>
+            30 minute lunch
+          </Button>
+          <Button className="w-full py-4 text-lg" loading={pending} onClick={() => onLunch(60)}>
+            60 minute lunch
+          </Button>
+          <Button
+            variant="secondary"
+            className="w-full py-3"
+            loading={pending}
+            onClick={() => onLunch(0)}
+          >
+            Worked through lunch
+          </Button>
+          <button type="button" className="text-sm underline" onClick={onLunchBack}>
+            Back
+          </button>
+        </>
+      )}
+      {type === 'work' && !askLunch && (
         <>
           <Button className="w-full py-4 text-lg" loading={pending} onClick={onClockOut}>
             Clock out

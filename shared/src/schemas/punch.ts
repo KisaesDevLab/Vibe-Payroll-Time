@@ -97,12 +97,21 @@ export const clockInRequestSchema = offlineMetaSchema.extend({
 });
 export type ClockInRequest = z.infer<typeof clockInRequestSchema>;
 
-export const clockOutRequestSchema = offlineMetaSchema.extend({
+const companyPunchRequestSchema = offlineMetaSchema.extend({
   companyId: z.number().int().positive(),
+});
+
+/** `lunchMinutes` answers the lunch prompt shown after a long unbroken
+ *  stretch: 30/60 carve an unpaid break out of it, 0 records that the
+ *  employee worked through lunch. Shared by the kiosk and the PWA. */
+export const lunchMinutesSchema = z.union([z.literal(0), z.literal(30), z.literal(60)]);
+
+export const clockOutRequestSchema = companyPunchRequestSchema.extend({
+  lunchMinutes: lunchMinutesSchema.optional(),
 });
 export type ClockOutRequest = z.infer<typeof clockOutRequestSchema>;
 
-export const breakInRequestSchema = clockOutRequestSchema;
+export const breakInRequestSchema = companyPunchRequestSchema;
 export type BreakInRequest = z.infer<typeof breakInRequestSchema>;
 
 export const breakOutRequestSchema = clockOutRequestSchema;
@@ -122,6 +131,11 @@ export type KioskClockInRequest = z.infer<typeof kioskClockInRequestSchema>;
 
 export const kioskPunchRequestSchema = offlineMetaSchema;
 export type KioskPunchRequest = z.infer<typeof kioskPunchRequestSchema>;
+
+export const kioskClockOutRequestSchema = offlineMetaSchema.extend({
+  lunchMinutes: lunchMinutesSchema.optional(),
+});
+export type KioskClockOutRequest = z.infer<typeof kioskClockOutRequestSchema>;
 
 export const kioskSwitchJobRequestSchema = offlineMetaSchema.extend({
   newJobId: z.number().int().positive(),
@@ -144,6 +158,8 @@ export const currentPunchResponseSchema = z.object({
   /** The company's location setting, so the PWA knows whether to ask the
    *  browser for a fix before each punch. */
   punchLocationMode: z.enum(['off', 'optional', 'required']),
+  /** Whether clock-out asks about lunch after a long unbroken stretch. */
+  lunchPromptEnabled: z.boolean(),
   /** When the open shift began (its first entry's start — on a break this
    *  is still the clock-in time). Null when clocked out. */
   shiftStartedAt: z.string().datetime().nullable(),

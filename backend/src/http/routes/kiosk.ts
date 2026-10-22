@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import {
   kioskClockInRequestSchema,
+  kioskClockOutRequestSchema,
   kioskPunchRequestSchema,
   kioskScanRequestSchema,
   kioskSwitchJobRequestSchema,
@@ -65,8 +66,9 @@ kioskRouter.get('/me', requireKioskDevice, async (req, res, next) => {
       .where({ 'company_settings.company_id': req.kioskDevice.companyId })
       .first<{
         kiosk_auth_mode: 'pin' | 'qr' | 'both';
+        lunch_prompt_enabled: boolean;
         name: string;
-      }>('company_settings.kiosk_auth_mode', 'companies.name');
+      }>('company_settings.kiosk_auth_mode', 'company_settings.lunch_prompt_enabled', 'companies.name');
     res.json({
       data: {
         id: req.kioskDevice.id,
@@ -74,6 +76,7 @@ kioskRouter.get('/me', requireKioskDevice, async (req, res, next) => {
         name: req.kioskDevice.name,
         companyName: row?.name ?? '',
         kioskAuthMode: row?.kiosk_auth_mode ?? 'pin',
+        lunchPromptEnabled: row?.lunch_prompt_enabled ?? true,
       },
     });
   } catch (err) {
@@ -166,9 +169,9 @@ kioskRouter.post('/punch/clock-in', ...bothAuthed, async (req, res, next) => {
 
 kioskRouter.post('/punch/clock-out', ...bothAuthed, async (req, res, next) => {
   try {
-    const body = kioskPunchRequestSchema.parse(req.body ?? {});
+    const body = kioskClockOutRequestSchema.parse(req.body ?? {});
     const ids = await resolveEmployeeForKiosk(req);
-    const entry = await clockOut(kioskCtx(req, ids, body));
+    const entry = await clockOut(kioskCtx(req, ids, body), { lunchMinutes: body.lunchMinutes });
     res.json({ data: entry });
   } catch (err) {
     next(err);

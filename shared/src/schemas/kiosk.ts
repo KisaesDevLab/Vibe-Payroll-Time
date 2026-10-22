@@ -70,6 +70,7 @@ export const kioskMeResponseSchema = z.object({
   name: z.string(),
   companyName: z.string(),
   kioskAuthMode: z.enum(['pin', 'qr', 'both']),
+  lunchPromptEnabled: z.boolean(),
 });
 export type KioskMeResponse = z.infer<typeof kioskMeResponseSchema>;
 
