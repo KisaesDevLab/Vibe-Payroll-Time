@@ -128,7 +128,9 @@ punchRouter.post('/clock-out', requireAuth, async (req, res, next) => {
   try {
     const body = clockOutRequestSchema.parse(req.body);
     const { employeeId } = await resolveEmployeeForUser(req, body.companyId);
-    const entry = await clockOut(baseCtx(req, body, employeeId));
+    const entry = await clockOut(baseCtx(req, body, employeeId), {
+      lunchMinutes: body.lunchMinutes,
+    });
     res.json({ data: entry });
   } catch (err) {
     next(err);

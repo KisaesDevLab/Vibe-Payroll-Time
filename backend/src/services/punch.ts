@@ -7,7 +7,7 @@ import type {
   PunchSource,
   TimeEntry,
 } from '@vibept/shared';
-import { OFFLINE_PUNCH_MAX_AGE_SECONDS } from '@vibept/shared';
+import { KIOSK_LUNCH_PROMPT_SECONDS, OFFLINE_PUNCH_MAX_AGE_SECONDS } from '@vibept/shared';
 import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, NotFound } from '../http/errors.js';
@@ -544,11 +544,25 @@ async function closeOpen(
   return { ...open, ended_at: endedAt, duration_seconds: duration, ...endedCols } as TimeEntryRow;
 }
 
-export async function clockOut(ctx: PunchContext): Promise<TimeEntry> {
+export async function clockOut(
+  ctx: PunchContext,
+  opts: { lunchMinutes?: 0 | 30 | 60 | undefined } = {},
+): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
     await lockEmployee(trx, ctx.employeeId);
     const { startedAt: endedAt } = resolveStartedAt(ctx);
     const loc = await resolveLocation(trx, ctx);
+
+    // The setting is the authority, not the client: a stale tablet that
+    // still sends an answer after an admin turned the prompt off gets a
+    // plain clock-out.
+    const lunchOn =
+      opts.lunchMinutes !== undefined && (await lunchPromptEnabled(trx, ctx.companyId));
+    const lunchMinutes = lunchOn ? opts.lunchMinutes : undefined;
+
+    if (lunchMinutes) {
+      return clockOutWithLunch(trx, ctx, endedAt, loc, lunchMinutes);
+    }
     const closed = await closeOpen(trx, ctx, 'any', endedAt, loc);
 
     await writeAudit(trx, {
@@ -559,10 +573,110 @@ export async function clockOut(ctx: PunchContext): Promise<TimeEntry> {
       field: 'ended_at',
       oldValue: null,
       newValue: endedAt.toISOString(),
+      reason: lunchMinutes === 0 ? 'worked_through_lunch' : null,
     });
 
     return rowToTimeEntry(closed);
   });
+}
+
+/**
+ * Clock out after an unbroken stretch of work, deducting an unpaid lunch.
+ * The open work entry is split into work / break / work around the
+ * lunch, centred in the stretch because the kiosk only learns how long
+ * lunch was, not when. The shift_id and job carry across, and every row
+ * gets an audit entry, so the raw span is still reconstructable. Only
+ * the stretch the employee is actually on counts: an entry shorter than
+ * KIOSK_LUNCH_PROMPT_SECONDS never showed the prompt, so a deduction
+ * for it is refused.
+ */
+async function lunchPromptEnabled(trx: Knex.Transaction, companyId: number): Promise<boolean> {
+  const row = await trx('company_settings')
+    .where({ company_id: companyId })
+    .first<{ lunch_prompt_enabled: boolean }>('lunch_prompt_enabled');
+  return row?.lunch_prompt_enabled ?? true;
+}
+
+async function clockOutWithLunch(
+  trx: Knex.Transaction,
+  ctx: PunchContext,
+  endedAt: Date,
+  loc: ResolvedLocation,
+  lunchMinutes: 30 | 60,
+): Promise<TimeEntry> {
+  const open = await findOpenEntry(trx, ctx.companyId, ctx.employeeId);
+  if (!open) throw Conflict('Employee has no open entry');
+  if (open.entry_type !== 'work') {
+    throw Conflict('Lunch can only be deducted from an open work entry, not a break');
+  }
+  const lunchSeconds = lunchMinutes * 60;
+  const stretch = secondsBetween(open.started_at, endedAt);
+  if (stretch < KIOSK_LUNCH_PROMPT_SECONDS) {
+    throw BadRequest('Lunch is only deducted after a longer stretch of work');
+  }
+
+  const firstWork = Math.floor((stretch - lunchSeconds) / 2);
+  const lunchStart = new Date(open.started_at.getTime() + firstWork * 1000);
+  const lunchEnd = new Date(lunchStart.getTime() + lunchSeconds * 1000);
+
+  // First segment: the original row, closed where lunch begins.
+  const first = await closeOpen(trx, ctx, 'work', lunchStart, NO_LOCATION);
+  await writeAudit(trx, {
+    timeEntryId: first.id,
+    companyId: ctx.companyId,
+    actorUserId: ctx.actorUserId,
+    action: 'edit',
+    field: 'ended_at',
+    oldValue: null,
+    newValue: lunchStart.toISOString(),
+    reason: `lunch_${lunchMinutes}`,
+  });
+
+  const insertClosed = async (
+    entryType: 'work' | 'break',
+    startedAt: Date,
+    closedAt: Date,
+    endLoc: ResolvedLocation,
+  ): Promise<TimeEntryRow> => {
+    const [row] = await trx<TimeEntryRow>('time_entries')
+      .insert({
+        company_id: ctx.companyId,
+        employee_id: ctx.employeeId,
+        shift_id: open.shift_id,
+        entry_type: entryType,
+        job_id: entryType === 'work' ? open.job_id : null,
+        started_at: startedAt,
+        ended_at: closedAt,
+        duration_seconds: secondsBetween(startedAt, closedAt),
+        source: ctx.source,
+        source_device_id: ctx.sourceDeviceId ?? null,
+        source_ip: ctx.sourceIp ?? null,
+        source_user_agent: ctx.sourceUserAgent ?? null,
+        ...locationColumns(endLoc, 'ended'),
+        created_by: ctx.actorUserId,
+      })
+      .returning('*');
+    if (!row) throw new Error('lunch split insert returned no row');
+    await writeAudit(trx, {
+      timeEntryId: row.id,
+      companyId: ctx.companyId,
+      actorUserId: ctx.actorUserId,
+      action: 'create',
+      newValue: {
+        entryType,
+        shiftId: row.shift_id,
+        jobId: row.job_id,
+        startedAt: startedAt.toISOString(),
+        endedAt: closedAt.toISOString(),
+      },
+      reason: `lunch_${lunchMinutes}`,
+    });
+    return row;
+  };
+
+  await insertClosed('break', lunchStart, lunchEnd, NO_LOCATION);
+  const last = await insertClosed('work', lunchEnd, endedAt, loc);
+  return rowToTimeEntry(last);
 }
 
 export async function breakIn(ctx: PunchContext): Promise<TimeEntry> {

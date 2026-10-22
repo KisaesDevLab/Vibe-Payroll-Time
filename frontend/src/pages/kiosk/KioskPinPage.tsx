@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { KioskEmployeeContext } from '@vibept/shared';
-import { KIOSK_IDLE_LOCK_SECONDS } from '@vibept/shared';
+import {
+  KIOSK_IDLE_LOCK_SECONDS,
+  KIOSK_LUNCH_PROMPT_SECONDS,
+  type KioskClockOutRequest,
+} from '@vibept/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BadgeScanner } from '../../components/BadgeScanner';
 import { useKiosk } from '../../hooks/useKiosk';
@@ -12,7 +16,7 @@ import { kioskStore } from '../../lib/kiosk-store';
 import { KioskButton } from './kiosk-ui';
 
 type AuthMode = 'pin' | 'qr' | 'both';
-type Screen = 'pin' | 'scan' | 'menu' | 'confirmation';
+type Screen = 'pin' | 'scan' | 'menu' | 'lunch' | 'confirmation';
 
 const PIN_LEN_MIN = 4;
 const PIN_LEN_MAX = 6;
@@ -161,14 +165,20 @@ export function KioskPinPage() {
   }, []);
 
   const punch = useMutation({
-    mutationFn: async (action: 'clockIn' | 'clockOut' | 'breakIn' | 'breakOut') => {
+    mutationFn: async (req: {
+      action: PunchAction;
+      lunchMinutes?: KioskClockOutRequest['lunchMinutes'];
+    }) => {
       if (!session) throw new ApiError(401, 'unauthorized', 'No active session');
       const token = session.sessionToken;
-      switch (action) {
+      switch (req.action) {
         case 'clockIn':
           return { label: 'Clocked in', entry: await kioskApi.clockIn(token) };
         case 'clockOut':
-          return { label: 'Clocked out', entry: await kioskApi.clockOut(token) };
+          return {
+            label: 'Clocked out',
+            entry: await kioskApi.clockOut(token, { lunchMinutes: req.lunchMinutes }),
+          };
         case 'breakIn':
           return { label: 'On break', entry: await kioskApi.breakIn(token) };
         case 'breakOut':
@@ -181,6 +191,8 @@ export function KioskPinPage() {
     },
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : 'Punch failed');
+      // Back to the menu so the message shows beside the buttons.
+      setScreen('menu');
     },
   });
 
@@ -266,10 +278,33 @@ export function KioskPinPage() {
         {screen === 'menu' && session && (
           <EmployeeMenu
             ctx={session}
-            onAction={(action) => punch.mutate(action)}
+            onAction={(action) => {
+              setError(null);
+              // A long unbroken stretch gets the lunch question first.
+              if (
+                action === 'clockOut' &&
+                needsLunchPrompt(session, meQuery.data?.lunchPromptEnabled ?? true)
+              ) {
+                setScreen('lunch');
+                return;
+              }
+              punch.mutate({ action });
+            }}
             onCancel={resetToPin}
             pending={punch.isPending}
             error={error}
+          />
+        )}
+        {screen === 'lunch' && session && (
+          <LunchPrompt
+            ctx={session}
+            pending={punch.isPending}
+            error={error}
+            onChoose={(lunchMinutes) => punch.mutate({ action: 'clockOut', lunchMinutes })}
+            onBack={() => {
+              setError(null);
+              setScreen('menu');
+            }}
           />
         )}
         {screen === 'confirmation' && confirmMessage && (
@@ -368,6 +403,68 @@ function KeyButton({
 }
 
 type PunchAction = 'clockIn' | 'clockOut' | 'breakIn' | 'breakOut';
+
+/** True when the open entry is a work stretch long enough to ask about lunch. */
+function needsLunchPrompt(ctx: KioskEmployeeContext, enabled: boolean): boolean {
+  if (!enabled) return false;
+  const open = ctx.openEntry;
+  if (open?.entryType !== 'work') return false;
+  return (Date.now() - new Date(open.startedAt).getTime()) / 1000 >= KIOSK_LUNCH_PROMPT_SECONDS;
+}
+
+const LUNCH_CHOICES: Array<{ minutes: 0 | 30 | 60; label: string }> = [
+  { minutes: 30, label: '30 minute lunch' },
+  { minutes: 60, label: '60 minute lunch' },
+  { minutes: 0, label: 'Worked through lunch' },
+];
+
+function LunchPrompt({
+  ctx,
+  onChoose,
+  onBack,
+  pending,
+  error,
+}: {
+  ctx: KioskEmployeeContext;
+  onChoose: (minutes: 0 | 30 | 60) => void;
+  onBack: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  return (
+    <div className="flex w-full max-w-md flex-col items-center gap-6 text-center">
+      <p className="text-lg font-medium uppercase tracking-widest text-slate-200">Before you go</p>
+      <h2 className="text-4xl font-semibold text-white">{ctx.firstName}, did you take lunch?</h2>
+      <p className="text-lg text-slate-200">
+        You have been on the clock for over 6 hours. Your time will be adjusted and you will be
+        clocked out.
+      </p>
+      <div className="grid w-full gap-3">
+        {LUNCH_CHOICES.map((c) => (
+          <KioskButton
+            key={c.minutes}
+            variant={c.minutes === 0 ? 'secondary' : 'primary'}
+            loading={pending}
+            onClick={() => onChoose(c.minutes)}
+          >
+            {c.label}
+          </KioskButton>
+        ))}
+      </div>
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-400 bg-red-950 px-4 py-3 text-base font-medium text-red-100"
+        >
+          {error}
+        </p>
+      )}
+      <KioskButton variant="link" onClick={onBack} disabled={pending}>
+        ← Back
+      </KioskButton>
+    </div>
+  );
+}
 
 function EmployeeMenu({
   ctx,

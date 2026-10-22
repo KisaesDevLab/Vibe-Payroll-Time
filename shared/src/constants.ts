@@ -22,6 +22,13 @@ export const KIOSK_BAD_PIN_LOCKOUT_SECONDS = 30;
 /** Auto-lock kiosk PIN screen after this inactivity window. */
 export const KIOSK_IDLE_LOCK_SECONDS = 30;
 
+/** A kiosk clock-out after this long on one unbroken work entry asks the
+ *  employee about lunch before closing. */
+export const KIOSK_LUNCH_PROMPT_SECONDS = 6 * 60 * 60;
+
+/** Lunch answers the kiosk offers; 0 means "worked through lunch". */
+export const KIOSK_LUNCH_MINUTES_OPTIONS = [0, 30, 60] as const;
+
 /** Reject offline punches older than this when flushed. */
 export const OFFLINE_PUNCH_MAX_AGE_SECONDS = 72 * 60 * 60;
 

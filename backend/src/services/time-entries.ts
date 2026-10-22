@@ -49,7 +49,8 @@ export async function getCurrentPunch(
     getTodayWorkSeconds(companyId, employeeId),
     db('company_settings').where({ company_id: companyId }).first<{
       punch_location_mode: CurrentPunchResponse['punchLocationMode'];
-    }>('punch_location_mode'),
+      lunch_prompt_enabled: boolean;
+    }>('punch_location_mode', 'lunch_prompt_enabled'),
     db('time_entries')
       .where({ company_id: companyId, employee_id: employeeId })
       .whereNotNull('ended_at')
@@ -77,6 +78,7 @@ export async function getCurrentPunch(
     openEntry: openRow ? rowToTimeEntry(openRow) : null,
     todayWorkSeconds,
     punchLocationMode: settings?.punch_location_mode ?? 'off',
+    lunchPromptEnabled: settings?.lunch_prompt_enabled ?? true,
     shiftStartedAt: shiftStart?.min ? new Date(shiftStart.min).toISOString() : null,
     lastEndedAt: lastClosed?.ended_at ? new Date(lastClosed.ended_at).toISOString() : null,
   };

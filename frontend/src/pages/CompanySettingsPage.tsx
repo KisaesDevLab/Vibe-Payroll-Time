@@ -389,6 +389,25 @@ function PunchSection({
         ))}
       </fieldset>
       <fieldset className="rounded-md border border-slate-200 p-4">
+        <legend className="px-2 text-xs font-medium uppercase text-slate-500">Lunch prompt</legend>
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            defaultChecked={settings.lunchPromptEnabled}
+            onChange={(e) => setForm((f) => ({ ...f, lunchPromptEnabled: e.target.checked }))}
+          />
+          <span>
+            Ask about lunch when clocking out after 6 or more hours straight
+            <span className="block text-xs text-slate-500">
+              Employees pick 30 minutes, 60 minutes or worked through lunch. A 30 or 60 minute lunch
+              is deducted as an unpaid break in the middle of the stretch, then they are clocked
+              out. Applies to the kiosk and personal devices. Off: clock-out is immediate.
+            </span>
+          </span>
+        </label>
+      </fieldset>
+      <fieldset className="rounded-md border border-slate-200 p-4">
         <legend className="px-2 text-xs font-medium uppercase text-slate-500">
           Punch location
         </legend>

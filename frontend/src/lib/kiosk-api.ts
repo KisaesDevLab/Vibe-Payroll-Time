@@ -3,6 +3,7 @@
 import type {
   CurrentPunchResponse,
   KioskClockInRequest,
+  KioskClockOutRequest,
   KioskEmployeeContext,
   KioskMeResponse,
   KioskPunchRequest,
@@ -96,7 +97,7 @@ export const kioskApi = {
       body: JSON.stringify(body),
     }),
 
-  clockOut: (session: string, body: KioskPunchRequest = {}) =>
+  clockOut: (session: string, body: KioskClockOutRequest = {}) =>
     fetchJson<TimeEntry>('/kiosk/punch/clock-out', {
       method: 'POST',
       headers: deviceHeader(),

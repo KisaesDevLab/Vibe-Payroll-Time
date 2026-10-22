@@ -7,6 +7,20 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-22
+
+### Added — Lunch prompt
+
+- **Lunch question at clock-out.** Clocking out after 6 or more hours of unbroken
+  work asks "Did you take lunch?" (30 minutes, 60 minutes, or worked through
+  lunch) on both the kiosk and the personal-device punch page. A 30 or 60 minute
+  answer splits the work entry around an unpaid break centred in the stretch
+  (same shift and job, audited as `lunch_30` / `lunch_60`) and clocks the
+  employee out; "worked through lunch" clocks out unchanged and is noted in the
+  audit trail. The server refuses a deduction on a stretch under 6 hours.
+- **Company setting `lunch_prompt_enabled`** (Settings, default on) turns the
+  prompt off. A stale client's answer is ignored when it is off.
+
 ## [1.5.0] - 2026-10-20
 
 ### Added — Badge PNG
