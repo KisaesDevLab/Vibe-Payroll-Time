@@ -239,6 +239,16 @@ describe.skipIf(!dbReachable)('manual-entries service (DB-backed)', () => {
       byPeriod.push(row as Record<string, unknown>);
     }
     expect(byPeriod.find((r) => r.lastName === 'Loyee')?.workSeconds).toBe(9 * 3600);
+    // The trailing TOTAL row sums every employee row's hours columns.
+    const total = byPeriod[byPeriod.length - 1]!;
+    const people = byPeriod.slice(0, -1);
+    expect(total).toMatchObject({
+      lastName: 'TOTAL',
+      firstName: `${people.length} employee${people.length === 1 ? '' : 's'}`,
+    });
+    for (const key of ['regularSeconds', 'overtimeSeconds', 'workSeconds', 'paidTotalSeconds']) {
+      expect(total[key]).toBe(people.reduce((sum, r) => sum + Number(r[key]), 0));
+    }
   });
 
   it('getTimesheet `at` picks the pay period containing that instant', async () => {

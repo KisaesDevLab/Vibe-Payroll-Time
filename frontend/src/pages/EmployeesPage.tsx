@@ -28,6 +28,9 @@ import {
 } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
+/** Shared <datalist> of the company's departments for both employee forms. */
+const DEPARTMENT_LIST_ID = 'employee-departments';
+
 export function EmployeesPage() {
   const { companyId } = useOutletContext<CompanyContext>();
   const qc = useQueryClient();
@@ -44,6 +47,12 @@ export function EmployeesPage() {
     queryKey: ['employees', companyId, search],
     queryFn: () => employeesApi.list(companyId, search || undefined),
   });
+
+  // Departments already in use, offered as suggestions on the employee
+  // forms so "Tax" isn't typed three different ways.
+  const departments = [
+    ...new Set((roster.data ?? []).map((e) => e.department).filter((d): d is string => !!d)),
+  ].sort((a, b) => a.localeCompare(b));
 
   const badgeStates = useQuery({
     queryKey: ['badge-states', companyId, (roster.data ?? []).map((e) => e.id).join(',')],
@@ -129,6 +138,7 @@ export function EmployeesPage() {
               </th>
               <th className="px-4 py-3 text-left font-medium">Name</th>
               <th className="px-4 py-3 text-left font-medium">Number</th>
+              <th className="px-4 py-3 text-left font-medium">Department</th>
               <th className="px-4 py-3 text-left font-medium">Email</th>
               <th className="px-4 py-3 text-left font-medium">PIN</th>
               <th className="px-4 py-3 text-left font-medium">Badge</th>
@@ -168,6 +178,7 @@ export function EmployeesPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{e.employeeNumber ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-700">{e.department ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{e.email ?? '—'}</td>
                   <td className="px-4 py-3">
                     <PinCell employee={e} />
@@ -192,7 +203,7 @@ export function EmployeesPage() {
             })}
             {roster.data?.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
                   {search ? 'No employees match your search.' : 'No employees yet.'}
                 </td>
               </tr>
@@ -200,6 +211,12 @@ export function EmployeesPage() {
           </tbody>
         </table>
       </div>
+
+      <datalist id={DEPARTMENT_LIST_ID}>
+        {departments.map((d) => (
+          <option key={d} value={d} />
+        ))}
+      </datalist>
 
       {createOpen && (
         <CreateEmployeeModal
@@ -388,6 +405,14 @@ function CreateEmployeeModal({
           onChange={(e) => setForm((f) => ({ ...f, employeeNumber: e.target.value || undefined }))}
         />
         <FormField
+          label="Department"
+          hint="Optional. Reports subtotal by department."
+          list={DEPARTMENT_LIST_ID}
+          maxLength={100}
+          value={form.department ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, department: e.target.value || undefined }))}
+        />
+        <FormField
           label="Email"
           type="email"
           value={form.email ?? ''}
@@ -547,7 +572,9 @@ function ImportCsvModal({
             className="h-48 w-full rounded-md border border-slate-300 bg-white p-3 font-mono text-xs shadow-sm"
             value={csv}
             onChange={(e) => setCsv(e.target.value)}
-            placeholder={'first_name,last_name,employee_number\nJane,Doe,E001\nJohn,Smith,E002'}
+            placeholder={
+              'first_name,last_name,employee_number,department\nJane,Doe,E001,Tax\nJohn,Smith,E002,Admin'
+            }
           />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
@@ -707,6 +734,14 @@ function EmployeeDetailDrawer({
           label="Employee number"
           defaultValue={employee.employeeNumber ?? ''}
           onChange={(e) => setPatch((p) => ({ ...p, employeeNumber: e.target.value || null }))}
+        />
+        <FormField
+          label="Department"
+          hint="Optional. Reports subtotal by department."
+          list={DEPARTMENT_LIST_ID}
+          maxLength={100}
+          defaultValue={employee.department ?? ''}
+          onChange={(e) => setPatch((p) => ({ ...p, department: e.target.value || null }))}
         />
         <FormField
           label="Email"

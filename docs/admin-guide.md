@@ -228,6 +228,13 @@ request. Reminders never change time entries.
   invalidated immediately.
 - Retire an employee: **Employees → row menu → Deactivate**. They disappear
   from pickers but existing punches and audit trail remain forever.
+- Department (optional): set it on the employee record or as a `department`
+  column in the CSV import. The field suggests departments already in use.
+  **Reports → Hours by pay period** groups employees by department with a
+  SUBTOTAL row for each (employees without one land under "No department")
+  and ends with a grand TOTAL. Grouping ignores capitalization, so "Tax" and
+  "tax" are one department. With no departments set, the report shows just
+  the grand total.
 
 ## Jobs
 

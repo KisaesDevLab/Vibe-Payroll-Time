@@ -11,12 +11,41 @@ import { rowToTimeEntry, type TimeEntryRow } from '../punch.js';
 import { loadTimeOffJobs } from '../time-off.js';
 import type { ReportHandler } from './types.js';
 
+/** The hours columns the TOTAL row sums. */
+const TOTALLED = [
+  'regularSeconds',
+  'overtimeSeconds',
+  'breakSeconds',
+  'workSeconds',
+  'ptoSeconds',
+  'sickSeconds',
+  'holidaySeconds',
+  'otherTimeOffSeconds',
+  'unpaidSeconds',
+  'paidTotalSeconds',
+] as const;
+
+type Totals = Record<(typeof TOTALLED)[number], number>;
+type EmployeeRow = Totals & {
+  department: string;
+  employeeNumber: string;
+  lastName: string;
+  firstName: string;
+};
+
+const emptyTotals = (): Totals => Object.fromEntries(TOTALLED.map((k) => [k, 0])) as Totals;
+const addInto = (into: Totals, row: Totals) => {
+  for (const key of TOTALLED) into[key] += row[key];
+};
+const countLabel = (n: number) => `${n} employee${n === 1 ? '' : 's'}`;
+
 export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema> = {
   name: 'hours_by_period',
   label: 'Hours by pay period',
   description:
-    'One row per active employee with regular, overtime, break and worked hours for the period, plus time off by type. Overtime is computed on worked hours only.',
+    'One row per active employee with regular, overtime, break and worked hours for the period, plus time off by type, subtotalled by department with a grand total. Overtime is computed on worked hours only.',
   columns: [
+    { key: 'department', label: 'Department', type: 'string' },
     { key: 'employeeNumber', label: 'Employee #', type: 'string' },
     { key: 'lastName', label: 'Last name', type: 'string' },
     { key: 'firstName', label: 'First name', type: 'string' },
@@ -73,9 +102,10 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
           first_name: string;
           last_name: string;
           employee_number: string | null;
+          department: string | null;
           status: 'active' | 'terminated';
         }>
-      >('id', 'first_name', 'last_name', 'employee_number', 'status');
+      >('id', 'first_name', 'last_name', 'employee_number', 'department', 'status');
 
     const timeOffJobs = await loadTimeOffJobs(companyId);
     const byEmployee = new Map<number, TimeEntryRow[]>();
@@ -84,6 +114,10 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
       arr.push(r);
       byEmployee.set(r.employee_id, arr);
     }
+
+    // Rows grouped by department, compared case-insensitively so "Tax"
+    // and "tax " land together; the first spelling seen names the group.
+    const groups = new Map<string, { name: string | null; rows: EmployeeRow[] }>();
 
     for (const emp of employees) {
       const empRows = byEmployee.get(emp.id) ?? [];
@@ -113,7 +147,9 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
         timeOffJobs,
       });
 
-      yield {
+      const department = emp.department?.trim() || null;
+      const row: EmployeeRow = {
+        department: department ?? '',
         employeeNumber: emp.employee_number ?? '',
         lastName: emp.last_name,
         firstName: emp.first_name,
@@ -127,6 +163,51 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
         otherTimeOffSeconds: summary.timeOff.byCategory.other,
         unpaidSeconds: summary.timeOff.unpaidSeconds,
         paidTotalSeconds: summary.periodTotal.workSeconds + summary.timeOff.paidSeconds,
+      };
+      const key = department?.toLowerCase() ?? '';
+      const group = groups.get(key) ?? { name: department, rows: [] };
+      group.rows.push(row);
+      groups.set(key, group);
+    }
+
+    // Departments A–Z, "No department" last. Subtotals appear only when
+    // someone has a department; otherwise the report is a plain list with
+    // the grand total. Every total sums the per-employee figures, so
+    // overtime stays per-person (never recomputed on combined hours).
+    // Total rows render bold in the UI and PDF and are in the CSV.
+    const ordered = [...groups.entries()].sort(([a], [b]) =>
+      a === '' ? 1 : b === '' ? -1 : a.localeCompare(b),
+    );
+    const byDepartment = ordered.some(([key]) => key !== '');
+    const grand = emptyTotals();
+    let employeeCount = 0;
+
+    for (const [, group] of ordered) {
+      const subtotal = emptyTotals();
+      for (const row of group.rows) {
+        addInto(subtotal, row);
+        addInto(grand, row);
+        yield row;
+      }
+      employeeCount += group.rows.length;
+      if (byDepartment) {
+        yield {
+          department: group.name ?? 'No department',
+          employeeNumber: '',
+          lastName: 'SUBTOTAL',
+          firstName: countLabel(group.rows.length),
+          ...subtotal,
+        };
+      }
+    }
+
+    if (employeeCount > 0) {
+      yield {
+        department: '',
+        employeeNumber: '',
+        lastName: 'TOTAL',
+        firstName: countLabel(employeeCount),
+        ...grand,
       };
     }
   },
