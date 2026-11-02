@@ -160,6 +160,8 @@ export const punchActivityReport: ReportHandler<typeof punchActivityParamsSchema
       if (r.is_auto_closed) flags.push('auto-closed');
       if (r.source_offline) flags.push('offline');
       if (r.edit_reason) flags.push('edited');
+      // Kept here as part of the record; it no longer counts toward hours.
+      if (r.superseded_by_entry_id) flags.push('superseded');
       // Admin-created rows use the `web-admin-<userId>` device id convention.
       if (r.source === 'web' && r.source_device_id?.startsWith('web-admin-')) {
         flags.push('admin-created');
