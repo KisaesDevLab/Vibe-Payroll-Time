@@ -90,7 +90,9 @@ export function CorrectionsPage() {
                   </span>{' '}
                   · {r.requestType}
                 </p>
-                <p className="mt-1 text-sm text-slate-800">Employee #{r.employeeId}</p>
+                <p className="mt-1 text-base font-medium text-slate-900">
+                  {r.employeeName || `Employee #${r.employeeId}`}
+                </p>
                 <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
                 {shiftLabel(r) ? (
                   <p className="mt-2 rounded-md border border-slate-100 bg-slate-50 p-2 text-sm text-slate-800">
@@ -175,7 +177,7 @@ function DecideModal({
     <Modal
       open
       onClose={onClose}
-      title={`${action === 'approve' ? 'Approve' : 'Reject'} request #${request.id}`}
+      title={`${action === 'approve' ? 'Approve' : 'Reject'} request #${request.id}${request.employeeName ? ` · ${request.employeeName}` : ''}`}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
