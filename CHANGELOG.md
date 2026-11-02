@@ -15,6 +15,7 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Totals on Hours by pay period.** A TOTAL row at the bottom sums every hours column across employees (on screen, PDF and CSV). Overtime is each employee's own overtime added up, never recomputed on combined hours.
+- **Employee departments.** An optional department on each employee (record, create form and CSV import, with suggestions from departments already in use; searchable on Employees). Hours by pay period groups by department with a SUBTOTAL row each, "No department" last, then the grand TOTAL. Migration `20261102000002_employee_department.js` adds `employees.department`.
 - **Week-by-week navigation on Timesheets.** Previous / Next (by pay period, labelled "week" for weekly payroll) and Back to current week. The week is kept in the URL.
 
 ## [1.7.0] - 2026-11-02

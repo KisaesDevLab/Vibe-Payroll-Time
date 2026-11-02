@@ -3,6 +3,13 @@
 import { z } from 'zod';
 import { workDaysSchema } from './companies.js';
 
+/** Department input: trimmed; blank means none. */
+const departmentInput = z
+  .string()
+  .max(100)
+  .transform((v) => v.trim().replace(/\s+/g, ' '))
+  .transform((v) => (v === '' ? null : v));
+
 export const employeeSchema = z.object({
   id: z.number().int().positive(),
   companyId: z.number().int().positive(),
@@ -10,6 +17,8 @@ export const employeeSchema = z.object({
   firstName: z.string(),
   lastName: z.string(),
   employeeNumber: z.string().nullable(),
+  /** Optional label reports group and subtotal by. */
+  department: z.string().nullable(),
   email: z.string().email().nullable(),
   phone: z.string().nullable(),
   status: z.enum(['active', 'terminated']),
@@ -49,6 +58,7 @@ export const createEmployeeRequestSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
   employeeNumber: z.string().max(50).optional(),
+  department: departmentInput.optional(),
   email: z.string().email().max(254).optional(),
   phone: z.string().max(32).optional(),
   hiredAt: z.string().date().optional(),
@@ -63,6 +73,7 @@ export const updateEmployeeRequestSchema = z.object({
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),
   employeeNumber: z.string().max(50).nullable().optional(),
+  department: departmentInput.nullable().optional(),
   email: z.string().email().max(254).nullable().optional(),
   phone: z.string().max(32).nullable().optional(),
   hiredAt: z.string().date().nullable().optional(),

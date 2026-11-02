@@ -24,6 +24,7 @@ interface EmployeeRow {
   first_name: string;
   last_name: string;
   employee_number: string | null;
+  department: string | null;
   email: string | null;
   phone: string | null;
   pin_hash: string | null;
@@ -58,6 +59,7 @@ function rowToEmployee(row: EmployeeRow, opts: { includePin?: boolean } = {}): E
     firstName: row.first_name,
     lastName: row.last_name,
     employeeNumber: row.employee_number,
+    department: row.department,
     email: row.email,
     phone: row.phone,
     status: row.status,
@@ -104,6 +106,7 @@ export async function listEmployees(
         .whereILike('first_name', needle)
         .orWhereILike('last_name', needle)
         .orWhereILike('employee_number', needle)
+        .orWhereILike('department', needle)
         .orWhereILike('email', needle),
     );
   }
@@ -174,6 +177,7 @@ export async function createEmployee(
       first_name: body.firstName,
       last_name: body.lastName,
       employee_number: body.employeeNumber ?? null,
+      department: body.department ?? null,
       email: body.email ?? null,
       // E.164 on write, as on update, so every send path sees "+1…".
       phone: body.phone ? normalizeToE164(body.phone) : null,
@@ -227,6 +231,7 @@ export async function updateEmployee(
     if (patch.firstName !== undefined) updates.first_name = patch.firstName;
     if (patch.lastName !== undefined) updates.last_name = patch.lastName;
     if (patch.employeeNumber !== undefined) updates.employee_number = patch.employeeNumber;
+    if (patch.department !== undefined) updates.department = patch.department;
     if (patch.email !== undefined) {
       updates.email = patch.email;
       // Re-resolve the user_id link whenever the email changes: clear
@@ -414,6 +419,8 @@ const HEADER_ALIASES: Record<string, string> = {
   lastname: 'last_name',
   email: 'email',
   phone: 'phone',
+  department: 'department',
+  dept: 'department',
 };
 
 function parseCsv(text: string): Array<Record<string, string>> {
@@ -506,6 +513,9 @@ export async function importEmployeesCsv(
         firstName: row.first_name,
         lastName: row.last_name,
         ...(row.employee_number ? { employeeNumber: row.employee_number } : {}),
+        ...(row.department?.trim()
+          ? { department: row.department.trim().replace(/\s+/g, ' ').slice(0, 100) }
+          : {}),
         ...(row.email ? { email: row.email } : {}),
         ...(row.phone ? { phone: row.phone } : {}),
         generatePin: body.generatePins,
