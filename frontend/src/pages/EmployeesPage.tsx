@@ -11,13 +11,14 @@ import type {
   MagicLinkOptionsResponse,
   UpdateEmployeeRequest,
 } from '@vibept/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
 import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { SendLinkMenu } from '../components/SendLinkMenu';
+import { WorkDaysPicker } from '../components/WorkDaysPicker';
 import { ApiError, apiFetch } from '../lib/api';
 import { renderBadgeCardPng } from '../lib/badge-card';
 import {
@@ -718,6 +719,13 @@ function EmployeeDetailDrawer({
           defaultValue={employee.phone ?? ''}
           onChange={(e) => setPatch((p) => ({ ...p, phone: e.target.value || null }))}
         />
+        <FormField
+          label="Hire date"
+          type="date"
+          defaultValue={employee.hiredAt ?? ''}
+          onChange={(e) => setPatch((p) => ({ ...p, hiredAt: e.target.value || null }))}
+        />
+        <MissingTimeFields employee={employee} patch={patch} setPatch={setPatch} />
         <dl className="grid grid-cols-2 gap-y-1 text-xs text-slate-500">
           <dt>Status</dt>
           <dd className="text-right font-medium text-slate-800">{employee.status}</dd>
@@ -756,6 +764,76 @@ function EmployeeDetailDrawer({
         />
       )}
     </Drawer>
+  );
+}
+
+/**
+ * Work days + reminder switch for missing-time reminders. Work days
+ * default to the company's; "Custom" stores this employee's own.
+ */
+function MissingTimeFields({
+  employee,
+  patch,
+  setPatch,
+}: {
+  employee: Employee;
+  patch: UpdateEmployeeRequest;
+  setPatch: Dispatch<SetStateAction<UpdateEmployeeRequest>>;
+}) {
+  const days = patch.workDays !== undefined ? patch.workDays : employee.workDays;
+  const custom = days !== null;
+  return (
+    <fieldset className="rounded-md border border-slate-200 p-4">
+      <legend className="px-2 text-xs font-medium uppercase text-slate-500">
+        Missing-time reminders
+      </legend>
+      <div className="flex flex-col gap-3 text-sm text-slate-700">
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name={`workdays-${employee.id}`}
+              className="h-4 w-4"
+              checked={!custom}
+              onChange={() => setPatch((p) => ({ ...p, workDays: null }))}
+            />
+            Company work days
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name={`workdays-${employee.id}`}
+              className="h-4 w-4"
+              checked={custom}
+              onChange={() => setPatch((p) => ({ ...p, workDays: [1, 2, 3, 4, 5] }))}
+            />
+            Custom
+          </label>
+        </div>
+        {custom && (
+          <WorkDaysPicker
+            value={days ?? []}
+            onChange={(next) => setPatch((p) => ({ ...p, workDays: next }))}
+          />
+        )}
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            defaultChecked={employee.missingTimeRemindersEnabled}
+            onChange={(e) =>
+              setPatch((p) => ({ ...p, missingTimeRemindersEnabled: e.target.checked }))
+            }
+          />
+          <span>
+            Send this employee missing-time reminders
+            <span className="block text-xs text-slate-500">
+              Days before the hire date are never counted.
+            </span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
   );
 }
 

@@ -1,23 +1,9 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { db } from '../../db/knex.js';
+import { publicUrl } from './public-link.js';
 import { notify } from './service.js';
-
-// Build a fully-qualified URL for outbound links. Relative paths (like
-// '/my-punch') become broken anchors when an email client renders the
-// HTML, so we prepend PUBLIC_URL when set; falling back to the first
-// ALLOWED_ORIGIN entry preserves pre-Phase-14 behavior for standalone
-// customers who haven't set PUBLIC_URL yet.
-function publicUrl(relativePath: string): string {
-  const base = (env.PUBLIC_URL ?? env.ALLOWED_ORIGIN.split(',')[0] ?? '')
-    .trim()
-    .replace(/\/+$/, '');
-  if (!base) return relativePath;
-  const path = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
-  return `${base}${path}`;
-}
 
 /**
  * Sweep every 5 minutes. For each open entry older than the company's

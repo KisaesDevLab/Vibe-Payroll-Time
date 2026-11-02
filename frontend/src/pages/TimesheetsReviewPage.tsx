@@ -7,6 +7,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { DeleteEntryConfirm } from '../components/DeleteEntryConfirm';
 import { EntryFormModal, type EntryFormValues } from '../components/EntryFormModal';
+import { MissingTimeRemindersModal } from '../components/MissingTimeRemindersModal';
 import { NLCorrectionWidget } from '../components/NLCorrectionWidget';
 import { TimesheetView } from '../components/TimesheetView';
 import { useSession } from '../hooks/useSession';
@@ -84,6 +85,7 @@ export function TimesheetsReviewPage() {
   const [editTarget, setEditTarget] = useState<TimeEntry | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TimeEntry | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [missingOpen, setMissingOpen] = useState(false);
 
   const createEntry = useMutation({
     mutationFn: (values: EntryFormValues) => {
@@ -196,6 +198,13 @@ export function TimesheetsReviewPage() {
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="secondary"
+                title="Employees with work days that have no time, and reminders"
+                onClick={() => setMissingOpen(true)}
+              >
+                Missing time
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={() => navigate(`/companies/${companyId}/timesheets/grid`)}
               >
                 All-employee grid
@@ -256,6 +265,12 @@ export function TimesheetsReviewPage() {
               </div>
             )}
 
+            {missingOpen && (
+              <MissingTimeRemindersModal
+                companyId={companyId}
+                onClose={() => setMissingOpen(false)}
+              />
+            )}
             {addOpen && effectiveId != null && (
               <EntryFormModal
                 target={{ mode: 'create', employeeName, employeeId: effectiveId }}

@@ -4,6 +4,7 @@ import { Worker, type Processor } from 'bullmq';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { runAutoClockoutSweep } from '../services/auto-clockout.js';
+import { runMissingTimeSweep } from '../services/missing-time.js';
 import { runMissedPunchSweep } from '../services/notifications/missed-punch-cron.js';
 import { runRetentionSweep } from '../services/retention.js';
 import { getRedisConnection } from './connection.js';
@@ -20,6 +21,10 @@ const processors: Record<QueueName, Processor> = {
   },
   [QUEUE_NAMES.missedPunch]: async () => {
     const sent = await runMissedPunchSweep();
+    return { sent };
+  },
+  [QUEUE_NAMES.missingTime]: async () => {
+    const sent = await runMissingTimeSweep();
     return { sent };
   },
   [QUEUE_NAMES.retentionSweep]: async () => {

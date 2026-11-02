@@ -120,6 +120,15 @@ jobs down. Tap any cell to edit or add time.
 If your company has set "override only" policy, you'll see a message
 when you try to add time on a day+job you didn't actually punch for.
 
+### Missing-time reminders
+
+If one of your work days has no time recorded, your company may send you
+an email or text after the pay period ends listing those days. Open **My
+timesheet** and add the hours you worked, or log time off for the day. If
+you can't add time yourself, use **Add time** to send it to your
+supervisor. If you didn't work that day, tell your supervisor. The
+reminders stop once every day has time or the pay period is approved.
+
 ### Logging a day off
 
 On **My timesheet**, tap **+ Time off**, pick the date and type, and enter

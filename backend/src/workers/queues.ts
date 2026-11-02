@@ -15,6 +15,7 @@ export const QUEUE_PREFIX = 'vpt';
 export const QUEUE_NAMES = {
   autoClockout: 'auto-clockout',
   missedPunch: 'missed-punch',
+  missingTime: 'missing-time',
   retentionSweep: 'retention-sweep',
 } as const;
 
@@ -28,6 +29,7 @@ function buildQueues(): Record<QueueName, Queue> {
   return {
     [QUEUE_NAMES.autoClockout]: new Queue(QUEUE_NAMES.autoClockout, opts),
     [QUEUE_NAMES.missedPunch]: new Queue(QUEUE_NAMES.missedPunch, opts),
+    [QUEUE_NAMES.missingTime]: new Queue(QUEUE_NAMES.missingTime, opts),
     [QUEUE_NAMES.retentionSweep]: new Queue(QUEUE_NAMES.retentionSweep, opts),
   };
 }

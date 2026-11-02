@@ -180,6 +180,46 @@ and the access goes with it on their next request.
 Approving a pay period locks employee edits for that window; correction
 requests still route through the Supervisor / Admin.
 
+## Missing-time reminders
+
+Vibe PT can remind employees who have work days with no time recorded.
+
+**What counts as missing.** A day is missing when all of these are true:
+
+- it is one of the employee's work days. The company default is under
+  **Settings → Missing time** (Mon–Fri unless you change it). An employee
+  with different days gets **Custom** work days on their record under
+  **Employees → row → Missing-time reminders**;
+- it is on or after the employee's **Hire date**, if one is set;
+- it is before today, in company time;
+- it has no work or time-off entry at all. A short day is not missing.
+
+**Who is left out.** Employees with no sign-in (no account, sign-in
+switched off, or personal devices turned off for the company), employees
+whose reminders you switched off on their record, employees with no email
+and no verified phone, and anyone whose pay period is already approved.
+
+**Sending by hand.** **Timesheets → Missing time** lists everyone with
+missing days in **Last pay period** or **This pay period** (checked up to
+yesterday). Everyone who can be reminded starts ticked; untick anyone you
+want to skip and press **Send**. Admins and supervisors can do this,
+whether or not automatic reminders are on.
+
+**Automatic reminders.** Turn on **Settings → Missing time → Remind
+employees automatically**. The morning after a pay period ends, at the
+hour you pick (company time), anyone with missing days in that period gets
+an email or text listing the days and linking to their timesheet. It
+repeats once a day until the days are filled, the period is approved, or
+the **Reminders per pay period** limit (default 3) is reached. Each day
+reminders go out, company admins get one summary email listing who was
+reminded. Supervisors get it too when **Supervisor approval required** is
+on.
+
+Employees fill a missing day on **My timesheet**. If your manual-entry
+policy is **Allowed**, they add the time themselves; otherwise the
+reminder tells them to use **Add time**, which sends you a correction
+request. Reminders never change time entries.
+
 ## Employees
 
 - Create an employee: **Employees → New employee**. Email is optional; without

@@ -13,6 +13,9 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Per-entry edit and delete on the weekly grid.** A cell's popover lists its entries; clicking a day's date lists every entry that day, breaks included. Supervisors and admins can edit; admins can delete. Manual entries are deleted through the manual-entry path, so the punches they replaced come back.
 - **Admins can change approved entries.** On the weekly grid and on Timesheets, with a warning and a required reason. The change is audited and the entry keeps its approval.
 
+- **Missing-time reminders.** A missing day is an expected work day (company default Mon–Fri, or the employee's own days) on or after the hire date, before today, with no work or time-off entry. **Timesheets → Missing time** lists who has missing days in the last or current pay period and sends reminders to the ones selected. With **Settings → Missing time → Remind automatically** on, an hourly job reminds employees the morning after a period ends (at the company's chosen hour), once a day until the days are filled, the period is approved or the per-period limit is reached, and emails company admins one summary each time. Employees without a sign-in, employees switched off on their record, and approved periods are skipped. New BullMQ queue `missing-time`; migration `20261102000001_missing_time_reminders.js` adds `company_settings.work_days` / `missing_time_reminders_enabled` / `missing_time_reminder_hour` / `missing_time_reminder_max`, `employees.work_days` / `missing_time_reminders_enabled`, and the `missing_time_reminders` log.
+- **Hire date on the employee record.** Editable in the employee drawer; the API now returns `hiredAt` as a plain `YYYY-MM-DD`.
+
 ### Changed
 
 - **Corrections queue shows the employee's name** instead of "Employee #id".
