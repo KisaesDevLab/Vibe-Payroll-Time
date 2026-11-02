@@ -11,6 +11,20 @@ import { rowToTimeEntry, type TimeEntryRow } from '../punch.js';
 import { loadTimeOffJobs } from '../time-off.js';
 import type { ReportHandler } from './types.js';
 
+/** The hours columns the TOTAL row sums. */
+const TOTALLED = [
+  'regularSeconds',
+  'overtimeSeconds',
+  'breakSeconds',
+  'workSeconds',
+  'ptoSeconds',
+  'sickSeconds',
+  'holidaySeconds',
+  'otherTimeOffSeconds',
+  'unpaidSeconds',
+  'paidTotalSeconds',
+] as const;
+
 export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema> = {
   name: 'hours_by_period',
   label: 'Hours by pay period',
@@ -85,6 +99,12 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
       byEmployee.set(r.employee_id, arr);
     }
 
+    const totals = Object.fromEntries(TOTALLED.map((k) => [k, 0])) as Record<
+      (typeof TOTALLED)[number],
+      number
+    >;
+    let employeeCount = 0;
+
     for (const emp of employees) {
       const empRows = byEmployee.get(emp.id) ?? [];
       // Terminated employees only appear if they had activity in the period.
@@ -113,7 +133,7 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
         timeOffJobs,
       });
 
-      yield {
+      const row = {
         employeeNumber: emp.employee_number ?? '',
         lastName: emp.last_name,
         firstName: emp.first_name,
@@ -127,6 +147,22 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
         otherTimeOffSeconds: summary.timeOff.byCategory.other,
         unpaidSeconds: summary.timeOff.unpaidSeconds,
         paidTotalSeconds: summary.periodTotal.workSeconds + summary.timeOff.paidSeconds,
+      };
+      for (const key of TOTALLED) totals[key] += row[key];
+      employeeCount += 1;
+      yield row;
+    }
+
+    // Trailing TOTAL row: each hours column summed across employees. It
+    // sums the per-employee figures above, so overtime stays per-person
+    // (never recomputed on the combined hours). Rendered bold in the UI
+    // and PDF; included in the CSV like the time card's total.
+    if (employeeCount > 0) {
+      yield {
+        employeeNumber: '',
+        lastName: 'TOTAL',
+        firstName: `${employeeCount} employee${employeeCount === 1 ? '' : 's'}`,
+        ...totals,
       };
     }
   },

@@ -7,6 +7,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
+import { isTotalRow } from '../lib/report-rows';
 import { companies as companiesApi, employees as employeesApi, reports } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
@@ -367,7 +368,14 @@ function ResultTable({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {result.rows.map((row, i) => (
-              <tr key={i} className="hover:bg-slate-50">
+              <tr
+                key={i}
+                className={
+                  isTotalRow(row)
+                    ? 'border-t-2 border-slate-300 bg-slate-50 font-semibold'
+                    : 'hover:bg-slate-50'
+                }
+              >
                 {visible.map((c) => (
                   <td
                     key={c.key}
@@ -411,6 +419,8 @@ function formatDay(isoDay: string): string {
 function formatCell(v: unknown, column: ReportColumn): string {
   if (v === null || v === undefined) return '';
   if (column.type === 'hours' && typeof v === 'number') return (v / 3600).toFixed(2);
+  // Summary rows leave date cells blank; don't render "Invalid Date".
+  if ((column.type === 'date' || column.type === 'datetime') && v === '') return '';
   if (column.type === 'datetime' && typeof v === 'string') return new Date(v).toLocaleString();
   if (column.type === 'date' && typeof v === 'string')
     return new Date(v + 'T12:00:00Z').toLocaleDateString();

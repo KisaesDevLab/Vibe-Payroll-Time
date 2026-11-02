@@ -23,6 +23,9 @@ export async function streamCsv(
 
 function formatValue(value: unknown, type: ReportColumn['type']): string {
   if (value === null || value === undefined) return '';
+  // Summary rows (e.g. a TOTAL line) leave date cells blank. new Date('')
+  // is Invalid Date, whose toISOString() throws mid-stream.
+  if ((type === 'date' || type === 'datetime') && value === '') return '';
   if (type === 'hours' && typeof value === 'number') return (value / 3600).toFixed(2);
   if (type === 'datetime' && (typeof value === 'string' || value instanceof Date)) {
     const d = value instanceof Date ? value : new Date(value);

@@ -10,9 +10,11 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **Replaced punches no longer count twice.** When a manual entry replaces a punch (for example "Didn't clock out" after an auto-clock-out), the punch is kept for the audit trail but was still counted on the Timesheets page and in the Time card, Hours by pay period, Hours by job and Overtime reports, inflating hours and inventing overtime. Those now skip it, as the weekly grid and payroll exports already did. Punch activity still lists it, flagged `superseded`.
+- **Time card CSV no longer stops at the TOTAL row**, and the TOTAL row's Date column is blank on screen and in the PDF instead of "Invalid Date".
 
 ### Added
 
+- **Totals on Hours by pay period.** A TOTAL row at the bottom sums every hours column across employees (on screen, PDF and CSV). Overtime is each employee's own overtime added up, never recomputed on combined hours.
 - **Week-by-week navigation on Timesheets.** Previous / Next (by pay period, labelled "week" for weekly payroll) and Back to current week. The week is kept in the URL.
 
 ## [1.7.0] - 2026-11-02
