@@ -57,11 +57,9 @@ export async function listCorrectionRequests(
   if (opts.employeeId) q.where('cr.employee_id', opts.employeeId);
   const rows = await q
     .orderBy('cr.created_at', 'desc')
-    .select<Array<CorrectionRow & { first_name: string; last_name: string }>>(
-      'cr.*',
-      'e.first_name',
-      'e.last_name',
-    );
+    .select<
+      Array<CorrectionRow & { first_name: string; last_name: string }>
+    >('cr.*', 'e.first_name', 'e.last_name');
   return rows.map((r) => ({
     ...rowToRequest(r),
     employeeName: `${r.first_name} ${r.last_name}`.trim(),

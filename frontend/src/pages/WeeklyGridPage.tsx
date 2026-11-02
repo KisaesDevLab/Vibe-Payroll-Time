@@ -302,7 +302,8 @@ export function WeeklyGridPage(): JSX.Element {
   });
 
   const deleteCell = useMutation({
-    mutationFn: async (reason?: string) => {
+    // Empty reason → the default below (the Delete button has no reason box).
+    mutationFn: async (reason: string) => {
       if (!editing?.manualEntryId) return;
       await manualEntries.remove(editing.manualEntryId, {
         companyId,
@@ -986,7 +987,7 @@ export function WeeklyGridPage(): JSX.Element {
           onDelete={
             editing.manualEntryId
               ? async () => {
-                  await deleteCell.mutateAsync();
+                  await deleteCell.mutateAsync('');
                 }
               : undefined
           }
