@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeEntry } from '@vibept/shared';
 import { useMemo, useState } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { DeleteEntryConfirm } from '../components/DeleteEntryConfirm';
 import { EntryFormModal, type EntryFormValues } from '../components/EntryFormModal';
@@ -42,10 +42,26 @@ export function TimesheetsReviewPage() {
 
   const effectiveId = selectedId ?? activeRoster[0]?.id ?? null;
 
+  // Which pay period to show: `?at=<ISO instant>` picks the period that
+  // contains it; absent = the current one. Kept in the URL so a reload or
+  // a shared link stays on the same week, and switching employees keeps it.
+  const [search, setSearch] = useSearchParams();
+  const at = search.get('at') ?? undefined;
+  const goToPeriodContaining = (instant: Date | null) => {
+    const next = new URLSearchParams(search);
+    if (instant) next.set('at', instant.toISOString());
+    else next.delete('at');
+    setSearch(next);
+  };
+
   const sheet = useQuery({
-    queryKey: ['timesheet', companyId, effectiveId],
-    queryFn: () => timesheets.get(companyId, effectiveId!),
+    queryKey: ['timesheet', companyId, effectiveId, at ?? 'current'],
+    queryFn: () => timesheets.get(companyId, effectiveId!, at ? { at } : {}),
     enabled: effectiveId != null,
+    // While the next week loads, keep this employee's last sheet on screen
+    // instead of flashing "Loading…" — but never another employee's.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[2] === effectiveId ? prev : undefined,
   });
 
   const approve = useMutation({
@@ -195,6 +211,11 @@ export function TimesheetsReviewPage() {
         )}
         {sheet.data && (
           <>
+            <PeriodNav
+              period={sheet.data.period}
+              loading={sheet.isFetching}
+              onGo={goToPeriodContaining}
+            />
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="secondary"
@@ -322,6 +343,58 @@ export function TimesheetsReviewPage() {
           </>
         )}
       </section>
+    </div>
+  );
+}
+
+/**
+ * Previous / next pay period (a week for weekly payroll), with a way back
+ * to the current one. Steps land inside the neighbouring period, so every
+ * view is a whole pay period and Approve acts on exactly what is shown.
+ */
+function PeriodNav({
+  period,
+  loading,
+  onGo,
+}: {
+  period: { start: string; end: string; type: 'weekly' | 'bi_weekly' | 'semi_monthly' | 'monthly' };
+  loading: boolean;
+  onGo: (instant: Date | null) => void;
+}) {
+  const start = new Date(period.start);
+  const end = new Date(period.end); // exclusive
+  const now = new Date();
+  const isCurrent = start <= now && now < end;
+  const unit = period.type === 'weekly' ? 'week' : 'period';
+  const fmt = (d: Date) =>
+    d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <Button variant="secondary" onClick={() => onGo(new Date(start.getTime() - 1))}>
+        ← Previous {unit}
+      </Button>
+      <div className="text-center text-sm">
+        <span className="font-semibold text-slate-900">
+          {fmt(start)} – {fmt(new Date(end.getTime() - 1))}
+        </span>
+        {isCurrent ? (
+          <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+            Current {unit}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="ml-2 text-xs text-slate-600 underline hover:text-slate-900"
+            onClick={() => onGo(null)}
+          >
+            Back to current {unit}
+          </button>
+        )}
+        {loading && <span className="ml-2 text-xs text-slate-400">Loading…</span>}
+      </div>
+      <Button variant="secondary" onClick={() => onGo(end)} disabled={isCurrent}>
+        Next {unit} →
+      </Button>
     </div>
   );
 }

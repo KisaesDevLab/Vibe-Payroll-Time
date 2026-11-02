@@ -241,6 +241,17 @@ describe.skipIf(!dbReachable)('manual-entries service (DB-backed)', () => {
     expect(byPeriod.find((r) => r.lastName === 'Loyee')?.workSeconds).toBe(9 * 3600);
   });
 
+  it('getTimesheet `at` picks the pay period containing that instant', async () => {
+    const current = await getTimesheet(companyId, employeeId);
+    const previous = await getTimesheet(companyId, employeeId, {
+      at: new Date(new Date(current.period.start).getTime() - 1),
+    });
+    const next = await getTimesheet(companyId, employeeId, { at: new Date(current.period.end) });
+    expect(previous.period.end).toBe(current.period.start);
+    expect(next.period.start).toBe(current.period.end);
+    expect(previous.period.type).toBe('bi_weekly');
+  });
+
   it('delete restores the punches it had superseded', async () => {
     const punch = await clockIn({
       companyId,

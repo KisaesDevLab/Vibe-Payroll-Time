@@ -377,7 +377,7 @@ export const timesheets = {
   get: (
     companyId: number,
     employeeId: number,
-    opts: { periodStart?: string; periodEnd?: string } = {},
+    opts: { periodStart?: string; periodEnd?: string; at?: string } = {},
   ) => {
     const params = new URLSearchParams({
       companyId: String(companyId),
@@ -385,6 +385,7 @@ export const timesheets = {
     });
     if (opts.periodStart) params.set('periodStart', opts.periodStart);
     if (opts.periodEnd) params.set('periodEnd', opts.periodEnd);
+    if (opts.at) params.set('at', opts.at);
     return apiFetch<TimesheetResponse>(`/timesheets?${params.toString()}`);
   },
   current: (companyId: number) =>

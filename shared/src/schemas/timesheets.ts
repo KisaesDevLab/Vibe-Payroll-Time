@@ -90,6 +90,9 @@ export const timesheetQuerySchema = z.object({
   employeeId: z.coerce.number().int().positive(),
   periodStart: z.string().datetime().optional(),
   periodEnd: z.string().datetime().optional(),
+  /** Show the pay period containing this instant (default: now). Ignored
+   *  when periodStart/periodEnd are given. */
+  at: z.string().datetime().optional(),
 });
 export type TimesheetQuery = z.infer<typeof timesheetQuerySchema>;
 
