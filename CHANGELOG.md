@@ -7,6 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-02
+
 ### Added
 
 - **Printable weekly timesheets.** A **Print** button on the weekly grid, and **Print all** on the multi-employee grid (one page per employee). Each sheet has the hours grid, every time entry by day with clock times in the company timezone, and signature lines. Print-based, no server rendering.
