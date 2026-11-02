@@ -90,7 +90,7 @@ curl -s https://<your-domain>/api/v1/version | jq
 All three endpoints return JSON with a `data` envelope. The frontend loads
 at `https://<your-domain>/`. The `workers` array on `/health` should show one
 live consumer per queue (`vpt:auto-clockout`, `vpt:missed-punch`,
-`vpt:retention-sweep`); each `liveCount` is the
+`vpt:missing-time`, `vpt:retention-sweep`); each `liveCount` is the
 number of worker processes currently heartbeating. `liveCount: 0` on a
 queue means background jobs aren't being processed — check `docker logs
 vibept-api` and `docker logs vibept-redis`.

@@ -30,11 +30,24 @@ interface EmployeeRow {
   pin_fingerprint: string | null;
   pin_encrypted: string | null;
   status: Employee['status'];
-  hired_at: string | null;
+  /** node-pg parses DATE to a local-midnight Date. */
+  hired_at: Date | string | null;
   terminated_at: Date | null;
   login_disabled_at: Date | null;
+  work_days: number[] | null;
+  missing_time_reminders_enabled: boolean;
   created_at: Date;
   updated_at: Date;
+}
+
+/** YYYY-MM-DD for a DATE column. pg builds the Date at local midnight,
+ *  so the local getters give back the stored day in any server timezone
+ *  (toISOString would shift it west of UTC). */
+function calendarDate(value: Date | string | null): string | null {
+  if (value === null) return null;
+  if (typeof value === 'string') return value.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 }
 
 function rowToEmployee(row: EmployeeRow, opts: { includePin?: boolean } = {}): Employee {
@@ -48,12 +61,14 @@ function rowToEmployee(row: EmployeeRow, opts: { includePin?: boolean } = {}): E
     email: row.email,
     phone: row.phone,
     status: row.status,
-    hiredAt: row.hired_at,
+    hiredAt: calendarDate(row.hired_at),
     terminatedAt: row.terminated_at?.toISOString() ?? null,
     hasPin: !!row.pin_hash,
     pin: null,
     loginEnabled: row.login_disabled_at === null,
     loginDisabledAt: row.login_disabled_at?.toISOString() ?? null,
+    workDays: row.work_days,
+    missingTimeRemindersEnabled: row.missing_time_reminders_enabled,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -244,6 +259,9 @@ export async function updateEmployee(
       }
     }
     if (patch.hiredAt !== undefined) updates.hired_at = patch.hiredAt;
+    if (patch.workDays !== undefined) updates.work_days = patch.workDays;
+    if (patch.missingTimeRemindersEnabled !== undefined)
+      updates.missing_time_reminders_enabled = patch.missingTimeRemindersEnabled;
     if (patch.status !== undefined) {
       updates.status = patch.status;
       updates.terminated_at =

@@ -1,6 +1,10 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import type {
+  MissingTimePeriod,
+  MissingTimeReport,
+  SendMissingTimeRemindersRequest,
+  SendMissingTimeRemindersResponse,
   AccessGroup,
   CreateAccessGroupRequest,
   SetAccessGroupCompaniesRequest,
@@ -322,6 +326,16 @@ export const jobs = {
 // ---------------------------------------------------------------------------
 // Time off (Settings → Time off)
 // ---------------------------------------------------------------------------
+
+export const missingTime = {
+  report: (companyId: number, period: MissingTimePeriod) =>
+    apiFetch<MissingTimeReport>(`/companies/${companyId}/missing-time?period=${period}`),
+  remind: (companyId: number, body: SendMissingTimeRemindersRequest) =>
+    apiFetch<SendMissingTimeRemindersResponse>(`/companies/${companyId}/missing-time/remind`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+};
 
 export const timeOff = {
   listTypes: (companyId: number) =>

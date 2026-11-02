@@ -9,10 +9,13 @@ import { QUEUE_NAMES, QUEUE_PREFIX, getQueues } from './queues.js';
 // observable behavior is identical:
 //   - auto-clockout:    every 5 minutes
 //   - missed-punch:     every 5 minutes
+//   - missing-time:     hourly at :07 (companies act in their own hour)
 //   - retention-sweep:   daily 03:41 UTC
 const SCHEDULES = {
   [QUEUE_NAMES.autoClockout]: '*/5 * * * *',
   [QUEUE_NAMES.missedPunch]: '*/5 * * * *',
+  // Hourly; each company acts only in its own chosen hour.
+  [QUEUE_NAMES.missingTime]: '7 * * * *',
   [QUEUE_NAMES.retentionSweep]: '41 3 * * *',
 } as const;
 

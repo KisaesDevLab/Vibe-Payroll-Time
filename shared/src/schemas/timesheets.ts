@@ -162,6 +162,8 @@ export const correctionRequestSchema = z.object({
   id: z.number().int().positive(),
   companyId: z.number().int().positive(),
   employeeId: z.number().int().positive(),
+  /** "First Last" — present on list responses so reviewers see who asked. */
+  employeeName: z.string().optional(),
   timeEntryId: z.number().int().positive().nullable(),
   requesterUserId: z.number().int().positive().nullable(),
   requestType: z.enum(['edit', 'add', 'delete']),

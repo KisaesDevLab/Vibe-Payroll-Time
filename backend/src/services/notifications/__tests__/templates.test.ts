@@ -88,4 +88,35 @@ describe('renderTemplate', () => {
       expect(named.sms).toBe('Vibe PT sign-in for k••••@gmail.com: https://x/y (valid 15m)');
     });
   });
+
+  describe('missing_time_reminder / missing_time_summary', () => {
+    it('lists the days, escapes names in HTML and keeps the SMS to one segment', () => {
+      const out = renderTemplate('missing_time_reminder', {
+        firstName: '<b>Ann</b>',
+        companyName: 'Acme Plumbing',
+        periodLabel: 'Oct 18 – Oct 24',
+        missingCount: 2,
+        missingDays: 'Wed, Oct 21\nThu, Oct 22',
+        fixHow: 'Please sign in and add the missing time on your timesheet.',
+        timesheetUrl: 'https://time.example.com/my-timesheet',
+      });
+      expect(out.subject).toBe('Missing time for Oct 18 – Oct 24 at Acme Plumbing');
+      expect(out.html).toContain('&lt;b&gt;Ann&lt;/b&gt;');
+      expect(out.html).toContain('Wed, Oct 21\nThu, Oct 22');
+      expect(out.text).toContain('add the missing time');
+      expect(out.sms.length).toBeLessThanOrEqual(160);
+    });
+
+    it('renders the manager summary', () => {
+      const out = renderTemplate('missing_time_summary', {
+        companyName: 'Acme',
+        periodLabel: 'Oct 18 – Oct 24',
+        employeeCount: 2,
+        summaryList: 'Ann Able: 2 day(s)\nHal Hart: 1 day(s)',
+        reviewUrl: 'https://time.example.com/companies/3/timesheets',
+      });
+      expect(out.subject).toBe('2 employee(s) missing time for Oct 18 – Oct 24');
+      expect(out.text).toContain('Hal Hart: 1 day(s)');
+    });
+  });
 });

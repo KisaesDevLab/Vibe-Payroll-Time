@@ -20,6 +20,10 @@ interface SettingsRow {
   punch_location_mode: CompanySettings['punchLocationMode'];
   time_off_self_entry: boolean;
   lunch_prompt_enabled: boolean;
+  missing_time_reminders_enabled: boolean;
+  work_days: number[];
+  missing_time_reminder_hour: number;
+  missing_time_reminder_max: number;
   twilio_account_sid: string | null;
   twilio_auth_token_encrypted: string | null;
   twilio_from_number: string | null;
@@ -44,6 +48,10 @@ function rowToSettings(row: SettingsRow): CompanySettings {
     punchLocationMode: row.punch_location_mode,
     timeOffSelfEntry: row.time_off_self_entry,
     lunchPromptEnabled: row.lunch_prompt_enabled,
+    missingTimeRemindersEnabled: row.missing_time_reminders_enabled,
+    workDays: row.work_days,
+    missingTimeReminderHour: row.missing_time_reminder_hour,
+    missingTimeReminderMax: row.missing_time_reminder_max,
     twilioAccountSid: row.twilio_account_sid,
     twilioFromNumber: row.twilio_from_number,
     twilioAuthTokenConfigured: !!row.twilio_auth_token_encrypted,
@@ -101,6 +109,13 @@ export async function updateCompanySettings(
     if (patch.timeOffSelfEntry !== undefined) updates.time_off_self_entry = patch.timeOffSelfEntry;
     if (patch.lunchPromptEnabled !== undefined)
       updates.lunch_prompt_enabled = patch.lunchPromptEnabled;
+    if (patch.missingTimeRemindersEnabled !== undefined)
+      updates.missing_time_reminders_enabled = patch.missingTimeRemindersEnabled;
+    if (patch.workDays !== undefined) updates.work_days = patch.workDays;
+    if (patch.missingTimeReminderHour !== undefined)
+      updates.missing_time_reminder_hour = patch.missingTimeReminderHour;
+    if (patch.missingTimeReminderMax !== undefined)
+      updates.missing_time_reminder_max = patch.missingTimeReminderMax;
 
     if (patch.twilioAccountSid !== undefined)
       updates.twilio_account_sid = cleanTwilioCredential(patch.twilioAccountSid);

@@ -23,6 +23,7 @@ import { VERSION, GIT_SHA, BUILD_DATE } from '../version.js';
  *   tables/payroll_exports.jsonl
  *   tables/kiosk_devices.jsonl
  *   tables/notifications_log.jsonl
+ *   tables/missing_time_reminders.jsonl
  *   tables/auth_events.jsonl
  *   tables/ai_correction_usage.jsonl
  *   tables/company_memberships.jsonl
@@ -100,6 +101,11 @@ export async function exportCompanyAll(out: Writable, opts: ExportOpts): Promise
     ['payroll_exports', { company_id: opts.companyId }, 'tables/payroll_exports.jsonl'],
     ['kiosk_devices', { company_id: opts.companyId }, 'tables/kiosk_devices.jsonl'],
     ['notifications_log', { company_id: opts.companyId }, 'tables/notifications_log.jsonl'],
+    [
+      'missing_time_reminders',
+      { company_id: opts.companyId },
+      'tables/missing_time_reminders.jsonl',
+    ],
     ['auth_events', { company_id: opts.companyId }, 'tables/auth_events.jsonl'],
     ['ai_correction_usage', { company_id: opts.companyId }, 'tables/ai_correction_usage.jsonl'],
     ['company_memberships', { company_id: opts.companyId }, 'tables/company_memberships.jsonl'],

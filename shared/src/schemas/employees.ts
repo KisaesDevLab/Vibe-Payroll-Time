@@ -1,6 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { z } from 'zod';
+import { workDaysSchema } from './companies.js';
 
 export const employeeSchema = z.object({
   id: z.number().int().positive(),
@@ -26,6 +27,12 @@ export const employeeSchema = z.object({
    *  the record, timesheets and kiosk punching alone. */
   loginEnabled: z.boolean(),
   loginDisabledAt: z.string().datetime().nullable(),
+  /** This employee's expected work days (0 = Sunday); null = the
+   *  company's. Drives missing-time reminders. */
+  workDays: z.array(z.number().int().min(0).max(6)).nullable(),
+  /** Admin switch: false leaves the employee out of missing-time
+   *  reminders. */
+  missingTimeRemindersEnabled: z.boolean(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -60,6 +67,9 @@ export const updateEmployeeRequestSchema = z.object({
   phone: z.string().max(32).nullable().optional(),
   hiredAt: z.string().date().nullable().optional(),
   status: z.enum(['active', 'terminated']).optional(),
+  /** null = follow the company's work days. */
+  workDays: workDaysSchema.nullable().optional(),
+  missingTimeRemindersEnabled: z.boolean().optional(),
 });
 export type UpdateEmployeeRequest = z.infer<typeof updateEmployeeRequestSchema>;
 

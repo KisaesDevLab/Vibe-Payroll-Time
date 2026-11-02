@@ -14,6 +14,7 @@ export * from './jobs.js';
 export * from './kiosk.js';
 export * from './magic-links.js';
 export * from './manual-entries.js';
+export * from './missing-time.js';
 export * from './notifications.js';
 export * from './payroll-exports.js';
 export * from './preferences.js';

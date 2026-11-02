@@ -24,7 +24,7 @@ export function CompanyLayout() {
   return (
     <>
       <TopBar />
-      <div className="border-b border-slate-200 bg-white">
+      <div className="company-header border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-6 pt-4">
           <h1 className="text-xl font-semibold text-slate-900">
             {company.data?.name ?? <span className="text-slate-400">loading…</span>}

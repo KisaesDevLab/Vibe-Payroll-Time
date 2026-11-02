@@ -43,6 +43,12 @@ export type MarkInternalRequest = z.infer<typeof markInternalRequestSchema>;
 // Company settings
 // ---------------------------------------------------------------------------
 
+/** Weekdays, 0 = Sunday .. 6 = Saturday. */
+const workDayList = z.array(z.number().int().min(0).max(6)).max(7);
+const normalizeWorkDays = (days: number[]) => [...new Set(days)].sort((a, b) => a - b);
+/** Request input: deduplicated and sorted on parse. */
+export const workDaysSchema = workDayList.transform(normalizeWorkDays);
+
 export const companySettingsSchema = z.object({
   companyId: z.number().int().positive(),
   punchRoundingMode: z.enum(['none', '1min', '5min', '6min', '15min']),
@@ -63,6 +69,15 @@ export const companySettingsSchema = z.object({
   timeOffSelfEntry: z.boolean(),
   /** Ask about lunch when clocking out after 6+ unbroken hours. */
   lunchPromptEnabled: z.boolean(),
+  /** Remind employees with missing days once a pay period ends. */
+  missingTimeRemindersEnabled: z.boolean(),
+  /** Expected work days, 0 = Sunday .. 6 = Saturday. An employee may
+   *  carry their own (`Employee.workDays`). */
+  workDays: workDayList,
+  /** Company-local hour (0–23) the daily reminder goes out. */
+  missingTimeReminderHour: z.number().int().min(0).max(23),
+  /** Automatic reminders per employee per pay period. */
+  missingTimeReminderMax: z.number().int().min(1).max(10),
   twilioAccountSid: z.string().nullable(),
   twilioFromNumber: z.string().nullable(),
   /** True iff the encrypted blob is populated. Plaintext is never returned. */
@@ -88,6 +103,10 @@ export const updateCompanySettingsRequestSchema = z
     punchLocationMode: z.enum(['off', 'optional', 'required']),
     timeOffSelfEntry: z.boolean(),
     lunchPromptEnabled: z.boolean(),
+    missingTimeRemindersEnabled: z.boolean(),
+    workDays: workDayList.min(1, 'Pick at least one work day').transform(normalizeWorkDays),
+    missingTimeReminderHour: z.number().int().min(0).max(23),
+    missingTimeReminderMax: z.number().int().min(1).max(10),
     twilioAccountSid: z.string().max(64).nullable(),
     /** Provide a new plaintext token; null clears the stored secret. Omit to
      *  leave the existing encrypted value untouched. */

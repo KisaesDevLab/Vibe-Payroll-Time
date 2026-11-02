@@ -139,6 +139,10 @@ PTO, sick, holiday and unpaid leave are job codes with `jobs.is_time_off = true`
 - Time off is never punched (`ensurePunchableJob`), never supersedes a punch, and needs no reason.
 - Vendor exports carry paid time off only; unpaid leave appears in reports and the generic CSV.
 
+### Missing-time reminders read work days, not a schedule
+
+`company_settings.work_days` (default Mon–Fri) and the optional `employees.work_days` say which weekdays are expected; `services/missing-time.ts` flags an expected day on or after `hired_at`, before today, with no work or time-off entry. Any entry covers a day — there are no expected hours, so this is not scheduling. Reminders go out by hand (Timesheets → Missing time) or from the hourly `missing-time` job at each company's chosen hour for the period that just ended, once a day per employee (unique index on `missing_time_reminders`) up to `missing_time_reminder_max`. They never touch time entries, and they skip approved periods, employees who can't sign in, and employees switched off.
+
 ### Time format is always a display concern
 
 Storage is `BIGINT seconds`, always. No cell in the UI, no column in a report, and no input field ever stores formatted time strings. The `shared/time-format/` module parses input strings to seconds and formats seconds to strings; frontend and backend import the same module so their validation agrees. User preference (`decimal | hhmm`) falls back to company default; both are display settings that never touch entry data.
