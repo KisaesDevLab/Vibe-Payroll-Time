@@ -65,6 +65,12 @@ export const weeklyGridResponseSchema = z.object({
     lastName: z.string(),
     companyId: z.number().int().positive(),
   }),
+  /** For headers and for rendering punch times in the company's timezone
+   *  (the printed timesheet). */
+  company: z.object({
+    name: z.string(),
+    timezone: z.string(),
+  }),
   week: z.object({
     start: z.string(), // YYYY-MM-DD, local-midnight
     end: z.string(), // exclusive

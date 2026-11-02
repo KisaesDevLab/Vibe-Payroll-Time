@@ -9,6 +9,7 @@ import { DeleteEntryConfirm } from '../components/DeleteEntryConfirm';
 import { EntryFormModal, type EntryFormValues } from '../components/EntryFormModal';
 import { NLCorrectionWidget } from '../components/NLCorrectionWidget';
 import { TimesheetView } from '../components/TimesheetView';
+import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
 import { employees, jobs as jobsApi, timesheets } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
@@ -21,6 +22,10 @@ import type { CompanyContext } from './CompanyLayout';
 export function TimesheetsReviewPage() {
   const { companyId } = useOutletContext<CompanyContext>();
   const qc = useQueryClient();
+  const session = useSession();
+  const isAdmin =
+    session?.user.roleGlobal === 'super_admin' ||
+    session?.user.memberships.some((m) => m.companyId === companyId && m.role === 'company_admin');
   const navigate = useNavigate();
 
   const roster = useQuery({
@@ -234,6 +239,7 @@ export function TimesheetsReviewPage() {
               data={sheet.data}
               onEditEntry={setEditTarget}
               onDeleteEntry={setDeleteTarget}
+              allowApprovedChanges={!!isAdmin}
             />
             <NLCorrectionWidget
               companyId={companyId}

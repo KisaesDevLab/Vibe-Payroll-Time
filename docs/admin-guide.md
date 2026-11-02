@@ -311,6 +311,39 @@ depending on your company settings, in payroll exports.
 Punches are never deleted. A manual override marks overlapping punches as
 superseded in the DB; delete the manual entry and the punch returns.
 
+The cell popover lists the time entries behind that cell (clock-in and
+clock-out, job, source). Click a day's date in the column header to see
+every entry on that day, breaks included. From either list:
+
+- **Edit** (supervisors and admins) changes an entry's start, end, job or
+  type. A reason is required.
+- **Delete** (company admins only) removes an entry. A deleted punch stays
+  in the audit trail; deleting a manual entry brings back any punches it
+  replaced.
+
+**Approved days.** Supervisors and employees can't change an approved
+day. Company admins can: the popover shows a warning and every change
+needs a reason. The entry keeps its approval, and the change is recorded in
+its history. If payroll was already exported for that period, export it
+again. The same applies on **Timesheets**, where admins see Edit and
+Delete on approved entries.
+
+### Printing timesheets
+
+**Print** on the weekly grid opens a printable timesheet for that employee
+and week, then the browser's Print / Save-as-PDF dialog. It has:
+
+- the job × day hours grid, with daily, weekly and time-off totals;
+- every time entry, grouped by day: in, out, hours, job, source
+  (kiosk, web, phone, manual), plus notes such as the manual-entry reason,
+  open, auto-closed, offline or approved;
+- employee and supervisor signature lines.
+
+Times are printed in the company's timezone. **Print all (N)** on the
+multi-employee grid prints one page per employee shown, after any filter
+chip is applied. Employees can print their own week; the sheet never shows
+other employees.
+
 ### Multi-employee grid
 
 Toggle to **Grid view** on the Timesheets review screen, or visit

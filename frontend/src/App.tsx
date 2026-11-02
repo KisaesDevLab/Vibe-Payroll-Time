@@ -73,6 +73,10 @@ const TimesheetsReviewPage = lazyPage(
   'TimesheetsReviewPage',
 );
 const WeeklyGridPage = lazyPage(() => import('./pages/WeeklyGridPage'), 'WeeklyGridPage');
+const WeeklyTimesheetPrintPage = lazyPage(
+  () => import('./pages/WeeklyTimesheetPrintPage'),
+  'WeeklyTimesheetPrintPage',
+);
 
 function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -280,6 +284,7 @@ export function App() {
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="timesheets/:employeeId/week" element={<WeeklyGridPage />} />
           <Route path="timesheets/grid" element={<MultiEmployeeGridPage />} />
+          <Route path="timesheets/print" element={<WeeklyTimesheetPrintPage />} />
           <Route path="timesheets" element={<TimesheetsReviewPage />} />
           <Route path="corrections" element={<CorrectionsPage />} />
           <Route path="reports" element={<ReportsPage />} />

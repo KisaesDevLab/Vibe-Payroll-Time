@@ -66,4 +66,51 @@ body,
   thead {
     display: table-header-group;
   }
+  /* Printed timesheets: each sheet carries its own company + employee
+     header, so drop the page chrome and start every employee on a new
+     page. */
+  body:has(.print-sheets) .company-header {
+    display: none !important;
+  }
+  .print-sheet {
+    break-after: page;
+    font-size: 9.5pt;
+  }
+  .print-sheet:last-of-type {
+    break-after: auto;
+  }
+}
+
+/* Timesheet print tables — ruled like a paper timesheet, on screen (the
+   print preview page) and on paper. */
+.print-table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.print-table th,
+.print-table td {
+  border: 1px solid #cbd5e1;
+  padding: 3px 6px;
+  vertical-align: top;
+}
+.print-table thead th {
+  background: #f1f5f9;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.print-table .print-total th,
+.print-table .print-total td {
+  background: #f8fafc;
+  font-weight: 600;
+}
+.print-table tr.print-day-start td {
+  border-top: 2px solid #94a3b8;
+}
+@media print {
+  .print-table thead th,
+  .print-table .print-total th,
+  .print-table .print-total td {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

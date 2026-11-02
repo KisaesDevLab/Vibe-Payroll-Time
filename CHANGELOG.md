@@ -7,6 +7,16 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Printable weekly timesheets.** A **Print** button on the weekly grid, and **Print all** on the multi-employee grid (one page per employee). Each sheet has the hours grid, every time entry by day with clock times in the company timezone, and signature lines. Print-based, no server rendering.
+- **Per-entry edit and delete on the weekly grid.** A cell's popover lists its entries; clicking a day's date lists every entry that day, breaks included. Supervisors and admins can edit; admins can delete. Manual entries are deleted through the manual-entry path, so the punches they replaced come back.
+- **Admins can change approved entries.** On the weekly grid and on Timesheets, with a warning and a required reason. The change is audited and the entry keeps its approval.
+
+### Changed
+
+- **Corrections queue shows the employee's name** instead of "Employee #id".
+
 ## [1.6.0] - 2026-10-22
 
 ### Added — Lunch prompt

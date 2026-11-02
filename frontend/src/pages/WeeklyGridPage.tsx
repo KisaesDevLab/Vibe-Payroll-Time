@@ -8,13 +8,18 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AddJobPicker } from '../components/AddJobPicker';
 import { Button } from '../components/Button';
 import { CellEditPopover } from '../components/CellEditPopover';
+import { DeleteEntryConfirm } from '../components/DeleteEntryConfirm';
+import { EntryFormModal, type EntryFormValues } from '../components/EntryFormModal';
 import { FormatToggle } from '../components/FormatToggle';
 import { HoursCell } from '../components/HoursCell';
+import { Modal } from '../components/Modal';
+import { SOURCE_LABELS, formatClock, isoDateInTz } from '../components/WeeklyTimesheetPrint';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
 import {
   employees as employeesApi,
   grids,
+  jobs as jobsApi,
   manualEntries,
   timesheets,
   userPreferences,
@@ -73,7 +78,15 @@ export function WeeklyGridPage(): JSX.Element {
     originalPunchText: string | null;
     timeOff: boolean;
     punchEntryIds: number[];
+    /** Every entry behind the cell (punches + manual), for the list. */
+    entryIds: number[];
+    /** Approved day — only admins get here, with a warning. */
+    locked: boolean;
   } | null>(null);
+  // Per-entry admin actions (from a cell's entry list or a day's list).
+  const [entryEdit, setEntryEdit] = useState<TimeEntry | null>(null);
+  const [entryDelete, setEntryDelete] = useState<TimeEntry | null>(null);
+  const [dayEntries, setDayEntries] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -236,12 +249,64 @@ export function WeeklyGridPage(): JSX.Element {
     },
   });
 
+  // Company jobs (with full Job shape) for the entry edit form.
+  const jobsQ = useQuery({
+    queryKey: ['jobs', companyId],
+    queryFn: () => jobsApi.list(companyId),
+    enabled: isManager,
+    staleTime: 60_000,
+  });
+
+  const afterEntryChange = (message: string) => {
+    setEntryEdit(null);
+    setEntryDelete(null);
+    setEditing(null);
+    setErrorText(null);
+    setNotice(message);
+    setLastSavedAt(Date.now());
+    qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+  };
+
+  const editOneEntry = useMutation({
+    mutationFn: (values: EntryFormValues) => {
+      if (!entryEdit) throw new Error('no entry selected');
+      return timesheets.editEntry(companyId, entryEdit.id, {
+        startedAt: values.startedAt,
+        endedAt: values.endedAt,
+        entryType: values.entryType,
+        jobId: values.jobId,
+        reason: values.reason,
+      });
+    },
+    onSuccess: () => afterEntryChange('Entry updated. The change is in its history.'),
+  });
+
+  const deleteOneEntry = useMutation({
+    mutationFn: async (reason: string) => {
+      if (!entryDelete) throw new Error('no entry selected');
+      // A manual entry goes through its own delete so the punches it
+      // replaced come back in the same transaction.
+      if (entryDelete.isManual) {
+        await manualEntries.remove(entryDelete.id, { companyId, reason });
+      } else {
+        await timesheets.deleteEntry(companyId, entryDelete.id, reason);
+      }
+      return entryDelete.isManual;
+    },
+    onSuccess: (wasManual) =>
+      afterEntryChange(
+        wasManual
+          ? 'Manual entry deleted. Any punches it replaced are back.'
+          : 'Entry deleted. It is kept in the audit trail.',
+      ),
+  });
+
   const deleteCell = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (reason?: string) => {
       if (!editing?.manualEntryId) return;
       await manualEntries.remove(editing.manualEntryId, {
         companyId,
-        reason: 'Removed from weekly grid',
+        reason: reason || 'Removed from weekly grid',
       });
     },
     onSuccess: () => {
@@ -462,7 +527,7 @@ export function WeeklyGridPage(): JSX.Element {
                 sourceTag={cell.sourceTag}
                 locked={cell.locked}
                 onClick={
-                  cell.locked || !editable
+                  (cell.locked && !isAdmin) || !editable
                     ? undefined
                     : () => {
                         setErrorText(null);
@@ -486,6 +551,11 @@ export function WeeklyGridPage(): JSX.Element {
                             cell.sourceTag === 'punched' ? formatHours(cell.seconds, format) : null,
                           timeOff: job.isTimeOff,
                           punchEntryIds: cell.punchEntryIds,
+                          entryIds: [
+                            ...cell.punchEntryIds,
+                            ...(cell.manualEntryId != null ? [cell.manualEntryId] : []),
+                          ],
+                          locked: cell.locked,
                         });
                       }
                 }
@@ -586,6 +656,17 @@ export function WeeklyGridPage(): JSX.Element {
               disabled={grid.allApproved}
             >
               Copy last week
+            </Button>
+            <Button
+              variant="secondary"
+              title="Print this week's grid with every time entry"
+              onClick={() =>
+                navigate(
+                  `/companies/${companyId}/timesheets/print?start=${grid.week.start}&employees=${employeeId}`,
+                )
+              }
+            >
+              Print
             </Button>
             <Button
               onClick={() => submitForApproval.mutate()}
@@ -696,8 +777,24 @@ export function WeeklyGridPage(): JSX.Element {
                       (d.isToday ? 'text-amber-700' : '')
                     }
                   >
-                    <div>{d.dow}</div>
-                    <div className="text-lg font-bold text-slate-900">{d.dom}</div>
+                    {isManager ? (
+                      <button
+                        type="button"
+                        className="rounded px-1 hover:bg-slate-100"
+                        title="Show every entry on this day"
+                        onClick={() => setDayEntries(d.date)}
+                      >
+                        <div>{d.dow}</div>
+                        <div className="text-lg font-bold text-slate-900 underline decoration-dotted decoration-slate-300 underline-offset-4">
+                          {d.dom}
+                        </div>
+                      </button>
+                    ) : (
+                      <>
+                        <div>{d.dow}</div>
+                        <div className="text-lg font-bold text-slate-900">{d.dom}</div>
+                      </>
+                    )}
                     <div className="mt-1 flex items-center justify-center gap-1">
                       {d.hasException && (
                         <span
@@ -839,6 +936,22 @@ export function WeeklyGridPage(): JSX.Element {
           jobLabel={editing.jobLabel}
           originalPunchText={editing.originalPunchText}
           timeOff={editing.timeOff}
+          lockedWarning={editing.locked ? APPROVED_WARNING : null}
+          entriesSlot={
+            editing.entryIds.length > 0 ? (
+              <EntryActionList
+                entries={grid.entries.filter((e) => editing.entryIds.includes(e.id))}
+                jobs={grid.jobs}
+                timezone={grid.company.timezone}
+                format={format}
+                canEdit={isManager}
+                canEditApproved={isAdmin}
+                canDelete={isAdmin}
+                onEdit={setEntryEdit}
+                onDelete={setEntryDelete}
+              />
+            ) : null
+          }
           zero={
             editing.mode === 'override' && editing.punchEntryIds.length > 0
               ? isAdmin || !isManager
@@ -861,8 +974,8 @@ export function WeeklyGridPage(): JSX.Element {
                     label: 'Remove entry',
                     explain:
                       '0 hours removes this manual entry; any punches it replaced come back.',
-                    run: async () => {
-                      await deleteCell.mutateAsync();
+                    run: async (reason) => {
+                      await deleteCell.mutateAsync(reason);
                     },
                   }
                 : undefined
@@ -917,11 +1030,192 @@ export function WeeklyGridPage(): JSX.Element {
             originalPunchText: null,
             timeOff: false,
             punchEntryIds: [],
+            entryIds: [],
+            locked: grid.cells.some((c) => c.date === defaultDate && c.locked),
           });
         }}
         onClose={() => setAddJobOpen(false)}
       />
+
+      {dayEntries && (
+        <Modal
+          open
+          onClose={() => setDayEntries(null)}
+          title={`Entries · ${new Date(dayEntries + 'T12:00:00Z').toLocaleDateString(undefined, {
+            weekday: 'long',
+            month: 'short',
+            day: 'numeric',
+            timeZone: 'UTC',
+          })}`}
+        >
+          {grid.cells.some((c) => c.date === dayEntries && c.locked) && (
+            <p className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              {isAdmin
+                ? APPROVED_WARNING
+                : 'This day is approved. Only a company admin can change it.'}
+            </p>
+          )}
+          <EntryActionList
+            entries={grid.entries.filter(
+              (e) => isoDateInTz(e.startedAt, grid.company.timezone) === dayEntries,
+            )}
+            jobs={grid.jobs}
+            timezone={grid.company.timezone}
+            format={format}
+            canEdit={isManager}
+            canEditApproved={isAdmin}
+            canDelete={isAdmin}
+            onEdit={(e) => {
+              setDayEntries(null);
+              setEntryEdit(e);
+            }}
+            onDelete={(e) => {
+              setDayEntries(null);
+              setEntryDelete(e);
+            }}
+            emptyText="No entries on this day."
+          />
+        </Modal>
+      )}
+
+      {entryEdit && (
+        <EntryFormModal
+          target={{
+            mode: 'edit',
+            entry: entryEdit,
+            employeeName: `${grid.employee.firstName} ${grid.employee.lastName}`,
+          }}
+          jobs={jobsQ.data ?? []}
+          onCancel={() => setEntryEdit(null)}
+          onSubmit={(values) => editOneEntry.mutate(values)}
+          pending={editOneEntry.isPending}
+          error={
+            editOneEntry.error instanceof ApiError
+              ? editOneEntry.error.message
+              : editOneEntry.error
+                ? 'Failed to save changes'
+                : null
+          }
+        />
+      )}
+      {entryDelete && (
+        <DeleteEntryConfirm
+          entry={entryDelete}
+          employeeName={`${grid.employee.firstName} ${grid.employee.lastName}`}
+          onCancel={() => setEntryDelete(null)}
+          onConfirm={(reason) => deleteOneEntry.mutate(reason)}
+          pending={deleteOneEntry.isPending}
+          error={
+            deleteOneEntry.error instanceof ApiError
+              ? deleteOneEntry.error.message
+              : deleteOneEntry.error
+                ? 'Failed to delete entry'
+                : null
+          }
+        />
+      )}
     </>
+  );
+}
+
+const APPROVED_WARNING =
+  'This day is in an approved pay period. Your change takes effect immediately and is recorded in the audit trail. If payroll was already exported for this period, export it again.';
+
+/**
+ * The entries behind a cell or a day, each with Edit / Delete for the
+ * roles allowed to use them. Manual entries are edited through the
+ * hours field (their clock times are synthetic), so they offer Delete
+ * only.
+ */
+function EntryActionList({
+  entries,
+  jobs,
+  timezone,
+  format,
+  canEdit,
+  canEditApproved,
+  canDelete,
+  onEdit,
+  onDelete,
+  emptyText,
+}: {
+  entries: TimeEntry[];
+  jobs: WeeklyGridJob[];
+  timezone: string;
+  format: TimeFormat;
+  canEdit: boolean;
+  canEditApproved: boolean;
+  canDelete: boolean;
+  onEdit: (e: TimeEntry) => void;
+  onDelete: (e: TimeEntry) => void;
+  emptyText?: string;
+}): JSX.Element | null {
+  const jobsById = new Map(jobs.map((j) => [j.id, j]));
+  const sorted = [...entries].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  if (sorted.length === 0) {
+    return emptyText ? <p className="text-sm text-slate-500">{emptyText}</p> : null;
+  }
+  return (
+    <div className="rounded-md border border-slate-200">
+      <p className="border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+        Time entries
+      </p>
+      <ul className="divide-y divide-slate-100">
+        {sorted.map((e) => {
+          const job =
+            e.entryType === 'break'
+              ? 'Break'
+              : e.jobId != null
+                ? (jobsById.get(e.jobId)?.code ?? `Job ${e.jobId}`)
+                : 'No job';
+          const editable = canEdit && (!e.approvedAt || canEditApproved);
+          return (
+            <li key={e.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <div className="min-w-0">
+                <div className="font-mono text-slate-900">
+                  {e.isManual
+                    ? 'Manual'
+                    : `${formatClock(e.startedAt, timezone)} – ${
+                        e.endedAt ? formatClock(e.endedAt, timezone) : 'open'
+                      }`}
+                  {e.durationSeconds != null && (
+                    <span className="ml-2 text-slate-500">
+                      {formatHours(e.durationSeconds, format)}
+                    </span>
+                  )}
+                </div>
+                <div className="truncate text-xs text-slate-500">
+                  {job} · {SOURCE_LABELS[e.source]}
+                  {e.isAutoClosed && ' · auto-closed'}
+                  {e.approvedAt && ' · approved'}
+                  {e.entryReason && ` · ${e.entryReason}`}
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-3 text-xs">
+                {editable && !e.isManual && (
+                  <button
+                    type="button"
+                    className="font-medium text-slate-900 hover:underline"
+                    onClick={() => onEdit(e)}
+                  >
+                    Edit
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="font-medium text-red-700 hover:underline"
+                    onClick={() => onDelete(e)}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

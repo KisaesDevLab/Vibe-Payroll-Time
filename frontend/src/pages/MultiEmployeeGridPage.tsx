@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MultiEmployeeDayCell, MultiEmployeeRow, TimeFormat } from '@vibept/shared';
 import { formatHours } from '@vibept/shared';
 import { useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
 import { FormatToggle } from '../components/FormatToggle';
@@ -21,6 +21,7 @@ type FilterChip = 'all' | 'pending' | 'exceptions' | 'manual' | 'approved';
 export function MultiEmployeeGridPage(): JSX.Element {
   const { companyId: companyIdStr } = useParams<{ companyId: string }>();
   const companyId = Number(companyIdStr);
+  const navigate = useNavigate();
   const [search, setSearch] = useSearchParams();
   const qc = useQueryClient();
   const [drilldown, setDrilldown] = useState<{
@@ -174,6 +175,20 @@ export function MultiEmployeeGridPage(): JSX.Element {
               disabled={updatePref.isPending}
               size="sm"
             />
+            <Button
+              variant="secondary"
+              disabled={rows.length === 0}
+              title="One printed timesheet per employee shown below, with every time entry"
+              onClick={() =>
+                navigate(
+                  `/companies/${companyId}/timesheets/print?start=${weekStart}&employees=${rows
+                    .map((r) => r.id)
+                    .join(',')}`,
+                )
+              }
+            >
+              Print all ({rows.length})
+            </Button>
             <Button
               onClick={() => approveAllClean.mutate()}
               loading={approveAllClean.isPending}
