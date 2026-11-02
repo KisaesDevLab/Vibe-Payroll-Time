@@ -67,7 +67,7 @@ async function loadSettings(companyId: number): Promise<{
 export async function getTimesheet(
   companyId: number,
   employeeId: number,
-  opts: { periodStart?: Date; periodEnd?: Date } = {},
+  opts: { periodStart?: Date; periodEnd?: Date; at?: Date } = {},
 ): Promise<TimesheetResponse> {
   const employee = await db('employees')
     .where({ id: employeeId, company_id: companyId })
@@ -104,7 +104,7 @@ export async function getTimesheet(
     periodStart = opts.periodStart;
     periodEnd = opts.periodEnd;
   } else {
-    const resolved = resolvePayPeriod(new Date(), {
+    const resolved = resolvePayPeriod(opts.at ?? new Date(), {
       type: company.payPeriodType,
       weekStartDay: company.weekStartDay,
       ...(company.payPeriodAnchor ? { anchorDate: company.payPeriodAnchor } : {}),
@@ -117,6 +117,10 @@ export async function getTimesheet(
   const rows = await db<TimeEntryRow>('time_entries')
     .where({ company_id: companyId, employee_id: employeeId })
     .whereNull('deleted_at')
+    // A punch replaced by a manual entry stays in the table for the audit
+    // trail but is no longer part of the timesheet — counting it too
+    // would double the day.
+    .whereNull('superseded_by_entry_id')
     // Entries that overlap the period (start < end AND end > start).
     .where(function () {
       this.whereNull('ended_at').orWhere('ended_at', '>', periodStart);

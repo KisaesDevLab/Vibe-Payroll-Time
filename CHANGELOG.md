@@ -7,6 +7,14 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Replaced punches no longer count twice.** When a manual entry replaces a punch (for example "Didn't clock out" after an auto-clock-out), the punch is kept for the audit trail but was still counted on the Timesheets page and in the Time card, Hours by pay period, Hours by job and Overtime reports, inflating hours and inventing overtime. Those now skip it, as the weekly grid and payroll exports already did. Punch activity still lists it, flagged `superseded`.
+
+### Added
+
+- **Week-by-week navigation on Timesheets.** Previous / Next (by pay period, labelled "week" for weekly payroll) and Back to current week. The week is kept in the URL.
+
 ## [1.7.0] - 2026-11-02
 
 ### Added

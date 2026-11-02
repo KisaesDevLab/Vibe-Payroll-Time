@@ -18,6 +18,9 @@ import { runMigrations } from '../../db/migrate.js';
 import { createManualEntry, deleteManualEntry, updateManualEntry } from '../manual-entries.js';
 import { hashPassword } from '../passwords.js';
 import { clockIn, clockOut } from '../punch.js';
+import { hoursByPeriodReport } from '../reports/hours-by-period.js';
+import { timeCardReport } from '../reports/time-card.js';
+import { getTimesheet } from '../timesheets.js';
 
 const dbReachable = await db
   .raw('select 1')
@@ -189,6 +192,64 @@ describe.skipIf(!dbReachable)('manual-entries service (DB-backed)', () => {
 
     const punchRow = await db('time_entries').where({ id: punch.id }).first();
     expect(punchRow?.superseded_by_entry_id).toBe(entry.id);
+  });
+
+  it('a superseded punch drops out of the timesheet and the hours reports', async () => {
+    // The real case: a phone punch auto-closed, then fixed with a manual
+    // entry for the day. Only the manual hours may count — the punch
+    // stays in the table for the audit trail.
+    const punch = await clockIn({
+      companyId,
+      employeeId,
+      source: 'web',
+      actorUserId: employeeUserId,
+    });
+    await clockOut({ companyId, employeeId, source: 'web', actorUserId: employeeUserId });
+    await db('time_entries').where({ id: punch.id }).update({ is_auto_closed: true });
+    const { entry } = await createManualEntry({
+      companyId,
+      employeeId,
+      day: today(),
+      jobId: null,
+      durationSeconds: 9 * 3600,
+      reason: "Didn't clock out",
+      actor: { userId: supervisorUserId, roleGlobal: 'none' },
+    });
+
+    const sheet = await getTimesheet(companyId, employeeId);
+    expect(sheet.entries.map((e) => e.id)).toEqual([entry.id]);
+    expect(sheet.totals.workSeconds).toBe(9 * 3600);
+
+    const periodStart = sheet.period.start;
+    const periodEnd = sheet.period.end;
+    const card = [];
+    for await (const row of timeCardReport.rows(companyId, {
+      employeeId,
+      periodStart,
+      periodEnd,
+    })) {
+      card.push(row as Record<string, unknown>);
+    }
+    // The punch's own row is gone; the manual entry's row remains.
+    expect(card.filter((r) => r.source === 'web')).toHaveLength(0);
+    expect(card.filter((r) => r.source === 'web_manual')).toHaveLength(1);
+
+    const byPeriod = [];
+    for await (const row of hoursByPeriodReport.rows(companyId, { periodStart, periodEnd })) {
+      byPeriod.push(row as Record<string, unknown>);
+    }
+    expect(byPeriod.find((r) => r.lastName === 'Loyee')?.workSeconds).toBe(9 * 3600);
+  });
+
+  it('getTimesheet `at` picks the pay period containing that instant', async () => {
+    const current = await getTimesheet(companyId, employeeId);
+    const previous = await getTimesheet(companyId, employeeId, {
+      at: new Date(new Date(current.period.start).getTime() - 1),
+    });
+    const next = await getTimesheet(companyId, employeeId, { at: new Date(current.period.end) });
+    expect(previous.period.end).toBe(current.period.start);
+    expect(next.period.start).toBe(current.period.end);
+    expect(previous.period.type).toBe('bi_weekly');
   });
 
   it('delete restores the punches it had superseded', async () => {

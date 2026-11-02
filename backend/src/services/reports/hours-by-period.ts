@@ -57,6 +57,7 @@ export const hoursByPeriodReport: ReportHandler<typeof hoursByPeriodParamsSchema
     const rows = await db<TimeEntryRow>('time_entries')
       .where('company_id', companyId)
       .whereNull('deleted_at')
+      .whereNull('superseded_by_entry_id') // replaced by a manual entry
       .where(function () {
         this.whereNull('ended_at').orWhere('ended_at', '>', start);
       })

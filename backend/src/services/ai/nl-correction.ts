@@ -124,6 +124,7 @@ async function loadEntries(
   return db<TimeEntryRow>('time_entries')
     .where({ company_id: companyId, employee_id: employeeId })
     .whereNull('deleted_at')
+    .whereNull('superseded_by_entry_id') // replaced by a manual entry
     .where(function () {
       this.whereNull('ended_at').orWhere('ended_at', '>', periodStart);
     })

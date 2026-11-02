@@ -94,6 +94,7 @@ timesheetsRouter.get('/', requireAuth, async (req, res, next) => {
     const result = await getTimesheet(q.companyId, q.employeeId, {
       ...(q.periodStart ? { periodStart: new Date(q.periodStart) } : {}),
       ...(q.periodEnd ? { periodEnd: new Date(q.periodEnd) } : {}),
+      ...(q.at ? { at: new Date(q.at) } : {}),
     });
     res.json({ data: result });
   } catch (err) {
