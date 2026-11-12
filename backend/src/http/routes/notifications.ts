@@ -47,8 +47,14 @@ async function resolveSelf(
       email_notifications_enabled: boolean;
       sms_notifications_enabled: boolean;
       phone_verified_at: Date | null;
+      login_disabled_at: Date | null;
     }>();
   if (!row) throw Forbidden('You are not an active employee at this company');
+  // The per-company sign-in switch closes this company to the person
+  // (CLAUDE.md, "Don't grant company access without the sign-in switch").
+  if (row.login_disabled_at) {
+    throw Forbidden('Your sign-in to this company has been turned off');
+  }
   return {
     id: row.id,
     email: row.email,

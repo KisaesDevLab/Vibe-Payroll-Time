@@ -21,6 +21,12 @@ export async function openShiftsForUser(userId: number): Promise<OpenShift[]> {
     .join('employees as e', 'e.id', 'te.employee_id')
     .join('companies as c', 'c.id', 'te.company_id')
     .where('e.user_id', userId)
+    // Only companies the person can actually reach: an active employee
+    // record, a company that isn't disabled, and sign-in not switched off
+    // for them there (services/employee-login.ts).
+    .where('e.status', 'active')
+    .whereNull('e.login_disabled_at')
+    .whereNull('c.disabled_at')
     .whereNull('te.ended_at')
     .whereNull('te.deleted_at')
     .orderBy('te.started_at', 'asc')

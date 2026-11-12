@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Employee, ReportColumn, ReportDefinition, ReportResult } from '@vibept/shared';
+import { todayInTz } from '@vibept/shared';
 import { useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
+import { browserTodayIso, monthBounds } from '../lib/company-time';
 import { companies as companiesApi, employees as employeesApi, reports } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
@@ -67,20 +69,25 @@ export function ReportsPage() {
 }
 
 function ReportRunner({ companyId, report }: { companyId: number; report: ReportDefinition }) {
-  const now = new Date();
-  const firstOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  const firstOfNextMonth = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-  ).toISOString();
+  const company = useQuery({
+    queryKey: ['company', companyId],
+    queryFn: () => companiesApi.get(companyId),
+  });
 
-  const defaults: Record<string, string> = {};
-  for (const p of report.params) {
-    if (p.type === 'date' && p.required) {
-      if (p.key === 'periodStart') defaults[p.key] = firstOfMonth.slice(0, 10);
-      else if (p.key === 'periodEnd') defaults[p.key] = firstOfNextMonth.slice(0, 10);
+  // Default to the month holding today in the company's timezone
+  // (CompanyLayout has the company cached by the time this renders).
+  const [form, setForm] = useState<Record<string, string>>(() => {
+    const tz = company.data?.timezone;
+    const month = monthBounds(tz ? todayInTz(tz) : browserTodayIso());
+    const defaults: Record<string, string> = {};
+    for (const p of report.params) {
+      if (p.type === 'date' && p.required) {
+        if (p.key === 'periodStart') defaults[p.key] = month.first;
+        else if (p.key === 'periodEnd') defaults[p.key] = month.firstOfNext;
+      }
     }
-  }
-  const [form, setForm] = useState<Record<string, string>>(defaults);
+    return defaults;
+  });
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
 
   const roster = useQuery({
@@ -94,11 +101,6 @@ function ReportRunner({ companyId, report }: { companyId: number; report: Report
   });
 
   const canRun = report.params.every((p) => !p.required || !!form[p.key]);
-
-  const company = useQuery({
-    queryKey: ['company', companyId],
-    queryFn: () => companiesApi.get(companyId),
-  });
 
   /** "10/01/2026 to 10/31/2026 · Employee: Alberto, Ana" from the params
    *  the report was run with. */

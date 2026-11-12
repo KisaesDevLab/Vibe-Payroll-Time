@@ -7,6 +7,7 @@
  *
  * Skipped when Postgres isn't reachable.
  */
+import { resolvePayPeriod } from '@vibept/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/knex.js';
 import { runMigrations } from '../../db/migrate.js';
@@ -124,6 +125,41 @@ describe.skipIf(!dbReachable)('add own time', () => {
     const first = await addOwnEntry(companyId, workerId, { ...shift(6, 7), reason: 'Early' });
     await db('time_entries').where({ id: first.entry!.id }).update({ approved_at: db.fn.now() });
     const r = await addOwnEntry(companyId, workerId, { ...shift(9, 10), reason: 'Later' });
+    expect(r.status).toBe('requested');
+  });
+
+  it("stamps a self-added shift as the employee's, not an admin's", async () => {
+    const r = await addOwnEntry(companyId, workerId, { ...shift(8, 12), reason: 'Phone died' });
+    const row = await db('time_entries').where({ id: r.entry!.id }).first();
+    expect(row.source_device_id).toBe(`web-self-${workerId}`);
+  });
+
+  it('sends a request when another day of the pay period is approved', async () => {
+    const { startedAt, endedAt } = shift(9, 10);
+    const period = resolvePayPeriod(new Date(startedAt), {
+      type: 'weekly',
+      weekStartDay: 0,
+      timezone: 'UTC',
+    });
+    // A different day of the same (weekly) period than the shift's.
+    const shiftDay = startedAt.slice(0, 10);
+    const periodStartDay = period.start.toISOString().slice(0, 10);
+    const other = new Date(
+      periodStartDay !== shiftDay ? period.start : period.start.getTime() + 86_400_000,
+    );
+    other.setUTCHours(12);
+    await db('time_entries').insert({
+      company_id: companyId,
+      employee_id: employeeId,
+      shift_id: db.raw('gen_random_uuid()'),
+      entry_type: 'work',
+      started_at: other,
+      ended_at: new Date(other.getTime() + 3600_000),
+      duration_seconds: 3600,
+      source: 'web',
+      approved_at: db.fn.now(),
+    });
+    const r = await addOwnEntry(companyId, workerId, { startedAt, endedAt, reason: 'Later' });
     expect(r.status).toBe('requested');
   });
 });

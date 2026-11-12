@@ -1,7 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { useMutation } from '@tanstack/react-query';
-import type { NLCorrectionPreview } from '@vibept/shared';
+import type { NLCorrectionPreview, NLCorrectionToolCall, TimeEntry } from '@vibept/shared';
 import { useState } from 'react';
 import { useAIAvailable } from '../hooks/useAIAvailable';
 import { ApiError } from '../lib/api';
@@ -14,6 +14,95 @@ interface Props {
   periodStart: string;
   periodEnd: string;
   onApplied: () => void;
+  /** IANA zone the timesheet works in (`TimesheetResponse.companyTimezone`).
+   *  Proposed times are shown in it; falls back to the browser's zone. */
+  companyTimezone?: string;
+  /** The timesheet's entries, so the preview can show old → new times. */
+  entries?: TimeEntry[];
+}
+
+function makeFormatter(timeZone: string | undefined) {
+  const dt = new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const time = new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const day = new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  const parse = (iso: string | null | undefined): Date | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  return {
+    /** Full date + time, or the raw value if it doesn't parse. */
+    dateTime(iso: string | null | undefined, empty = 'still open'): string {
+      if (iso == null) return empty;
+      const d = parse(iso);
+      return d ? dt.format(d) : iso;
+    },
+    /** Short label for an entry: "Tue, Nov 3, 8:00 AM – 4:00 PM". */
+    entryLabel(e: TimeEntry): string {
+      const start = parse(e.startedAt);
+      const end = parse(e.endedAt);
+      if (!start) return `Entry #${e.id}`;
+      return `${day.format(start)}, ${time.format(start)} – ${end ? time.format(end) : 'open'}${
+        e.entryType === 'break' ? ' (break)' : ''
+      }`;
+    },
+  };
+}
+
+interface ChangeLine {
+  label: string;
+  from: string;
+  to: string;
+}
+
+function describeCall(
+  call: NLCorrectionToolCall,
+  entry: TimeEntry | undefined,
+  fmt: ReturnType<typeof makeFormatter>,
+): { title: string; changes: ChangeLine[] } {
+  const args = call.arguments;
+  const entryName = entry ? fmt.entryLabel(entry) : `Entry #${String(args.entryId)}`;
+  if (call.name === 'delete_entry') return { title: `Delete ${entryName}`, changes: [] };
+
+  const changes: ChangeLine[] = [];
+  if (typeof args.startedAt === 'string') {
+    changes.push({
+      label: 'Start',
+      from: entry ? fmt.dateTime(entry.startedAt) : '—',
+      to: fmt.dateTime(args.startedAt),
+    });
+  }
+  if ('endedAt' in args) {
+    changes.push({
+      label: 'End',
+      from: entry ? fmt.dateTime(entry.endedAt) : '—',
+      to: fmt.dateTime(typeof args.endedAt === 'string' ? args.endedAt : null),
+    });
+  }
+  if ('jobId' in args) {
+    const job = (id: unknown) => (id == null ? 'No job' : `Job #${String(id)}`);
+    changes.push({ label: 'Job', from: entry ? job(entry.jobId) : '—', to: job(args.jobId) });
+  }
+  if (typeof args.entryType === 'string') {
+    changes.push({ label: 'Type', from: entry?.entryType ?? '—', to: args.entryType });
+  }
+  return { title: `Change ${entryName}`, changes };
 }
 
 /**
@@ -32,8 +121,12 @@ export function NLCorrectionWidget({
   periodStart,
   periodEnd,
   onApplied,
+  companyTimezone,
+  entries,
 }: Props) {
   const aiAvailable = useAIAvailable(companyId);
+  const fmt = makeFormatter(companyTimezone);
+  const entryById = new Map((entries ?? []).map((e) => [e.id, e]));
   const [prompt, setPrompt] = useState('');
   const [preview, setPreview] = useState<NLCorrectionPreview | null>(null);
 
@@ -73,7 +166,7 @@ export function NLCorrectionWidget({
           <h3 className="text-sm font-semibold text-slate-900">Ask assistant</h3>
           <p className="mt-0.5 text-xs text-slate-500">
             Describe a correction. The assistant shows a preview; nothing changes until you apply
-            it.
+            it.{companyTimezone ? ` Times are in ${companyTimezone}.` : ''}
           </p>
         </div>
         {preview && (
@@ -140,14 +233,33 @@ export function NLCorrectionWidget({
           )}
           {preview.toolCalls.length > 0 && (
             <ol className="flex flex-col gap-2 text-sm">
-              {preview.toolCalls.map((t) => (
-                <li key={t.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <p className="font-medium text-slate-900">{t.summary}</p>
-                  <pre className="mt-1 overflow-x-auto text-[11px] text-slate-600">
-                    {t.name}({JSON.stringify(t.arguments)})
-                  </pre>
-                </li>
-              ))}
+              {preview.toolCalls.map((t) => {
+                const { title, changes } = describeCall(
+                  t,
+                  entryById.get(Number(t.arguments.entryId)),
+                  fmt,
+                );
+                return (
+                  <li key={t.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <p className="font-medium text-slate-900">{title}</p>
+                    {changes.length > 0 && (
+                      <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                        {changes.map((c) => (
+                          <div key={c.label} className="contents">
+                            <dt className="text-slate-500">{c.label}</dt>
+                            <dd className="text-slate-800">
+                              <span className="text-slate-500 line-through">{c.from}</span>
+                              {' → '}
+                              <span className="font-medium">{c.to}</span>
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    {t.summary && <p className="mt-1 text-xs text-slate-600">{t.summary}</p>}
+                  </li>
+                );
+              })}
             </ol>
           )}
           {applyMutation.data && (

@@ -8,12 +8,9 @@ import type {
 import { db } from '../db/knex.js';
 import { BadRequest, Forbidden, NotFound } from '../http/errors.js';
 import { createCorrectionRequest } from './correction-requests.js';
+import { assertAddedShiftWindow, isPayPeriodApproved } from './manual-entries.js';
 import { createEntryForEmployee } from './punch.js';
 import { isTimeOffJob } from './time-off.js';
-
-/** A shift typed in after the fact can't end more than this far ahead of
- *  the server clock (allows for a slightly fast phone). */
-const FUTURE_SLACK_MS = 5 * 60_000;
 
 /**
  * An employee adds a shift they forgot to punch ("Add time" on My
@@ -25,8 +22,8 @@ const FUTURE_SLACK_MS = 5 * 60_000;
  *   disabled       same: employees can't write time themselves, but
  *                  asking is always allowed
  *
- * A day that already has approved time always becomes a request, since
- * approved timesheets are locked to employees.
+ * A shift in a pay period that already has approved time always becomes
+ * a request, since approved timesheets are locked to employees.
  */
 export async function addOwnEntry(
   companyId: number,
@@ -36,13 +33,7 @@ export async function addOwnEntry(
 ): Promise<AddOwnEntryResponse> {
   const startedAt = new Date(body.startedAt);
   const endedAt = new Date(body.endedAt);
-  if (endedAt <= startedAt) throw BadRequest('Clock-out must be after clock-in');
-  if (endedAt.getTime() - startedAt.getTime() > 24 * 3600_000) {
-    throw BadRequest('A shift can be at most 24 hours');
-  }
-  if (endedAt.getTime() > Date.now() + FUTURE_SLACK_MS) {
-    throw BadRequest("Clock-out can't be in the future");
-  }
+  assertAddedShiftWindow(startedAt, endedAt);
 
   const employee = await db('employees')
     .where({ company_id: companyId, user_id: userId, status: 'active' })
@@ -63,22 +54,18 @@ export async function addOwnEntry(
     }
   }
 
-  const company = await db('companies').where({ id: companyId }).first<{ timezone: string }>();
   const settings = await db('company_settings')
     .where({ company_id: companyId })
     .first<{ employee_manual_entry_mode: EmployeeManualEntryMode }>();
-  if (!company || !settings) throw NotFound('Company not found');
+  if (!settings) throw NotFound('Company not found');
 
-  // Approved time on the day(s) the shift touches locks it to employees.
-  const approved = await db('time_entries')
-    .where({ company_id: companyId, employee_id: employee.id })
-    .whereNull('deleted_at')
-    .whereNotNull('approved_at')
-    .whereRaw(
-      `(started_at AT TIME ZONE ?)::date BETWEEN (?::timestamptz AT TIME ZONE ?)::date AND (?::timestamptz AT TIME ZONE ?)::date`,
-      [company.timezone, startedAt, company.timezone, endedAt, company.timezone],
-    )
-    .first<{ id: number }>('id');
+  // Approved time in the pay-period week(s) the shift touches locks it to
+  // employees. The end is exclusive: a shift ending on the stroke of a
+  // new period doesn't touch it.
+  const approved = await isPayPeriodApproved(db, companyId, employee.id, [
+    startedAt,
+    new Date(endedAt.getTime() - 1),
+  ]);
 
   if (settings.employee_manual_entry_mode === 'allowed' && !approved) {
     const entry = await createEntryForEmployee(
@@ -90,7 +77,8 @@ export async function addOwnEntry(
         jobId,
         reason: body.reason,
       },
-      { userId, companyId, ...ctx },
+      // Stamped distinctly from a supervisor-created entry.
+      { userId, companyId, ...ctx, sourceDeviceId: `web-self-${userId}` },
     );
     return { status: 'added', entry, request: null };
   }

@@ -1,227 +1,250 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 /**
- * Offline punch queue. Backed by IndexedDB so queued punches survive page
- * reloads, tab closes, and even device restarts. Phase 5 scope:
- *   - Main-thread queue drained on reconnection or manual "Sync now".
- *   - Service worker Background Sync is a future enhancement; iOS doesn't
- *     support the API, so the main-thread path is the baseline anyway.
+ * Offline punch queue for the personal-device PWA. Backed by IndexedDB
+ * (offline-queue-db.ts) so queued punches survive reloads, tab closes,
+ * sign-outs and device restarts.
+ *
+ * Drained on the main thread — on start, on the `online` event, when the
+ * tab becomes visible, on a 60s timer, and on a manual "Sync now". The
+ * drain needs the employee's bearer token, which lives in the page, so the
+ * service worker does not drain (and iOS has no Background Sync anyway).
  *
  * A queued item records:
- *   - endpoint (relative to the API base)
- *   - JSON payload WITHOUT clientStartedAt/clientClockSkewMs; those are
- *     injected at flush time from the queuedAt timestamp + the current
- *     measured skew.
- *   - queuedAt (client ISO) — what we reconstruct client_started_at from.
+ *   - endpoint (relative to the API base) and the JSON payload
+ *   - queuedAt — the client time the employee TAPPED, sent at flush time
+ *     as `clientStartedAt` together with the current measured skew
+ *   - userId / companyId — whose punch it is. Items are only ever sent
+ *     under that user's own session; another user's items wait for them.
  *
- * The server owns offline-age rejection (> 72 hours) and overlap
- * conflict resolution. The queue just retries until the server
- * acknowledges or explicitly rejects.
+ * The server owns overlap/conflict decisions. A punch it refuses (4xx
+ * other than 401/408/429) moves to the rejected store so the employee is
+ * told, instead of vanishing. Punches older than the server's 72-hour
+ * offline window are moved there without being sent.
  */
 
-import { apiFetch, ApiError } from './api';
-import { getClockSkewMs } from './clock-skew';
+import { ApiError, apiFetch, isTransientError } from './api';
 import { authStore } from './auth-store';
+import { getClockSkewMs } from './clock-skew';
+import { idbAdd, idbDelete, idbGetAll, idbMove } from './offline-queue-db';
 
-const DB_NAME = 'vibept';
-const DB_VERSION = 1;
-const STORE = 'pending_punches';
+const PENDING = 'pending_punches';
+const REJECTED = 'rejected_punches';
+
+/** The server refuses offline punches older than this. */
+export const MAX_OFFLINE_AGE_MS = 72 * 3600_000;
+/** Rejected notices nobody dismissed are pruned after this. */
+const REJECTED_RETENTION_MS = 30 * 24 * 3600_000;
+const DRAIN_TIMEOUT_MS = 15_000;
+const RETRY_INTERVAL_MS = 60_000;
 
 export interface QueuedPunch {
   id?: number;
   endpoint: string; // e.g. '/punch/clock-in'
   payload: Record<string, unknown>;
-  queuedAt: string; // ISO client time
+  /** ISO client time of the tap. */
+  queuedAt: string;
+  /** Owner. Absent only on items queued by builds before user tagging —
+   *  those builds cleared the queue on every sign-out, so an untagged
+   *  item belongs to whoever is signed in now. */
+  userId?: number;
+  companyId?: number;
 }
 
-type Listener = (size: number) => void;
+export interface RejectedPunch extends QueuedPunch {
+  rejectedAt: string;
+  status: number;
+  code: string;
+  message: string;
+}
+
+type Listener = () => void;
 const listeners = new Set<Listener>();
 
-function emit(size: number) {
-  for (const fn of listeners) fn(size);
+function notify(): void {
+  for (const fn of listeners) fn();
 }
 
-export function subscribeQueueSize(fn: Listener): () => void {
+/** Fires whenever pending or rejected items change (or the signed-in user
+ *  does). Readers re-query with the functions below. */
+export function subscribeQueue(fn: Listener): () => void {
   listeners.add(fn);
   return () => {
     listeners.delete(fn);
   };
 }
 
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'));
-  });
-  return dbPromise;
+function belongsTo(item: QueuedPunch, userId: number): boolean {
+  return item.userId == null || item.userId === userId;
 }
 
-async function withStore<T>(
-  mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => IDBRequest<T> | Promise<T>,
-): Promise<T> {
-  const db = await openDb();
-  return new Promise<T>((resolve, reject) => {
-    const tx = db.transaction(STORE, mode);
-    const store = tx.objectStore(STORE);
-    let value: T;
-    const rOrP = fn(store);
-    if (rOrP instanceof IDBRequest) {
-      rOrP.onsuccess = () => {
-        value = rOrP.result;
-      };
-      rOrP.onerror = () => reject(rOrP.error ?? new Error('IDB op failed'));
-    } else {
-      rOrP.then((v) => {
-        value = v;
-      }, reject);
-    }
-    tx.oncomplete = () => resolve(value);
-    tx.onabort = () => reject(tx.error ?? new Error('IDB transaction aborted'));
-    tx.onerror = () => reject(tx.error ?? new Error('IDB transaction error'));
-  });
-}
+const byQueuedAt = (a: QueuedPunch, b: QueuedPunch) =>
+  a.queuedAt < b.queuedAt ? -1 : a.queuedAt > b.queuedAt ? 1 : (a.id ?? 0) - (b.id ?? 0);
 
 export async function enqueuePunch(
   endpoint: string,
   payload: Record<string, unknown>,
+  meta: { userId: number; companyId?: number | null; tappedAt?: Date },
 ): Promise<void> {
-  await withStore('readwrite', (store) => {
-    const req = store.add({
-      endpoint,
-      payload,
-      queuedAt: new Date().toISOString(),
-    } satisfies QueuedPunch);
-    return req as IDBRequest<number>;
-  });
-  emit(await queueSize());
+  const item: QueuedPunch = {
+    endpoint,
+    payload,
+    queuedAt: (meta.tappedAt ?? new Date()).toISOString(),
+    userId: meta.userId,
+    ...(meta.companyId != null ? { companyId: meta.companyId } : {}),
+  };
+  await idbAdd(PENDING, item);
+  notify();
 }
 
 export async function listQueue(): Promise<QueuedPunch[]> {
-  return withStore('readonly', (store) => store.getAll() as IDBRequest<QueuedPunch[]>);
+  return idbGetAll<QueuedPunch>(PENDING);
 }
 
-export async function queueSize(): Promise<number> {
-  return withStore('readonly', (store) => store.count() as IDBRequest<number>);
+/** The signed-in user's pending punches, oldest first; optionally one company. */
+export async function listPendingFor(
+  userId: number,
+  companyId?: number | null,
+): Promise<QueuedPunch[]> {
+  const all = await listQueue();
+  return all
+    .filter((i) => belongsTo(i, userId))
+    .filter((i) => companyId == null || i.companyId == null || i.companyId === companyId)
+    .sort(byQueuedAt);
 }
 
-async function removeFromQueue(id: number): Promise<void> {
-  await withStore('readwrite', (store) => store.delete(id) as IDBRequest<undefined>);
+export async function listRejectedFor(userId: number): Promise<RejectedPunch[]> {
+  const all = await idbGetAll<RejectedPunch>(REJECTED);
+  return all.filter((i) => belongsTo(i, userId)).sort(byQueuedAt);
 }
 
-export async function clearQueue(): Promise<void> {
-  await withStore('readwrite', (store) => store.clear() as IDBRequest<undefined>);
-  emit(0);
+export async function dismissRejected(id: number): Promise<void> {
+  await idbDelete(REJECTED, id);
+  notify();
+}
+
+async function reject(
+  item: QueuedPunch,
+  info: { status: number; code: string; message: string },
+): Promise<void> {
+  const { id, ...rest } = item;
+  const rejected: RejectedPunch = { ...rest, ...info, rejectedAt: new Date().toISOString() };
+  if (id != null) await idbMove(PENDING, id, REJECTED, rejected);
+  else await idbAdd(REJECTED, rejected);
+}
+
+export interface DrainResult {
+  flushed: number;
+  failed: number;
+  remaining: number;
 }
 
 /**
- * Try to flush the queue. Sends items oldest-first; stops on the first
- * transient failure (so we don't burn attempts against a down server).
- * Permanent failures (4xx from the server) drop the item and continue —
- * the audit log on the server captures the reason.
+ * Send the signed-in user's queued punches oldest-first.
+ *   - success → removed
+ *   - 401, or a transient failure (network, timeout, 5xx, 408, 429) →
+ *     stop; everything stays queued for the next attempt
+ *   - any other 4xx → moved to the rejected store with the server's message
  *
- * Guarded against concurrent callers — the `online` event, a manual
- * "Sync now" tap, and an authStore subscriber tick can all fire within
- * a few ms. Two simultaneous drains would each read the pending set
- * before the other deleted its items, and re-POST the same punch.
+ * Other users' items are never sent. Items past the 72-hour window (any
+ * user's) are moved to rejected without a request.
  *
- * Returns { flushed, failed, remaining }.
+ * Guarded against concurrent callers: the `online` event, a timer, a
+ * manual tap and an auth tick can all land within a few ms, and two
+ * drains would each read the pending set and re-POST the same punch.
  */
-let drainInFlight: Promise<{
-  flushed: number;
-  failed: number;
-  remaining: number;
-}> | null = null;
+let drainInFlight: Promise<DrainResult> | null = null;
 
-export async function drainQueue(): Promise<{
-  flushed: number;
-  failed: number;
-  remaining: number;
-}> {
+export function drainQueue(): Promise<DrainResult> {
   if (drainInFlight) return drainInFlight;
   drainInFlight = (async () => {
+    let flushed = 0;
+    let failed = 0;
     try {
-      const items = await listQueue();
-      items.sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
+      const userId = authStore.get()?.user.id ?? null;
+      const now = Date.now();
 
-      let flushed = 0;
-      let failed = 0;
-
-      for (const item of items) {
-        const skew = getClockSkewMs();
-        const body = {
-          ...item.payload,
-          clientStartedAt: item.queuedAt,
-          clientClockSkewMs: skew,
-        };
-
-        try {
-          await apiFetch(item.endpoint, {
-            method: 'POST',
-            body: JSON.stringify(body),
+      // Housekeeping first — applies to every user's items.
+      for (const item of await listQueue()) {
+        if (now - Date.parse(item.queuedAt) > MAX_OFFLINE_AGE_MS) {
+          await reject(item, {
+            status: 0,
+            code: 'offline_too_old',
+            message:
+              'This punch was saved offline more than 72 hours ago and can no longer be sent.',
           });
-          if (item.id) await removeFromQueue(item.id);
-          flushed += 1;
-        } catch (err) {
-          if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-            // Permanent error (stale, conflict, validation). Drop it.
-            if (item.id) await removeFromQueue(item.id);
-            failed += 1;
-            continue;
-          }
-          // Transient — stop; we'll retry on next `online` or manual tap.
-          break;
+          if (item.userId == null || item.userId === userId) failed += 1;
+        }
+      }
+      for (const r of await idbGetAll<RejectedPunch>(REJECTED)) {
+        if (r.id != null && now - Date.parse(r.rejectedAt) > REJECTED_RETENTION_MS) {
+          await idbDelete(REJECTED, r.id);
         }
       }
 
-      const remaining = await queueSize();
-      emit(remaining);
+      if (userId == null) return { flushed, failed, remaining: 0 };
+
+      for (const item of await listPendingFor(userId)) {
+        // The session may have changed mid-drain (sign-out, other user).
+        if (authStore.get()?.user.id !== userId) break;
+        try {
+          await apiFetch(item.endpoint, {
+            method: 'POST',
+            timeoutMs: DRAIN_TIMEOUT_MS,
+            body: JSON.stringify({
+              ...item.payload,
+              clientStartedAt: item.queuedAt,
+              clientClockSkewMs: getClockSkewMs(),
+            }),
+          });
+          if (item.id != null) await idbDelete(PENDING, item.id);
+          flushed += 1;
+        } catch (err) {
+          // 401 = the session needs a fresh sign-in; the punch is fine.
+          if (!(err instanceof ApiError) || err.status === 401 || isTransientError(err)) break;
+          await reject(item, { status: err.status, code: err.code, message: err.message });
+          failed += 1;
+        }
+      }
+
+      const remaining = (await listPendingFor(userId)).length;
       return { flushed, failed, remaining };
     } finally {
       drainInFlight = null;
+      notify();
     }
   })();
   return drainInFlight;
 }
 
 /**
- * Boot hook: drain on start + whenever the browser reports we came back
- * online. Also re-drain when we regain a user session so a fresh login
- * can clear anything queued against the old (possibly expired) token.
+ * Boot hook. Drains on start, whenever the browser reports it is back
+ * online, when the tab becomes visible, on a timer (a timed-out request
+ * leaves `navigator.onLine` true, so no `online` event will come), and
+ * when a session appears. Never clears the queue: a sign-out or a failed
+ * refresh leaves the punches for that user's next sign-in.
  */
 export function startQueueFlusher(): () => void {
   if (typeof window === 'undefined') return () => undefined;
-  // Track the last user id we drained for. A session transition to a
-  // *different* user means the pending punches belong to the previous
-  // session — POSTing them under the new user's token would attribute
-  // another person's shift to them. Drop the queue instead.
-  let lastUserId: number | null = authStore.get()?.user.id ?? null;
-  const tick = () => {
-    const session = authStore.get();
-    const currentUserId = session?.user.id ?? null;
-    if (currentUserId !== lastUserId) {
-      if (lastUserId !== null) {
-        void clearQueue();
-      }
-      lastUserId = currentUserId;
-    }
-    if (navigator.onLine && session) void drainQueue();
+  const drain = () => {
+    if (navigator.onLine && authStore.get()) void drainQueue().catch(() => undefined);
   };
-  tick();
-  const unsub = authStore.subscribe(tick);
-  window.addEventListener('online', tick);
+  const onAuth = () => {
+    notify(); // the per-user views change with the user
+    drain();
+  };
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') drain();
+  };
+  drain();
+  const unsub = authStore.subscribe(onAuth);
+  window.addEventListener('online', drain);
+  document.addEventListener('visibilitychange', onVisible);
+  const timer = window.setInterval(drain, RETRY_INTERVAL_MS);
   return () => {
-    window.removeEventListener('online', tick);
+    window.removeEventListener('online', drain);
+    document.removeEventListener('visibilitychange', onVisible);
+    window.clearInterval(timer);
     unsub();
   };
 }

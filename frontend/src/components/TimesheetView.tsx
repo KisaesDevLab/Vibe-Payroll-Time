@@ -1,32 +1,25 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import { TIME_OFF_CATEGORY_LABELS, type TimeEntry, type TimesheetResponse } from '@vibept/shared';
-import { useMemo, useState } from 'react';
+import {
+  TIME_OFF_CATEGORY_LABELS,
+  formatHours,
+  type TimeEntry,
+  type TimesheetResponse,
+} from '@vibept/shared';
+import { useMemo, useState, type ReactNode } from 'react';
+import { formatCivilDay, formatClock, zoneNotice } from '../lib/company-time';
 import { formatCoords, mapLinkFor } from '../lib/punch-location';
 import { EntryAuditDrawer } from './EntryAuditDrawer';
 
-function formatHours(seconds: number): string {
-  return (seconds / 3600).toFixed(2);
-}
-
+/** Clock time of an instant in the company's timezone. */
 function formatTime(iso: string | null, tz?: string): string {
   if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-    ...(tz ? { timeZone: tz } : {}),
-  });
+  return formatClock(iso, tz);
 }
 
-function formatDate(iso: string, tz?: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    ...(tz ? { timeZone: tz } : {}),
-  });
+/** A civil day (`YYYY-MM-DD`, already in company tz) as "Mon, Nov 9". */
+function formatDate(isoDay: string): string {
+  return formatCivilDay(isoDay);
 }
 
 /**
@@ -79,9 +72,18 @@ export function TimesheetView({
   onRequestCorrection,
   onEditEntry,
   onDeleteEntry,
+  pendingRequestEntryIds,
+  timeOffFixHint,
 }: {
   data: TimesheetResponse;
+  /** Employee "Request fix". Not offered on time-off entries (changed on
+   *  the grid) or entries that already have a pending request. */
   onRequestCorrection?: (entry: TimeEntry) => void;
+  /** Entries with a correction request awaiting review; badged. */
+  pendingRequestEntryIds?: ReadonlySet<number>;
+  /** Shown in place of "Request fix" on a time-off entry, e.g. a link to
+   *  the grid where time off is changed. */
+  timeOffFixHint?: ReactNode;
   /** Supervisor/admin inline edit. When present, renders "Edit" in each
    *  row's actions so long as the entry isn't approved. */
   onEditEntry?: (entry: TimeEntry) => void;
@@ -89,6 +91,11 @@ export function TimesheetView({
   onDeleteEntry?: (entry: TimeEntry) => void;
 }) {
   const [auditEntryId, setAuditEntryId] = useState<number | null>(null);
+  // Every clock time and hours figure follows the company's timezone and
+  // the viewer's hours format, both resolved by the server.
+  const tz = data.companyTimezone;
+  const hrs = (seconds: number) => formatHours(seconds, data.timeFormat);
+  const zoneLabel = tz ? zoneNotice(tz) : null;
   // Time-off codes used this period → their category, to label entries.
   const timeOffCategoryByJob = useMemo(
     () => new Map(data.timeOffBreakdown.map((t) => [t.jobId, t.category])),
@@ -98,7 +105,7 @@ export function TimesheetView({
     .filter(([, secs]) => (secs ?? 0) > 0)
     .map(
       ([cat, secs]) =>
-        `${TIME_OFF_CATEGORY_LABELS[cat as keyof typeof TIME_OFF_CATEGORY_LABELS]} ${formatHours(secs ?? 0)}`,
+        `${TIME_OFF_CATEGORY_LABELS[cat as keyof typeof TIME_OFF_CATEGORY_LABELS]} ${hrs(secs ?? 0)}`,
     );
 
   // Bucket entries by their authoritative day-id assignment from the
@@ -132,9 +139,10 @@ export function TimesheetView({
               {data.employee.firstName} {data.employee.lastName}
             </h2>
             <p className="text-xs text-slate-500">
-              {formatDate(data.period.start)} → {formatDate(data.period.end)} ·{' '}
+              {formatDate(data.period.firstDay)} → {formatDate(data.period.lastDay)} ·{' '}
               {data.period.type.replace('_', '-')}
             </p>
+            {zoneLabel && <p className="text-xs text-slate-500">{zoneLabel}</p>}
           </div>
           {data.isApproved ? (
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
@@ -148,21 +156,21 @@ export function TimesheetView({
         </div>
 
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-4">
-          <Total label="Regular" value={formatHours(data.totals.regularSeconds)} unit="hrs" />
+          <Total label="Regular" value={hrs(data.totals.regularSeconds)} unit="hrs" />
           <Total
             label="Overtime"
-            value={formatHours(data.totals.overtimeSeconds)}
+            value={hrs(data.totals.overtimeSeconds)}
             unit="hrs"
             highlight={data.totals.overtimeSeconds > 0}
           />
-          <Total label="Break" value={formatHours(data.totals.breakSeconds)} unit="hrs" />
-          <Total label="Worked" value={formatHours(data.totals.workSeconds)} unit="hrs" />
+          <Total label="Break" value={hrs(data.totals.breakSeconds)} unit="hrs" />
+          <Total label="Worked" value={hrs(data.totals.workSeconds)} unit="hrs" />
         </dl>
         {data.timeOff.totalSeconds > 0 && (
           <p className="mt-3 text-sm text-slate-700">
             <span className="font-medium">Time off this period:</span>{' '}
-            {formatHours(data.timeOff.totalSeconds)} hrs ({timeOffParts.join(' · ')}). Paid but not
-            worked; not counted toward overtime.
+            {hrs(data.timeOff.totalSeconds)} hrs ({timeOffParts.join(' · ')}). Paid but not worked;
+            not counted toward overtime.
           </p>
         )}
       </header>
@@ -183,117 +191,140 @@ export function TimesheetView({
             <header className="flex items-center justify-between bg-slate-50 px-5 py-3">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
-                  {new Date(day.date + 'T12:00:00Z').toLocaleDateString(undefined, {
-                    weekday: 'long',
-                    month: 'short',
-                    day: 'numeric',
-                  })}
+                  {formatCivilDay(day.date, { weekday: 'long', month: 'short', day: 'numeric' })}
                 </p>
               </div>
               <p className="text-xs text-slate-500">
-                Work {formatHours(day.workSeconds)} hrs · Break {formatHours(day.breakSeconds)} hrs
-                {day.timeOffSeconds > 0 && <> · Time off {formatHours(day.timeOffSeconds)} hrs</>}
+                Work {hrs(day.workSeconds)} hrs · Break {hrs(day.breakSeconds)} hrs
+                {day.timeOffSeconds > 0 && <> · Time off {hrs(day.timeOffSeconds)} hrs</>}
               </p>
             </header>
-            <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="bg-white text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-5 py-2 text-left font-medium">Type</th>
-                  <th className="px-5 py-2 text-left font-medium">Start</th>
-                  <th className="px-5 py-2 text-left font-medium">End</th>
-                  <th className="px-5 py-2 text-left font-medium">Duration</th>
-                  <th className="px-5 py-2 text-left font-medium">Source</th>
-                  <th className="px-5 py-2 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {dayEntries.map((e) => (
-                  <tr key={e.id}>
-                    <td className="px-5 py-2">
-                      <span
-                        className={
-                          'rounded-full px-2 py-0.5 text-xs font-medium ' +
-                          (e.entryType === 'work'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-amber-100 text-amber-800')
-                        }
-                      >
-                        {e.jobId != null && timeOffCategoryByJob.has(e.jobId)
-                          ? `time off · ${TIME_OFF_CATEGORY_LABELS[timeOffCategoryByJob.get(e.jobId)!]}`
-                          : e.entryType}
-                      </span>
-                    </td>
-                    <td className="px-5 py-2 font-mono text-xs text-slate-700">
-                      {formatTime(e.startedAt)}
-                    </td>
-                    <td className="px-5 py-2 font-mono text-xs text-slate-700">
-                      {e.endedAt ? (
-                        formatTime(e.endedAt)
-                      ) : (
-                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                          OPEN
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-2 font-mono text-xs text-slate-700">
-                      {e.durationSeconds != null ? formatHours(e.durationSeconds) + 'h' : '—'}
-                    </td>
-                    <td className="px-5 py-2 text-xs text-slate-500">
-                      {e.source}
-                      {e.sourceOffline && (
-                        <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">
-                          offline
-                        </span>
-                      )}
-                      {e.isAutoClosed && (
-                        <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-800">
-                          auto-closed
-                        </span>
-                      )}
-                      <LocationBadges entry={e} />
-                    </td>
-                    <td className="px-5 py-2 text-right text-xs">
-                      <div className="flex items-center justify-end gap-3">
-                        <button
-                          type="button"
-                          className="text-slate-600 hover:underline"
-                          onClick={() => setAuditEntryId(e.id)}
-                        >
-                          History
-                        </button>
-                        {onRequestCorrection && !e.approvedAt && (
-                          <button
-                            type="button"
-                            className="text-slate-700 hover:underline"
-                            onClick={() => onRequestCorrection(e)}
-                          >
-                            Request fix
-                          </button>
-                        )}
-                        {onEditEntry && !e.approvedAt && (
-                          <button
-                            type="button"
-                            className="text-slate-900 hover:underline"
-                            onClick={() => onEditEntry(e)}
-                          >
-                            Edit
-                          </button>
-                        )}
-                        {onDeleteEntry && !e.approvedAt && (
-                          <button
-                            type="button"
-                            className="text-red-700 hover:underline"
-                            onClick={() => onDeleteEntry(e)}
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
+            {/* Scrolls sideways on a phone rather than clipping the actions. */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-100 text-sm">
+                <thead className="bg-white text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-5 py-2 text-left font-medium">Type</th>
+                    <th className="px-5 py-2 text-left font-medium">Start</th>
+                    <th className="px-5 py-2 text-left font-medium">End</th>
+                    <th className="px-5 py-2 text-left font-medium">Hours</th>
+                    <th className="px-5 py-2 text-left font-medium">Source</th>
+                    <th className="px-5 py-2 text-right font-medium">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dayEntries.map((e) => {
+                    // Time off is hours on a day, not a span of clock time: its
+                    // stored start/end are a placeholder, so don't show them.
+                    const isTimeOff = e.jobId != null && timeOffCategoryByJob.has(e.jobId);
+                    const pendingFix = pendingRequestEntryIds?.has(e.id) ?? false;
+                    return (
+                      <tr key={e.id}>
+                        <td className="px-5 py-2">
+                          <span
+                            className={
+                              'whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ' +
+                              (isTimeOff
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : e.entryType === 'work'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-amber-100 text-amber-800')
+                            }
+                          >
+                            {isTimeOff
+                              ? `time off · ${TIME_OFF_CATEGORY_LABELS[timeOffCategoryByJob.get(e.jobId!)!]}`
+                              : e.entryType}
+                          </span>
+                          {pendingFix && (
+                            <span className="ml-1 whitespace-nowrap rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                              fix requested
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-2 font-mono text-xs text-slate-700">
+                          {isTimeOff ? (
+                            <span className="text-slate-400">—</span>
+                          ) : (
+                            formatTime(e.startedAt, tz)
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-2 font-mono text-xs text-slate-700">
+                          {isTimeOff ? (
+                            <span className="text-slate-400">—</span>
+                          ) : e.endedAt ? (
+                            formatTime(e.endedAt, tz)
+                          ) : (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                              OPEN
+                            </span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-2 font-mono text-xs text-slate-700">
+                          {e.durationSeconds != null ? hrs(e.durationSeconds) : '—'}
+                        </td>
+                        <td className="px-5 py-2 text-xs text-slate-500">
+                          {e.source}
+                          {e.sourceOffline && (
+                            <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">
+                              offline
+                            </span>
+                          )}
+                          {e.isAutoClosed && (
+                            <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-800">
+                              auto-closed
+                            </span>
+                          )}
+                          <LocationBadges entry={e} />
+                        </td>
+                        <td className="px-5 py-2 text-right text-xs">
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              type="button"
+                              className="text-slate-600 hover:underline"
+                              onClick={() => setAuditEntryId(e.id)}
+                            >
+                              History
+                            </button>
+                            {onRequestCorrection &&
+                              !e.approvedAt &&
+                              e.supersededByEntryId == null &&
+                              (isTimeOff ? (
+                                timeOffFixHint
+                              ) : pendingFix ? null : (
+                                <button
+                                  type="button"
+                                  className="whitespace-nowrap text-slate-700 hover:underline"
+                                  onClick={() => onRequestCorrection(e)}
+                                >
+                                  Request fix
+                                </button>
+                              ))}
+                            {onEditEntry && !e.approvedAt && (
+                              <button
+                                type="button"
+                                className="text-slate-900 hover:underline"
+                                onClick={() => onEditEntry(e)}
+                              >
+                                Edit
+                              </button>
+                            )}
+                            {onDeleteEntry && !e.approvedAt && (
+                              <button
+                                type="button"
+                                className="text-red-700 hover:underline"
+                                onClick={() => onDeleteEntry(e)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
         );
       })}
@@ -302,6 +333,7 @@ export function TimesheetView({
         <EntryAuditDrawer
           companyId={data.employee.companyId}
           entryId={auditEntryId}
+          timezone={data.companyTimezone}
           onClose={() => setAuditEntryId(null)}
         />
       )}
@@ -335,4 +367,4 @@ function Total({
   );
 }
 
-export { formatHours, formatTime, formatDate };
+export { formatTime, formatDate };

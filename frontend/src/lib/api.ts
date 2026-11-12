@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import type { AuthResponse } from '@vibept/shared';
 import { authStore } from './auth-store';
+import { noteSessionEnded } from './session-end';
 
 // Runtime API base — derived from import.meta.env.BASE_URL (which Vite
 // fills from the runtime sentinel substituted by the web container's
@@ -33,6 +34,37 @@ export interface ApiFetchOptions extends RequestInit {
   anonymous?: boolean;
   /** Skip the 401→refresh retry dance. */
   noRetry?: boolean;
+  /** Abort the request after this many ms. Opt-in: exports, reports and AI
+   *  chat legitimately run long. Punches use it so a hung connection falls
+   *  through to the offline queue instead of spinning. */
+  timeoutMs?: number;
+}
+
+/** True when an ApiError means "the server did not answer usefully right
+ *  now" rather than "the server refused this": no response, a timeout, a
+ *  response without our API envelope (captive portal, proxy error page),
+ *  a 5xx, or rate limiting. */
+export function isTransientError(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return true; // TypeError from fetch, AbortError, …
+  if (err.code === 'network_error') return true;
+  return err.status >= 500 || err.status === 408 || err.status === 429;
+}
+
+/** An AbortSignal that fires after `ms`, combined with the caller's own
+ *  signal if any. Feature-detected: older Safari lacks AbortSignal.timeout
+ *  and AbortSignal.any, and a missing method must not break every punch. */
+function timeoutSignal(ms: number, outer?: AbortSignal | null): AbortSignal {
+  const ctrl = new AbortController();
+  const timer = setTimeout(
+    () => ctrl.abort(new DOMException('Request timed out', 'TimeoutError')),
+    ms,
+  );
+  ctrl.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
+  if (outer) {
+    if (outer.aborted) ctrl.abort(outer.reason);
+    else outer.addEventListener('abort', () => ctrl.abort(outer.reason), { once: true });
+  }
+  return ctrl.signal;
 }
 
 async function rawFetch<T>(path: string, opts: ApiFetchOptions = {}): Promise<T> {
@@ -46,11 +78,20 @@ async function rawFetch<T>(path: string, opts: ApiFetchOptions = {}): Promise<T>
     headers.set('authorization', `Bearer ${session.accessToken}`);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
-    headers,
-    credentials: 'include',
-  });
+  const { anonymous: _a, noRetry: _n, timeoutMs, ...init } = opts;
+  const signal = timeoutMs ? timeoutSignal(timeoutMs, opts.signal) : opts.signal;
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      signal,
+      headers,
+      credentials: 'include',
+    });
+  } catch {
+    // No response at all: offline, DNS, connection reset, or our timeout.
+    throw new ApiError(0, 'network_error', 'Could not reach the server.');
+  }
 
   // 204 No Content is the idiomatic success response for delete /
   // confirm / etc. — body is empty by spec, which previously caused
@@ -87,6 +128,7 @@ async function refreshSession(): Promise<AuthResponse> {
     method: 'POST',
     anonymous: true,
     noRetry: true,
+    timeoutMs: 15_000,
     body: JSON.stringify({ refreshToken: session.refreshToken }),
   })
     .then((fresh) => {
@@ -94,7 +136,26 @@ async function refreshSession(): Promise<AuthResponse> {
       return fresh;
     })
     .catch((err) => {
-      authStore.set(null);
+      // Sign out only when the server rejected the refresh token. A network
+      // error, timeout, 5xx or 429 says nothing about the token — keep the
+      // session so the employee isn't bounced to /login (and so queued
+      // offline punches can still drain once the server is back).
+      // `network_error` = no API envelope: a proxy's or portal's error
+      // page, not our server rejecting the token. Any other 4xx from our
+      // server (401 bad/expired/revoked token, 403 sign-in off, 404 user
+      // gone, 400 malformed token) is final; 408 and 429 mean "later".
+      if (
+        err instanceof ApiError &&
+        err.status >= 400 &&
+        err.status < 500 &&
+        err.status !== 408 &&
+        err.status !== 429 &&
+        err.code !== 'network_error'
+      ) {
+        // 403 = sign-in turned off: tell the login page why.
+        if (err.status === 403) noteSessionEnded(err.message);
+        authStore.set(null);
+      }
       throw err;
     })
     .finally(() => {
@@ -125,7 +186,11 @@ export async function apiFetch<T>(path: string, opts: ApiFetchOptions = {}): Pro
 
     try {
       await refreshSession();
-    } catch {
+    } catch (refreshErr) {
+      // A refresh that failed transiently is the more useful error: the
+      // caller (e.g. the punch page) should treat it as "server
+      // unreachable" and queue, not as a refusal.
+      if (isTransientError(refreshErr)) throw refreshErr;
       throw err;
     }
     return rawFetch<T>(path, { ...opts, noRetry: true });

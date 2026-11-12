@@ -6,27 +6,11 @@ import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
+import { useCompany } from '../hooks/useCompany';
 import { ApiError } from '../lib/api';
-import { corrections } from '../lib/resources';
+import { describeCorrection } from '../lib/correction-summary';
+import { corrections, userPreferences } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
-
-/** "Mon, Oct 19 · 8:00 AM → 10:15 AM (2.25 hrs)" for an add request that
- *  carries a complete shift ("Add time" on My timesheet); null otherwise. */
-function shiftLabel(r: CorrectionRequest): string | null {
-  if (r.requestType !== 'add') return null;
-  const { startedAt, endedAt } = r.proposedChanges as { startedAt?: unknown; endedAt?: unknown };
-  if (typeof startedAt !== 'string' || typeof endedAt !== 'string') return null;
-  const start = new Date(startedAt);
-  const end = new Date(endedAt);
-  const time = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  const day = start.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-  const hours = ((end.getTime() - start.getTime()) / 3_600_000).toFixed(2);
-  return `${day} · ${time(start)} → ${time(end)} (${hours} hrs)`;
-}
 
 type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
 
@@ -44,7 +28,25 @@ export function CorrectionsPage() {
     queryFn: () => corrections.list(companyId, filter === 'all' ? undefined : filter),
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['corrections', companyId] });
+  // Proposed times read in the company's timezone, like every timesheet;
+  // hours in the reviewer's own format.
+  const company = useCompany(companyId);
+  const tz = company.data?.timezone;
+  const prefsQ = useQuery({ queryKey: ['me-prefs'], queryFn: () => userPreferences.get() });
+  const format = prefsQ.data?.timeFormatEffective ?? 'decimal';
+  const stamp = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      ...(tz ? { timeZone: tz } : {}),
+    });
+
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: ['corrections', companyId] });
+    // An approval changes the employee's timesheet and grid.
+    void qc.invalidateQueries({ queryKey: ['timesheet'] });
+    void qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+  };
 
   return (
     <>
@@ -92,24 +94,23 @@ export function CorrectionsPage() {
                 </p>
                 <p className="mt-1 text-sm text-slate-800">Employee #{r.employeeId}</p>
                 <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
-                {shiftLabel(r) ? (
-                  <p className="mt-2 rounded-md border border-slate-100 bg-slate-50 p-2 text-sm text-slate-800">
-                    Add shift: {shiftLabel(r)}
+                <p className="mt-2 rounded-md border border-slate-100 bg-slate-50 p-2 text-sm text-slate-800">
+                  {describeCorrection(r, tz, format)}
+                  {r.status === 'pending' && r.requestType !== 'delete' && (
                     <span className="block text-xs text-slate-500">
-                      Approving adds it to the timesheet.
+                      {r.requestType === 'add'
+                        ? 'Approving adds it to the timesheet.'
+                        : 'Approving applies the change through the normal edit path.'}
                     </span>
-                  </p>
-                ) : (
-                  <pre className="mt-2 overflow-x-auto rounded-md border border-slate-100 bg-slate-50 p-2 text-[11px] text-slate-700">
-                    {JSON.stringify(r.proposedChanges, null, 2)}
-                  </pre>
-                )}
+                  )}
+                  {tz && <span className="block text-[11px] text-slate-400">Times in {tz}</span>}
+                </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  Submitted {new Date(r.createdAt).toLocaleString()}
+                  Submitted {stamp(r.createdAt)}
                   {r.reviewedAt && (
                     <>
                       {' '}
-                      · reviewed {new Date(r.reviewedAt).toLocaleString()}
+                      · reviewed {stamp(r.reviewedAt)}
                       {r.reviewNote && ` — "${r.reviewNote}"`}
                     </>
                   )}

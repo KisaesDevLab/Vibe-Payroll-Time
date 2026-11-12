@@ -41,6 +41,9 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
       .where('t.company_id', companyId)
       .where('t.entry_type', 'work')
       .whereNull('t.deleted_at')
+      // A manual entry supersedes the punches it replaces; only the
+      // active row counts (punch-activity / audit-trail keep raw punches).
+      .whereNull('t.superseded_by_entry_id')
       .whereNotNull('t.ended_at')
       .where('t.started_at', '>=', start)
       .where('t.started_at', '<', end)
@@ -69,7 +72,17 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
           time_off_category: TimeOffCategory | null;
           total_seconds: string;
         }>
-      >('e.id as employee_id', 'e.first_name', 'e.last_name', 'e.employee_number', 'j.code as job_code', 'j.name as job_name', 'j.is_time_off', 'j.time_off_category', db.raw('COALESCE(SUM(t.duration_seconds), 0) as total_seconds'));
+      >(
+        'e.id as employee_id',
+        'e.first_name',
+        'e.last_name',
+        'e.employee_number',
+        'j.code as job_code',
+        'j.name as job_name',
+        'j.is_time_off',
+        'j.time_off_category',
+        db.raw('COALESCE(SUM(t.duration_seconds), 0) as total_seconds'),
+      );
 
     for (const r of rows) {
       yield {

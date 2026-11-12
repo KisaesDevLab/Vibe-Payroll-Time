@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { loadZxing } from '../../components/BadgeScanner';
 import { useKiosk } from '../../hooks/useKiosk';
+import { dropUserSessionForKiosk } from '../../lib/kiosk-api';
 import { isSecureContext } from '../../lib/secure-context';
 import { KioskPinPage } from './KioskPinPage';
 
@@ -30,6 +31,10 @@ export function KioskRoot() {
   useEffect(() => {
     void loadZxing().catch(() => undefined);
   }, []);
+  // A shared tablet never keeps a person's sign-in (see dropUserSessionForKiosk).
+  useEffect(() => {
+    void dropUserSessionForKiosk();
+  }, []);
   if (!isSecureContext()) return <KioskInsecureContextPage />;
   if (!kiosk) return <Navigate to="/kiosk/pair" replace />;
   return <KioskPinPage />;
@@ -53,8 +58,8 @@ function KioskInsecureContextPage() {
         <h1 style={{ fontSize: '1.75rem', marginBottom: '1rem' }}>Kiosk mode requires HTTPS</h1>
         <p style={{ marginBottom: '1rem' }}>
           You're loading this page over an unsecured connection. Wall-mounted kiosks need a secure
-          (https://) URL because the offline punch queue, camera-based QR scanning, and PWA install
-          all require a secure context.
+          (https://) URL because the app's offline caching, camera-based QR scanning, and PWA
+          install all require a secure context.
         </p>
         <p style={{ marginBottom: '1rem' }}>
           If you're a staff member doing emergency time-card review while the primary URL is down,

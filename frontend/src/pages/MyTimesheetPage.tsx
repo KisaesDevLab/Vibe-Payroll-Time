@@ -1,8 +1,16 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { TIME_OFF_CATEGORY_LABELS, type Job, type TimeEntry } from '@vibept/shared';
-import { useState } from 'react';
+import {
+  TIME_OFF_CATEGORY_LABELS,
+  formatHours,
+  todayInTz,
+  type CorrectionRequest,
+  type Job,
+  type TimeEntry,
+  type TimeFormat,
+} from '@vibept/shared';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
@@ -14,12 +22,22 @@ import { TopBar } from '../components/TopBar';
 import { usePunchCompany } from '../hooks/usePunchCompany';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
+import { buildShiftSpan, correctionChanges, toZoneInput, zoneNotice } from '../lib/company-time';
+import { describeCorrection } from '../lib/correction-summary';
 import { jobs as jobsApi, manualEntries, timesheets } from '../lib/resources';
+import { MY_CORRECTION_REQUESTS_KEY, invalidateTimeEntryQueries } from '../lib/timesheet-queries';
+
+/** Where the employee's own weekly grid lives (outside the admin layout). */
+const MY_GRID_PATH = '/my-timesheet/week';
 
 /**
  * Employee's own timesheet for the current pay period. Shows entries
  * grouped by day with daily and period totals, lets them raise a
- * "request fix" correction on unapproved entries.
+ * "request fix" correction on unapproved entries, and lists the
+ * requests they've made with their outcome.
+ *
+ * Every time on this page is in the company's timezone (the server buckets
+ * days and periods there), whatever zone the browser is in.
  */
 export function MyTimesheetPage() {
   const session = useSession();
@@ -31,7 +49,7 @@ export function MyTimesheetPage() {
   const [correction, setCorrection] = useState<TimeEntry | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [timeOffOpen, setTimeOffOpen] = useState(false);
-  const [addNotice, setAddNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const sheet = useQuery({
@@ -46,15 +64,31 @@ export function MyTimesheetPage() {
     queryFn: () => jobsApi.list(companyId!),
     enabled: companyId != null,
   });
+  const requestsQ = useQuery({
+    queryKey: [MY_CORRECTION_REQUESTS_KEY, companyId],
+    queryFn: () => timesheets.myCorrectionRequests(companyId!),
+    enabled: companyId != null,
+  });
   const timeOffCodes = (jobsQ.data ?? []).filter((j) => j.isTimeOff && !j.archivedAt);
+  const pendingRequestEntryIds = useMemo(
+    () =>
+      new Set(
+        (requestsQ.data ?? [])
+          .filter((r) => r.status === 'pending' && r.timeEntryId != null)
+          .map((r) => r.timeEntryId!),
+      ),
+    [requestsQ.data],
+  );
+
+  const refresh = () => invalidateTimeEntryQueries(qc);
 
   if (!session) return null;
 
   return (
     <>
       <TopBar />
-      <main className="mx-auto max-w-5xl px-6 py-8">
-        <header className="mb-6 flex items-start justify-between gap-4">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-widest text-slate-500">
               {company?.companyName ?? 'No company'}
@@ -69,17 +103,14 @@ export function MyTimesheetPage() {
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <div className="inline-flex overflow-hidden rounded-full border border-slate-300 text-xs font-medium">
                   <span className="bg-slate-900 px-3 py-1.5 text-white">List view</span>
-                  <Link
-                    to={`/companies/${companyId}/timesheets/${sheet.data.employee.id}/week`}
-                    className="px-3 py-1.5 text-slate-600 hover:bg-slate-100"
-                  >
+                  <Link to={MY_GRID_PATH} className="px-3 py-1.5 text-slate-600 hover:bg-slate-100">
                     Grid view →
                   </Link>
                 </div>
                 <Button
                   variant="secondary"
                   onClick={() => {
-                    setAddNotice(null);
+                    setNotice(null);
                     setAddOpen(true);
                   }}
                 >
@@ -89,7 +120,7 @@ export function MyTimesheetPage() {
                   <Button
                     variant="secondary"
                     onClick={() => {
-                      setAddNotice(null);
+                      setNotice(null);
                       setTimeOffOpen(true);
                     }}
                   >
@@ -98,9 +129,12 @@ export function MyTimesheetPage() {
                 )}
               </div>
             )}
-            {addNotice && (
-              <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                {addNotice}
+            {notice && (
+              <p
+                role="status"
+                className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+              >
+                {notice}
               </p>
             )}
           </div>
@@ -136,26 +170,49 @@ export function MyTimesheetPage() {
         )}
         {sheet.data && (
           <div className="flex flex-col gap-6">
-            <TimesheetView data={sheet.data} onRequestCorrection={setCorrection} />
+            <TimesheetView
+              data={sheet.data}
+              onRequestCorrection={setCorrection}
+              pendingRequestEntryIds={pendingRequestEntryIds}
+              timeOffFixHint={
+                <Link
+                  to={MY_GRID_PATH}
+                  className="whitespace-nowrap text-slate-500 hover:underline"
+                  title="Time off is hours on a day; change it on the grid"
+                >
+                  Change on grid
+                </Link>
+              }
+            />
+            <MyRequests
+              requests={requestsQ.data}
+              loading={requestsQ.isPending}
+              timezone={sheet.data.companyTimezone}
+              timeFormat={sheet.data.timeFormat}
+            />
             <NLCorrectionWidget
               companyId={sheet.data.employee.companyId}
               employeeId={sheet.data.employee.id}
               periodStart={sheet.data.period.start}
               periodEnd={sheet.data.period.end}
-              onApplied={() => qc.invalidateQueries({ queryKey: ['my-timesheet', companyId] })}
+              companyTimezone={sheet.data.companyTimezone}
+              entries={sheet.data.entries}
+              onApplied={refresh}
             />
           </div>
         )}
       </main>
 
-      {addOpen && companyId != null && (
+      {addOpen && companyId != null && sheet.data && (
         <AddTimeModal
           companyId={companyId}
+          timezone={sheet.data.companyTimezone}
+          timeFormat={sheet.data.timeFormat}
           onClose={() => setAddOpen(false)}
           onDone={(message) => {
             setAddOpen(false);
-            setAddNotice(message);
-            qc.invalidateQueries({ queryKey: ['my-timesheet', companyId] });
+            setNotice(message);
+            refresh();
           }}
         />
       )}
@@ -165,28 +222,128 @@ export function MyTimesheetPage() {
           companyId={companyId}
           employeeId={sheet.data.employee.id}
           codes={timeOffCodes}
+          timezone={sheet.data.companyTimezone}
+          timeFormat={sheet.data.timeFormat}
           onClose={() => setTimeOffOpen(false)}
           onDone={(message) => {
             setTimeOffOpen(false);
-            setAddNotice(message);
-            qc.invalidateQueries({ queryKey: ['my-timesheet', companyId] });
+            setNotice(message);
+            refresh();
           }}
         />
       )}
 
-      {correction && companyId != null && (
+      {correction && companyId != null && sheet.data && (
         <CorrectionRequestModal
           companyId={companyId}
           entry={correction}
+          timezone={sheet.data.companyTimezone}
           onClose={() => setCorrection(null)}
           onSubmitted={() => {
             setCorrection(null);
-            qc.invalidateQueries({ queryKey: ['my-timesheet', companyId] });
+            setNotice(
+              'Fix request sent to your supervisor. The entry stays as it is until they approve it; track it under My requests.',
+            );
+            refresh();
           }}
         />
       )}
     </>
   );
+}
+
+const STATUS_BADGE: Record<CorrectionRequest['status'], string> = {
+  pending: 'bg-amber-100 text-amber-800',
+  approved: 'bg-emerald-100 text-emerald-800',
+  rejected: 'bg-slate-200 text-slate-700',
+};
+
+/** How many requests show before "Show all". */
+const REQUESTS_SHOWN = 5;
+
+/**
+ * The employee's own correction requests (fixes and added shifts that
+ * needed approval), newest first, with the supervisor's decision and note.
+ */
+function MyRequests({
+  requests,
+  loading,
+  timezone,
+  timeFormat,
+}: {
+  requests: CorrectionRequest[] | undefined;
+  loading: boolean;
+  timezone: string;
+  timeFormat: TimeFormat;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  if (loading || !requests || requests.length === 0) return null;
+  const shown = showAll ? requests : requests.slice(0, REQUESTS_SHOWN);
+  const pending = requests.filter((r) => r.status === 'pending').length;
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-base font-semibold text-slate-900">My requests</h2>
+        <p className="text-xs text-slate-500">
+          {pending > 0 ? `${pending} awaiting review` : 'None awaiting review'}
+        </p>
+      </header>
+      <ul className="mt-3 divide-y divide-slate-100">
+        {shown.map((r) => (
+          <li key={r.id} className="py-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={
+                  'rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ' +
+                  STATUS_BADGE[r.status]
+                }
+              >
+                {r.status}
+              </span>
+              <span className="text-slate-800">{describeCorrection(r, timezone, timeFormat)}</span>
+            </div>
+            <p className="mt-1 text-slate-600">“{r.reason}”</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Sent{' '}
+              {new Date(r.createdAt).toLocaleString(undefined, {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+                timeZone: timezone,
+              })}
+              {r.reviewedAt &&
+                ` · ${r.status} ${new Date(r.reviewedAt).toLocaleString(undefined, {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                  timeZone: timezone,
+                })}`}
+            </p>
+            {r.reviewNote && (
+              <p className="mt-1 text-xs text-slate-700">
+                <span className="font-medium">Supervisor note:</span> {r.reviewNote}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+      {requests.length > REQUESTS_SHOWN && (
+        <button
+          type="button"
+          className="mt-2 text-xs font-medium text-slate-700 hover:underline"
+          onClick={() => setShowAll((v) => !v)}
+        >
+          {showAll ? 'Show fewer' : `Show all ${requests.length}`}
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** "Times are in America/Chicago (CST)" under a form, when it isn't the
+ *  browser's zone. */
+function ZoneNote({ timezone }: { timezone: string }) {
+  const label = zoneNotice(timezone);
+  return label ? <p className="text-xs font-medium text-slate-600">{label}</p> : null;
 }
 
 /**
@@ -200,16 +357,20 @@ function TimeOffModal({
   companyId,
   employeeId,
   codes,
+  timezone,
+  timeFormat,
   onClose,
   onDone,
 }: {
   companyId: number;
   employeeId: number;
   codes: Job[];
+  timezone: string;
+  timeFormat: TimeFormat;
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
-  const [day, setDay] = useState(() => localIsoDay(new Date()));
+  const [day, setDay] = useState(() => todayInTz(timezone));
   const [jobId, setJobId] = useState<number>(codes[0]!.id);
   const [seconds, setSeconds] = useState<number | null>(8 * 3600);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -277,7 +438,7 @@ function TimeOffModal({
           <span className="font-medium text-slate-700">Hours</span>
           <HoursInput
             seconds={seconds}
-            format="decimal"
+            format={timeFormat}
             onChange={(s, err) => {
               setSeconds(s);
               setParseError(err);
@@ -304,28 +465,28 @@ function TimeOffModal({
   );
 }
 
-/** `YYYY-MM-DD` for a local Date. */
-function localIsoDay(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 /**
  * Add a shift the employee forgot to punch: a date, clock-in and
  * clock-out time, an optional job, and a reason. A clock-out earlier than
  * the clock-in means the shift ran past midnight. The server saves it
  * straight away or sends it to a supervisor, per the company's policy.
+ * The date and times are the company's wall clock.
  */
 function AddTimeModal({
   companyId,
+  timezone,
+  timeFormat,
   onClose,
   onDone,
 }: {
   companyId: number;
+  timezone: string;
+  timeFormat: TimeFormat;
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
-  const [day, setDay] = useState(() => localIsoDay(new Date()));
+  const today = todayInTz(timezone);
+  const [day, setDay] = useState(today);
   const [clockIn, setClockIn] = useState('');
   const [clockOut, setClockOut] = useState('');
   const [jobId, setJobId] = useState<number | null>(null);
@@ -337,21 +498,13 @@ function AddTimeModal({
   });
   const workJobs = (jobsQ.data ?? []).filter((j) => !j.isTimeOff);
 
-  const span = (() => {
-    if (!day || !clockIn || !clockOut) return null;
-    const start = new Date(`${day}T${clockIn}`);
-    const end = new Date(`${day}T${clockOut}`);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-    const overnight = end <= start;
-    if (overnight) end.setDate(end.getDate() + 1);
-    return { start, end, overnight, hours: (end.getTime() - start.getTime()) / 3_600_000 };
-  })();
+  const span = buildShiftSpan(day, clockIn, clockOut, timezone);
 
   const submit = useMutation({
     mutationFn: () =>
       timesheets.addOwnEntry(companyId, {
-        startedAt: span!.start.toISOString(),
-        endedAt: span!.end.toISOString(),
+        startedAt: span!.startedAt,
+        endedAt: span!.endedAt,
         jobId,
         reason: reason.trim(),
       }),
@@ -387,11 +540,12 @@ function AddTimeModal({
         <p className="text-sm text-slate-600">
           Forgot to clock in or out? Enter the times you actually worked.
         </p>
+        <ZoneNote timezone={timezone} />
         <FormField
           label="Date"
           type="date"
           value={day}
-          max={localIsoDay(new Date())}
+          max={today}
           onChange={(e) => setDay(e.target.value)}
         />
         <div className="grid grid-cols-2 gap-3">
@@ -410,7 +564,7 @@ function AddTimeModal({
         </div>
         {span && (
           <p className="text-xs text-slate-600">
-            {span.hours.toFixed(2)} hrs
+            {formatHours(span.seconds, timeFormat)} hrs
             {span.overnight ? ' · ends the next day' : ''}
           </p>
         )}
@@ -452,43 +606,41 @@ function AddTimeModal({
   );
 }
 
+/**
+ * Ask a supervisor to change an entry's start or end. The inputs show the
+ * company's wall clock, the same times the timesheet rows show; only the
+ * fields the employee changed are proposed.
+ */
 function CorrectionRequestModal({
   companyId,
   entry,
+  timezone,
   onClose,
   onSubmitted,
 }: {
   companyId: number;
   entry: TimeEntry;
+  timezone: string;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
-  const [startedAt, setStartedAt] = useState(entry.startedAt.slice(0, 16));
-  const [endedAt, setEndedAt] = useState(entry.endedAt?.slice(0, 16) ?? '');
+  const [startedAt, setStartedAt] = useState(() => toZoneInput(entry.startedAt, timezone));
+  const [endedAt, setEndedAt] = useState(() => toZoneInput(entry.endedAt, timezone));
   const [reason, setReason] = useState('');
 
+  const changes = correctionChanges(entry, { startedAt, endedAt }, timezone);
+  const changed = Object.keys(changes).length > 0;
+
   const submit = useMutation({
-    mutationFn: () => {
-      const changes: Record<string, unknown> = {};
-      if (startedAt && startedAt !== entry.startedAt.slice(0, 16)) {
-        changes.startedAt = new Date(startedAt).toISOString();
-      }
-      if (endedAt && (!entry.endedAt || endedAt !== entry.endedAt.slice(0, 16))) {
-        changes.endedAt = new Date(endedAt).toISOString();
-      }
-      return timesheets.createCorrection(companyId, {
+    mutationFn: () =>
+      timesheets.createCorrection(companyId, {
         timeEntryId: entry.id,
         requestType: 'edit',
         proposedChanges: changes,
-        reason,
-      });
-    },
+        reason: reason.trim(),
+      }),
     onSuccess: onSubmitted,
   });
-
-  const changed =
-    startedAt !== entry.startedAt.slice(0, 16) ||
-    (endedAt && (!entry.endedAt || endedAt !== entry.endedAt.slice(0, 16)));
 
   return (
     <Modal
@@ -514,6 +666,7 @@ function CorrectionRequestModal({
         <p className="text-sm text-slate-600">
           A manager will review this request. The original entry isn't changed until approved.
         </p>
+        <ZoneNote timezone={timezone} />
         <FormField
           label="Start"
           type="datetime-local"
@@ -532,6 +685,7 @@ function CorrectionRequestModal({
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
             rows={3}
             value={reason}
+            maxLength={500}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. Forgot to clock out after lunch"
           />

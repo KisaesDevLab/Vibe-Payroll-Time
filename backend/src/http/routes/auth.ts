@@ -240,10 +240,13 @@ authRouter.post('/change-password', authRateLimiter, requireAuth, async (req, re
   try {
     if (!req.user) return next(NotFound('No user in context'));
     const body = changePasswordRequestSchema.parse(req.body);
-    await changePassword(req.user.id, body.currentPassword, body.newPassword, {
-      ip: req.ip ?? null,
-      userAgent: req.headers['user-agent'] ?? null,
-    });
+    await changePassword(
+      req.user.id,
+      body.currentPassword,
+      body.newPassword,
+      { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null },
+      body.refreshToken,
+    );
     res.status(204).end();
   } catch (err) {
     next(err);
@@ -268,10 +271,12 @@ authRouter.post('/set-password', authRateLimiter, requireAuth, async (req, res, 
       );
     }
     const body = setPasswordAfterMagicLinkRequestSchema.parse(req.body);
-    await setPasswordAfterMagicLink(req.user.id, body.newPassword, {
-      ip: req.ip ?? null,
-      userAgent: req.headers['user-agent'] ?? null,
-    });
+    await setPasswordAfterMagicLink(
+      req.user.id,
+      body.newPassword,
+      { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null },
+      body.refreshToken,
+    );
     res.status(204).end();
   } catch (err) {
     next(err);

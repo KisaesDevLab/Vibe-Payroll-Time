@@ -7,6 +7,54 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — Employee QA pass
+
+- **Hours were double-counted after a manual override.** The timesheet, the
+  approval page and the hours-by-period, overtime, time-card and hours-by-job
+  reports counted a superseded punch alongside the manual entry replacing it.
+  They now use active entries only, like the grid and payroll export.
+- **Timesheet times use the company timezone everywhere.** The Request fix and
+  Add time dialogs, the timesheet rows, the supervisor edit form, Corrections,
+  the weekly grid's week and "today", and the period header (which showed the
+  day after the period ended) now agree with the server's company-tz days and
+  pay periods. `TimesheetResponse` carries `companyTimezone`, `timeFormat` and
+  inclusive `period.firstDay` / `period.lastDay`.
+- **AI corrections** apply only what the user may do (approved entries and
+  deletes are refused per call), honour the company AI switch on apply, and
+  give the model the company timezone and today's date. The preview shows old
+  → new times instead of JSON.
+- **Rule gaps closed.** Correction requests are validated per type, one pending
+  request per entry, and approval is one locked transaction that re-checks the
+  entry. Punch edits refuse end-before-start, overlaps, future times and
+  moving work onto a time-off code. Employees can't add worked time to a future
+  day, and the approval lock covers the whole approved week, empty days included.
+- **Offline punching.** Punches now reach the queue when the phone is offline,
+  with the tap time; the queue survives sign-out and refresh failures; refused
+  punches are shown instead of dropped; the punch page works on an offline cold
+  start.
+- **Employee screens.** HH:MM preference honoured on My time, My timesheet and
+  the kiosk; the employee grid has its own route (`/my-timesheet/week`) outside
+  the admin layout; dialogs are accessible and scroll on phones; changing your
+  password keeps this device signed in; sign-in errors and "sign-in turned off"
+  are shown; the notifications page lists only your employee companies.
+
+### Added
+
+- **My requests** on My timesheet: the employee's correction requests with
+  status and supervisor note (`GET /timesheets/my-correction-requests`).
+- **Kiosk shows hours worked today after clock-out** (`todayWorkSeconds` on the
+  clock-out response), in the company's time format.
+- **Kiosk offline screen** instead of "Verification failed"; the kiosk doesn't
+  queue punches. **Unpair** requires typing UNPAIR and revokes the tablet's
+  token (`POST /kiosk/unpair`). A kiosk signs out any user session on the
+  device.
+
+### Changed
+
+- **Employee direct edits follow the manual-entry mode.** In Override only and
+  Disabled, an employee's own punch edits (including AI corrections) are refused
+  with a pointer to Request fix.
+
 ## [1.6.0] - 2026-10-22
 
 ### Added — Lunch prompt

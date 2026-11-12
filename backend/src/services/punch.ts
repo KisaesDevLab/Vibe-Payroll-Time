@@ -320,6 +320,9 @@ export async function getTodayWorkSeconds(companyId: number, employeeId: number)
     WHERE te.company_id = ?
       AND te.employee_id = ?
       AND te.deleted_at IS NULL
+      -- A punch replaced by a manual entry no longer counts; the manual
+      -- entry that superseded it does.
+      AND te.superseded_by_entry_id IS NULL
       AND te.entry_type = 'work'
       -- Worked time only: a PTO day is not hours on the clock.
       AND (te.job_id IS NULL OR te.job_id NOT IN (SELECT id FROM jobs WHERE is_time_off))
@@ -419,6 +422,70 @@ async function ensurePunchableJob(
   }
 }
 
+/** Non-throwing form of ensurePunchableJob, for paths that fall back to
+ *  "no job" instead of refusing the punch. */
+async function isPunchableJob(
+  trx: Knex.Transaction,
+  companyId: number,
+  jobId: number,
+): Promise<boolean> {
+  const row = await trx('jobs')
+    .where({ id: jobId, company_id: companyId })
+    .whereNull('archived_at')
+    .first<{ is_time_off: boolean }>('is_time_off');
+  return !!row && !row.is_time_off;
+}
+
+/** Run `fn` inside the caller's transaction when one is supplied,
+ *  otherwise in a fresh one. Lets a caller (correction approval) make
+ *  its own writes and the punch-service write one atomic unit. */
+function inTransaction<T>(
+  trx: Knex.Transaction | undefined,
+  fn: (trx: Knex.Transaction) => Promise<T>,
+): Promise<T> {
+  return trx ? fn(trx) : db.transaction(fn);
+}
+
+/**
+ * The first active entry (not deleted, not superseded) for this employee
+ * whose span overlaps [startedAt, endedAt). A null `endedAt` means the
+ * span is open and runs to +inf; existing open entries are treated the
+ * same way. Manual (grid) entries, time off included, are stored from
+ * local midnight as a duration, not a clock span, so they never block a
+ * shift on the same day: their "times" are placement, not when the work
+ * happened.
+ */
+async function findOverlappingEntry(
+  trx: Knex.Transaction,
+  companyId: number,
+  employeeId: number,
+  startedAt: Date,
+  endedAt: Date | null,
+  excludeEntryId?: number,
+): Promise<TimeEntryRow | undefined> {
+  const q = trx<TimeEntryRow>('time_entries')
+    .where({ company_id: companyId, employee_id: employeeId })
+    .whereNull('deleted_at')
+    .whereNull('superseded_by_entry_id')
+    .whereNot('source', 'web_manual')
+    .where((qb) => {
+      qb.whereNull('job_id').orWhereNotIn(
+        'job_id',
+        trx('jobs').where({ company_id: companyId, is_time_off: true }).select('id'),
+      );
+    })
+    .andWhere((qb) => {
+      qb.whereNull('ended_at').orWhere('ended_at', '>', startedAt);
+    });
+  if (endedAt) q.where('started_at', '<', endedAt);
+  if (excludeEntryId !== undefined) q.whereNot('id', excludeEntryId);
+  return q.first();
+}
+
+/** How far ahead of the server clock an edited time may sit (a slightly
+ *  fast reviewer's clock, a form submitted on the minute). */
+const EDIT_FUTURE_SLACK_MS = 60_000;
+
 /** Return the `job_id` from the last non-break entry in a shift — used so
  *  breakOut resumes on the same job the employee left. */
 async function lastWorkJobForShift(trx: Knex.Transaction, shiftId: string): Promise<number | null> {
@@ -503,12 +570,56 @@ export async function clockIn(
   });
 }
 
+/** Offline metadata of the punch that closes an entry. */
+interface OfflineClose {
+  rawClientAt: Date;
+  clockSkewMs: number | null;
+}
+
+function offlineCloseOf(resolved: {
+  isOffline: boolean;
+  rawClientStartedAt: Date | null;
+  clockSkewMs: number | null;
+}): OfflineClose | null {
+  if (!resolved.isOffline || !resolved.rawClientStartedAt) return null;
+  return { rawClientAt: resolved.rawClientStartedAt, clockSkewMs: resolved.clockSkewMs };
+}
+
+/**
+ * `source_offline` / `client_started_at` describe the punch that opened
+ * a row; there is no column for the punch that closed it. When that close
+ * came from the offline queue, say so in the audit trail, with the
+ * client's claimed time and skew, so a reviewer can see that `ended_at`
+ * was derived from the device clock.
+ */
+async function writeOfflineCloseAudit(
+  trx: Knex.Transaction,
+  ctx: PunchContext,
+  entryId: number,
+  offline: OfflineClose | null,
+): Promise<void> {
+  if (!offline) return;
+  await writeAudit(trx, {
+    timeEntryId: entryId,
+    companyId: ctx.companyId,
+    actorUserId: ctx.actorUserId,
+    action: 'edit',
+    field: 'ended_offline',
+    oldValue: null,
+    newValue: {
+      clientEndedAt: offline.rawClientAt.toISOString(),
+      clientClockSkewMs: offline.clockSkewMs,
+    },
+  });
+}
+
 async function closeOpen(
   trx: Knex.Transaction,
   ctx: PunchContext,
   requireType: 'work' | 'break' | 'any',
   endedAt: Date,
   loc: ResolvedLocation,
+  offline: OfflineClose | null,
 ): Promise<TimeEntryRow> {
   const open = await findOpenEntry(trx, ctx.companyId, ctx.employeeId);
   if (!open) throw Conflict('Employee has no open entry');
@@ -541,6 +652,7 @@ async function closeOpen(
       newValue: endedLocation,
     });
   }
+  await writeOfflineCloseAudit(trx, ctx, open.id, offline);
   return { ...open, ended_at: endedAt, duration_seconds: duration, ...endedCols } as TimeEntryRow;
 }
 
@@ -550,7 +662,8 @@ export async function clockOut(
 ): Promise<TimeEntry> {
   return db.transaction(async (trx) => {
     await lockEmployee(trx, ctx.employeeId);
-    const { startedAt: endedAt } = resolveStartedAt(ctx);
+    const resolved = resolveStartedAt(ctx);
+    const endedAt = resolved.startedAt;
     const loc = await resolveLocation(trx, ctx);
 
     // The setting is the authority, not the client: a stale tablet that
@@ -561,9 +674,9 @@ export async function clockOut(
     const lunchMinutes = lunchOn ? opts.lunchMinutes : undefined;
 
     if (lunchMinutes) {
-      return clockOutWithLunch(trx, ctx, endedAt, loc, lunchMinutes);
+      return clockOutWithLunch(trx, ctx, resolved, loc, lunchMinutes);
     }
-    const closed = await closeOpen(trx, ctx, 'any', endedAt, loc);
+    const closed = await closeOpen(trx, ctx, 'any', endedAt, loc, offlineCloseOf(resolved));
 
     await writeAudit(trx, {
       timeEntryId: closed.id,
@@ -600,10 +713,11 @@ async function lunchPromptEnabled(trx: Knex.Transaction, companyId: number): Pro
 async function clockOutWithLunch(
   trx: Knex.Transaction,
   ctx: PunchContext,
-  endedAt: Date,
+  resolved: ReturnType<typeof resolveStartedAt>,
   loc: ResolvedLocation,
   lunchMinutes: 30 | 60,
 ): Promise<TimeEntry> {
+  const { startedAt: endedAt, isOffline, rawClientStartedAt, clockSkewMs } = resolved;
   const open = await findOpenEntry(trx, ctx.companyId, ctx.employeeId);
   if (!open) throw Conflict('Employee has no open entry');
   if (open.entry_type !== 'work') {
@@ -619,8 +733,10 @@ async function clockOutWithLunch(
   const lunchStart = new Date(open.started_at.getTime() + firstWork * 1000);
   const lunchEnd = new Date(lunchStart.getTime() + lunchSeconds * 1000);
 
-  // First segment: the original row, closed where lunch begins.
-  const first = await closeOpen(trx, ctx, 'work', lunchStart, NO_LOCATION);
+  // First segment: the original row, closed where lunch begins. The
+  // clock-out's location and offline flag belong to the last segment,
+  // whose end is the actual punch.
+  const first = await closeOpen(trx, ctx, 'work', lunchStart, NO_LOCATION, null);
   await writeAudit(trx, {
     timeEntryId: first.id,
     companyId: ctx.companyId,
@@ -637,7 +753,10 @@ async function clockOutWithLunch(
     startedAt: Date,
     closedAt: Date,
     endLoc: ResolvedLocation,
+    offline: OfflineClose | null,
   ): Promise<TimeEntryRow> => {
+    // The split rows are made by the clock-out punch, so they carry its
+    // offline metadata, the same way break-in / switch-job rows do.
     const [row] = await trx<TimeEntryRow>('time_entries')
       .insert({
         company_id: ctx.companyId,
@@ -650,9 +769,12 @@ async function clockOutWithLunch(
         duration_seconds: secondsBetween(startedAt, closedAt),
         source: ctx.source,
         source_device_id: ctx.sourceDeviceId ?? null,
+        source_offline: isOffline,
         source_ip: ctx.sourceIp ?? null,
         source_user_agent: ctx.sourceUserAgent ?? null,
         ...locationColumns(endLoc, 'ended'),
+        client_started_at: rawClientStartedAt,
+        client_clock_skew_ms: clockSkewMs,
         created_by: ctx.actorUserId,
       })
       .returning('*');
@@ -671,11 +793,32 @@ async function clockOutWithLunch(
       },
       reason: `lunch_${lunchMinutes}`,
     });
+    // Same trail a plain close leaves: where the clock-out happened and
+    // whether it came from the offline queue.
+    const endedLocation = locationForAudit(endLoc);
+    if (endedLocation !== undefined) {
+      await writeAudit(trx, {
+        timeEntryId: row.id,
+        companyId: ctx.companyId,
+        actorUserId: ctx.actorUserId,
+        action: 'edit',
+        field: 'ended_location',
+        oldValue: null,
+        newValue: endedLocation,
+      });
+    }
+    await writeOfflineCloseAudit(trx, ctx, row.id, offline);
     return row;
   };
 
-  await insertClosed('break', lunchStart, lunchEnd, NO_LOCATION);
-  const last = await insertClosed('work', lunchEnd, endedAt, loc);
+  await insertClosed('break', lunchStart, lunchEnd, NO_LOCATION, null);
+  const last = await insertClosed(
+    'work',
+    lunchEnd,
+    endedAt,
+    loc,
+    offlineCloseOf({ isOffline, rawClientStartedAt, clockSkewMs }),
+  );
   return rowToTimeEntry(last);
 }
 
@@ -685,7 +828,14 @@ export async function breakIn(ctx: PunchContext): Promise<TimeEntry> {
     const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
     const loc = await resolveLocation(trx, ctx);
 
-    const closed = await closeOpen(trx, ctx, 'work', pivot, loc);
+    const closed = await closeOpen(
+      trx,
+      ctx,
+      'work',
+      pivot,
+      loc,
+      offlineCloseOf({ isOffline, rawClientStartedAt, clockSkewMs }),
+    );
     await writeAudit(trx, {
       timeEntryId: closed.id,
       companyId: ctx.companyId,
@@ -739,7 +889,14 @@ export async function breakOut(ctx: PunchContext): Promise<TimeEntry> {
     const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
     const loc = await resolveLocation(trx, ctx);
 
-    const closed = await closeOpen(trx, ctx, 'break', pivot, loc);
+    const closed = await closeOpen(
+      trx,
+      ctx,
+      'break',
+      pivot,
+      loc,
+      offlineCloseOf({ isOffline, rawClientStartedAt, clockSkewMs }),
+    );
     await writeAudit(trx, {
       timeEntryId: closed.id,
       companyId: ctx.companyId,
@@ -750,8 +907,14 @@ export async function breakOut(ctx: PunchContext): Promise<TimeEntry> {
       reason: 'break_out',
     });
 
-    // Resume on the same job the employee was on pre-break.
-    const resumeJobId = await lastWorkJobForShift(trx, closed.shift_id);
+    // Resume on the same job the employee was on pre-break — unless that
+    // job was archived or turned into a time-off code during the break,
+    // in which case resume with no job rather than refuse the punch.
+    const priorJobId = await lastWorkJobForShift(trx, closed.shift_id);
+    const resumeJobId =
+      priorJobId != null && (await isPunchableJob(trx, ctx.companyId, priorJobId))
+        ? priorJobId
+        : null;
 
     const [row] = await trx<TimeEntryRow>('time_entries')
       .insert({
@@ -798,7 +961,14 @@ export async function switchJob(ctx: PunchContext, newJobId: number): Promise<Ti
     const { startedAt: pivot, isOffline, rawClientStartedAt, clockSkewMs } = resolveStartedAt(ctx);
     const loc = await resolveLocation(trx, ctx);
 
-    const closed = await closeOpen(trx, ctx, 'work', pivot, loc);
+    const closed = await closeOpen(
+      trx,
+      ctx,
+      'work',
+      pivot,
+      loc,
+      offlineCloseOf({ isOffline, rawClientStartedAt, clockSkewMs }),
+    );
     await writeAudit(trx, {
       timeEntryId: closed.id,
       companyId: ctx.companyId,
@@ -858,20 +1028,49 @@ export interface EditEntryPatch {
   entryType?: 'work' | 'break';
 }
 
+/**
+ * Edit an entry's times, job or type. Every edit path (timesheet review,
+ * correction approval, NL corrections) lands here, so the resulting entry
+ * is validated here: clock-out after clock-in, nothing in the future, no
+ * overlap with the employee's other active entries, and no moving worked
+ * time onto (or off) a time-off code. Pass `trx` to run inside the
+ * caller's transaction.
+ */
 export async function editEntry(
   entryId: number,
   patch: EditEntryPatch,
   actor: { userId: number; companyId: number },
   reason: string,
+  trx?: Knex.Transaction,
 ): Promise<TimeEntry> {
-  return db.transaction(async (trx) => {
+  return inTransaction(trx, async (trx) => {
+    // Serialize with punches for this employee (a clock-in racing an edit
+    // that reopens or extends an entry must see the result). The advisory
+    // lock comes before the row lock, in the same order punches take
+    // them, so the two can't deadlock.
+    const owner = await trx('time_entries')
+      .where({ id: entryId, company_id: actor.companyId })
+      .first<{ employee_id: number } | undefined>('employee_id');
+    if (!owner) throw NotFound('Time entry not found');
+    await lockEmployee(trx, owner.employee_id);
     const existing = await trx<TimeEntryRow>('time_entries')
       .where({ id: entryId, company_id: actor.companyId })
       .whereNull('deleted_at')
       .forUpdate()
       .first();
     if (!existing) throw NotFound('Time entry not found');
-    if (patch.jobId) await ensureJobBelongsToCompany(trx, actor.companyId, patch.jobId);
+
+    const wasTimeOff = await isTimeOffJob(trx, actor.companyId, existing.job_id);
+    if (patch.jobId !== undefined && patch.jobId !== existing.job_id) {
+      if (patch.jobId != null) await ensureJobBelongsToCompany(trx, actor.companyId, patch.jobId);
+      const becomesTimeOff = await isTimeOffJob(trx, actor.companyId, patch.jobId ?? null);
+      if (becomesTimeOff && !wasTimeOff) {
+        throw BadRequest('Time off is entered as hours on the timesheet, not on a punched entry');
+      }
+      if (wasTimeOff && !becomesTimeOff) {
+        throw BadRequest('Time off is changed as hours on the timesheet');
+      }
+    }
 
     const updates: Record<string, unknown> = {
       edited_by: actor.userId,
@@ -901,11 +1100,34 @@ export async function editEntry(
       });
     }
     // Recompute duration whenever start or end changed — handles both-edited
-    // and either-edited cases against the resulting effective times.
+    // and either-edited cases against the resulting effective times — and
+    // validate the span the entry ends up with.
     if (patch.startedAt !== undefined || patch.endedAt !== undefined) {
       const effectiveStart = (updates.started_at as Date | undefined) ?? existing.started_at;
       const effectiveEnd =
         patch.endedAt !== undefined ? (updates.ended_at as Date | null) : existing.ended_at;
+      if (effectiveEnd && effectiveEnd.getTime() <= effectiveStart.getTime()) {
+        throw BadRequest('Clock-out must be after clock-in');
+      }
+      const latest = Date.now() + EDIT_FUTURE_SLACK_MS;
+      if (effectiveStart.getTime() > latest || (effectiveEnd && effectiveEnd.getTime() > latest)) {
+        throw BadRequest("An entry can't be moved into the future");
+      }
+      // Time off is a duration from local midnight, not a clock span, so
+      // it neither blocks nor is blocked by worked time.
+      if (!wasTimeOff) {
+        const overlap = await findOverlappingEntry(
+          trx,
+          actor.companyId,
+          existing.employee_id,
+          effectiveStart,
+          effectiveEnd,
+          existing.id,
+        );
+        if (overlap) {
+          throw Conflict('The edited entry would overlap another entry for this employee');
+        }
+      }
       updates.duration_seconds = effectiveEnd ? secondsBetween(effectiveStart, effectiveEnd) : null;
     }
     if (patch.jobId !== undefined) {
@@ -951,11 +1173,13 @@ export async function deleteEntry(
   entryId: number,
   actor: { userId: number; companyId: number },
   reason: string,
+  trx?: Knex.Transaction,
 ): Promise<void> {
-  await db.transaction(async (trx) => {
+  await inTransaction(trx, async (trx) => {
     const existing = await trx<TimeEntryRow>('time_entries')
       .where({ id: entryId, company_id: actor.companyId })
       .whereNull('deleted_at')
+      .forUpdate()
       .first();
     if (!existing) throw NotFound('Time entry not found');
 
@@ -1006,7 +1230,11 @@ export async function createEntryForEmployee(
     companyId: number;
     sourceIp?: string | null;
     sourceUserAgent?: string | null;
+    /** `source_device_id` label. Defaults to `web-admin-<userId>`; an
+     *  employee adding their own shift passes `web-self-<userId>`. */
+    sourceDeviceId?: string;
   },
+  trx?: Knex.Transaction,
 ): Promise<TimeEntry> {
   const startedAt = new Date(input.startedAt);
   const endedAt = new Date(input.endedAt);
@@ -1014,31 +1242,21 @@ export async function createEntryForEmployee(
   if (Number.isNaN(endedAt.getTime())) throw BadRequest('Invalid endedAt');
   if (endedAt <= startedAt) throw BadRequest('endedAt must be after startedAt');
 
-  return db.transaction(async (trx) => {
+  return inTransaction(trx, async (trx) => {
     await ensureActiveEmployee(trx, actor.companyId, input.employeeId);
     if (input.jobId != null) {
       await ensureJobBelongsToCompany(trx, actor.companyId, input.jobId);
     }
 
-    // Overlap check. Two ranges overlap when a.start < b.end AND a.end > b.start.
-    // Unclosed entries (ended_at IS NULL) are treated as extending to +inf.
-    // Time off is stored from local midnight as a duration, not a clock
-    // span, so it never blocks a shift on the same day.
-    const overlap = await trx<TimeEntryRow>('time_entries')
-      .where({ company_id: actor.companyId, employee_id: input.employeeId })
-      .whereNull('deleted_at')
-      .whereNull('superseded_by_entry_id')
-      .where((qb) => {
-        qb.whereNull('job_id').orWhereNotIn(
-          'job_id',
-          trx('jobs').where({ company_id: actor.companyId, is_time_off: true }).select('id'),
-        );
-      })
-      .where('started_at', '<', endedAt)
-      .andWhere((qb) => {
-        qb.whereNull('ended_at').orWhere('ended_at', '>', startedAt);
-      })
-      .first();
+    // Overlap check against the employee's active entries; open entries
+    // run to +inf, time off never blocks (see findOverlappingEntry).
+    const overlap = await findOverlappingEntry(
+      trx,
+      actor.companyId,
+      input.employeeId,
+      startedAt,
+      endedAt,
+    );
     if (overlap) {
       throw Conflict('Proposed entry overlaps with an existing entry for this employee');
     }
@@ -1054,7 +1272,7 @@ export async function createEntryForEmployee(
         ended_at: endedAt,
         duration_seconds: secondsBetween(startedAt, endedAt),
         source: 'web',
-        source_device_id: `web-admin-${actor.userId}`,
+        source_device_id: actor.sourceDeviceId ?? `web-admin-${actor.userId}`,
         source_ip: actor.sourceIp ?? null,
         source_user_agent: actor.sourceUserAgent ?? null,
         created_by: actor.userId,

@@ -6,11 +6,12 @@ import type { AuthResponse } from '@vibept/shared';
 import { useApplianceName } from '../hooks/useApplianceName';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
+import { takeReturnTo } from '../lib/return-to';
 
 /**
  * Landing page for magic-link emails / SMS. Reads ?token= from the URL,
  * POSTs it to /auth/magic/consume, stores the session, and redirects to
- * the dashboard. If the token is bad/expired, shows an error + a link
+ * the page a lapsed session was on, else the dashboard. If the token is bad/expired, shows an error + a link
  * back to /login.
  *
  * Runs at most once per mount (StrictMode double-invoke guard) — a
@@ -43,7 +44,9 @@ export function MagicLinkConsumePage() {
     })
       .then((session) => {
         authStore.set(session);
-        navigate('/', { replace: true });
+        // Back to the page a lapsed session was on (LoginPage stored it,
+        // possibly in another tab), else the dashboard.
+        navigate(takeReturnTo() ?? '/', { replace: true });
       })
       .catch((err) => {
         setErrorMsg(err instanceof ApiError ? err.message : 'Invalid or expired login link');

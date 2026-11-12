@@ -44,6 +44,21 @@ codes and which days haven't been approved. An empty CSV almost always means
 either (a) no approved hours in the selected window, or (b) every employee
 is missing their external payroll ID.
 
+## Kiosk shows "Kiosk offline"
+
+The tablet couldn't reach the appliance while an employee was signing in or
+punching. Nothing was recorded for that attempt; the screen showed the time
+so the employee can tell a supervisor. Check the tablet's Wi-Fi and that the
+appliance URL loads in a browser. Employees can punch from their phones in
+the meantime; phones queue punches offline and send them later.
+
+## Employee says an offline punch was "refused"
+
+A phone sends saved offline punches when it reconnects. If the server turns one
+down (the shift was already closed by auto-clock-out, a duplicate clock-in, a
+punch older than 72 hours), the phone's banner shows it with the reason. Check
+the employee's timesheet and add or fix the time from there.
+
 ## Kiosk won't pair — "pairing code not found"
 
 Codes expire after five minutes. Generate a fresh one from the admin UI. If

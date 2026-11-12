@@ -7,6 +7,7 @@ import { useSession } from '../hooks/useSession';
 import { apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
 import { isPunchOnlyUser } from '../lib/punch-only';
+import { markSignedOut } from '../lib/return-to';
 import { isSsoSession, ssoSignOut } from '../lib/sso';
 import { Button } from './Button';
 
@@ -54,12 +55,16 @@ export function TopBar() {
     // may have rotated it.
     const accessToken = authStore.get()?.accessToken;
     if (accessToken && isSsoSession(accessToken)) await ssoSignOut(accessToken);
+    // A deliberate sign-out returns nobody anywhere: the next person to
+    // sign in on this device starts at their own home.
+    markSignedOut();
     authStore.set(null);
     navigate('/login', { replace: true });
   };
 
+  // An employee record somewhere: the clock, the timesheet and the
+  // notification settings (which live on the employee record) are theirs.
   const isEmployee = !!session?.user.memberships.some((m) => m.isEmployee);
-  const hasMemberships = !!session && session.user.memberships.length > 0;
   const isSuper = session?.user.roleGlobal === 'super_admin';
 
   // Shared link list used by both desktop + mobile so they never drift
@@ -70,11 +75,9 @@ export function TopBar() {
   const links: Array<{ to: string; label: string }> = punchOnly
     ? []
     : [{ to: '/', label: 'Dashboard' }];
-  if (hasMemberships) {
-    if (isEmployee) {
-      links.push({ to: '/my-punch', label: 'My time' });
-      links.push({ to: '/my-timesheet', label: 'Timesheet' });
-    }
+  if (isEmployee) {
+    links.push({ to: '/my-punch', label: 'My time' });
+    links.push({ to: '/my-timesheet', label: 'My timesheet' });
     links.push({ to: '/notifications', label: 'Notifications' });
   }
   if (isSuper) {

@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EmployeePreferences } from '@vibept/shared';
-import { useEffect, useMemo, useState } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { TopBar } from '../components/TopBar';
+import { usePunchCompany } from '../hooks/usePunchCompany';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
 import { notifications } from '../lib/resources';
@@ -14,14 +15,18 @@ import { notifications } from '../lib/resources';
  * Employee self-service: email opt-in, phone verification, SMS
  * opt-in. SMS toggle is gated on a verified phone — the backend
  * returns 403 if you try to flip it without verification.
+ *
+ * Preferences live on the employee record, so only companies where the
+ * person has one are offered (an admin-only membership has nothing to
+ * set). Starts on the company they punch for; picking another here does
+ * not change that.
  */
 export function NotificationPreferencesPage() {
   const session = useSession();
-  const memberships = useMemo(() => session?.user.memberships ?? [], [session]);
-  const [companyId, setCompanyId] = useState<number | null>(memberships[0]?.companyId ?? null);
-  useEffect(() => {
-    if (!companyId && memberships[0]) setCompanyId(memberships[0].companyId);
-  }, [companyId, memberships]);
+  const { memberships, companyId: punchCompanyId } = usePunchCompany();
+  const [picked, setPicked] = useState<number | null>(null);
+  const companyId =
+    picked != null && memberships.some((m) => m.companyId === picked) ? picked : punchCompanyId;
 
   const qc = useQueryClient();
   const prefs = useQuery({
@@ -66,7 +71,7 @@ export function NotificationPreferencesPage() {
             <select
               className="rounded-md border border-slate-300 bg-white px-3 py-2 shadow-sm"
               value={companyId ?? ''}
-              onChange={(e) => setCompanyId(Number(e.target.value))}
+              onChange={(e) => setPicked(Number(e.target.value))}
             >
               {memberships.map((m) => (
                 <option key={m.companyId} value={m.companyId}>
@@ -75,6 +80,25 @@ export function NotificationPreferencesPage() {
               ))}
             </select>
           </label>
+        )}
+
+        {memberships.length === 0 && (
+          <p className="rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-600">
+            Notification settings belong to an employee record, and you don't have one at any
+            company. Ask an administrator if you should.
+          </p>
+        )}
+
+        {prefs.isPending && companyId != null && <p className="text-sm text-slate-500">Loading…</p>}
+        {prefs.isError && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          >
+            {prefs.error instanceof ApiError
+              ? prefs.error.message
+              : 'Could not load your notification settings.'}
+          </div>
         )}
 
         {prefs.data && (
@@ -87,6 +111,13 @@ export function NotificationPreferencesPage() {
               busy={toggleEmail.isPending}
               disabled={!prefs.data.email}
             />
+            {toggleEmail.isError && (
+              <p className="text-xs text-red-700">
+                {toggleEmail.error instanceof ApiError
+                  ? toggleEmail.error.message
+                  : 'Failed to update email preference.'}
+              </p>
+            )}
 
             <div className="border-t border-slate-100 pt-4">
               <ToggleRow
@@ -113,7 +144,14 @@ export function NotificationPreferencesPage() {
         )}
 
         {companyId != null && prefs.data && (
-          <PhoneVerificationCard companyId={companyId} prefs={prefs.data} onVerified={invalidate} />
+          <PhoneVerificationCard
+            // Fresh draft state per company: the phone field seeds from
+            // that company's employee record.
+            key={companyId}
+            companyId={companyId}
+            prefs={prefs.data}
+            onVerified={invalidate}
+          />
         )}
       </main>
     </>
@@ -135,23 +173,31 @@ function ToggleRow({
   busy: boolean;
   disabled?: boolean;
 }) {
+  const subtitleId = useId();
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
         <p className="text-sm font-medium text-slate-900">{title}</p>
-        <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+        <p id={subtitleId} className="mt-0.5 text-xs text-slate-500">
+          {subtitle}
+        </p>
       </div>
       <label className="relative inline-flex cursor-pointer items-center">
+        {/* sr-only checkbox behind a drawn switch: give it a name, a
+            switch role, and a visible focus ring on the track. */}
         <input
           type="checkbox"
-          className="sr-only"
+          role="switch"
+          aria-label={title}
+          aria-describedby={subtitleId}
+          className="peer sr-only"
           checked={enabled}
           disabled={disabled || busy}
           onChange={(e) => onToggle(e.target.checked)}
         />
         <span
           className={
-            'h-6 w-11 rounded-full transition ' +
+            'h-6 w-11 rounded-full transition peer-focus-visible:ring-2 peer-focus-visible:ring-slate-900 peer-focus-visible:ring-offset-2 ' +
             (enabled ? 'bg-emerald-500' : 'bg-slate-300') +
             (disabled ? ' opacity-50' : '')
           }

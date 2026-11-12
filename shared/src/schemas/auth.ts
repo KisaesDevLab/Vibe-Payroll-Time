@@ -66,6 +66,10 @@ export type MeResponse = z.infer<typeof meResponseSchema>;
 export const changePasswordRequestSchema = z.object({
   currentPassword: z.string().min(1).max(256),
   newPassword: z.string().min(12).max(256),
+  /** The caller's own refresh token. Every other session is signed out;
+   *  this one is kept so the person changing the password stays signed
+   *  in. Omitted → every session is signed out, this one included. */
+  refreshToken: z.string().min(1).max(512).optional(),
 });
 export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
 
@@ -74,6 +78,8 @@ export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
  *  was the ownership proof. */
 export const setPasswordAfterMagicLinkRequestSchema = z.object({
   newPassword: z.string().min(12).max(256),
+  /** Same as on changePasswordRequestSchema: keep this one session. */
+  refreshToken: z.string().min(1).max(512).optional(),
 });
 export type SetPasswordAfterMagicLinkRequest = z.infer<
   typeof setPasswordAfterMagicLinkRequestSchema

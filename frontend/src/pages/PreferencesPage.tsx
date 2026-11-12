@@ -8,6 +8,7 @@ import type {
 } from '@vibept/shared';
 import { formatHours } from '@vibept/shared';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormatToggle } from '../components/FormatToggle';
 import { FormField } from '../components/FormField';
@@ -15,6 +16,7 @@ import { TopBar } from '../components/TopBar';
 import { useSession } from '../hooks/useSession';
 import { decodeAccessToken } from '../lib/access-token-claims';
 import { ApiError, apiFetch } from '../lib/api';
+import { authStore } from '../lib/auth-store';
 import { userPhone, userPreferences } from '../lib/resources';
 
 /**
@@ -114,7 +116,9 @@ export function PreferencesPage(): JSX.Element {
 function PhoneNotificationsCard(): JSX.Element {
   const session = useSession();
   const qc = useQueryClient();
-  const companyCount = session?.user.memberships.length ?? 0;
+  // Per-company phones live on employee records; admin-only memberships
+  // have none.
+  const companyCount = session?.user.memberships.filter((m) => m.isEmployee).length ?? 0;
 
   const state = useQuery({
     queryKey: ['user-phone'],
@@ -271,12 +275,12 @@ function PhoneNotificationsCard(): JSX.Element {
             Each employee record has its own phone number, verified via that company's SMS provider
             — handy if your work phone differs from the number on this page.
           </p>
-          <a
-            href="/notifications"
+          <Link
+            to="/notifications"
             className="mt-2 inline-flex items-center text-xs font-medium text-slate-700 underline hover:text-slate-900"
           >
             Manage per-company phones →
-          </a>
+          </Link>
         </div>
       )}
     </section>
@@ -294,18 +298,31 @@ function ChangePasswordCard(): JSX.Element {
   const [done, setDone] = useState(false);
 
   const change = useMutation({
-    mutationFn: (body: ChangePasswordRequest | SetPasswordAfterMagicLinkRequest) => {
+    mutationFn: async (body: ChangePasswordRequest | SetPasswordAfterMagicLinkRequest) => {
+      // An access token about to lapse would make apiFetch refresh mid-call
+      // and retry with the body below, naming a refresh token that was
+      // just rotated away — and the server would then revoke the new one.
+      // Refresh first (any authenticated call does it) so the token we
+      // send is the live one.
+      const expiresAt = Date.parse(authStore.get()?.accessTokenExpiresAt ?? '');
+      if (!Number.isFinite(expiresAt) || expiresAt - Date.now() < 30_000) {
+        await apiFetch('/auth/me').catch(() => undefined);
+      }
+      // Our own refresh token, read at call time (it rotates): the server
+      // signs out every other session and keeps this one.
+      const refreshToken = authStore.get()?.refreshToken;
       if (viaMagicLink) {
         return apiFetch<void>('/auth/set-password', {
           method: 'POST',
           body: JSON.stringify({
             newPassword: (body as SetPasswordAfterMagicLinkRequest).newPassword,
-          }),
+            refreshToken,
+          } satisfies SetPasswordAfterMagicLinkRequest),
         });
       }
       return apiFetch<void>('/auth/change-password', {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, refreshToken }),
       });
     },
     onSuccess: () => {
@@ -331,7 +348,7 @@ function ChangePasswordCard(): JSX.Element {
       </h2>
       <p className="mt-1 text-sm text-slate-600">
         {viaMagicLink
-          ? 'You signed in with a magic link, so you can set a new password without entering the current one. After saving, your other sessions are signed out.'
+          ? 'You signed in with a magic link, so you can set a new password without entering the current one. After saving, you stay signed in here and every other device is signed out.'
           : 'Forgotten your password? Sign out and use the "Email me a login link" option on the sign-in page instead — after signing in that way, you can set a new password here without knowing the old one.'}
       </p>
 
@@ -399,7 +416,7 @@ function ChangePasswordCard(): JSX.Element {
           </Button>
           {done && !change.isPending && (
             <span className="text-sm text-emerald-700">
-              Password updated. Other sessions signed out.
+              Password updated. You're still signed in here; other devices were signed out.
             </span>
           )}
         </div>

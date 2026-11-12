@@ -25,7 +25,10 @@ break room.
 5. Confirm the device name on the admin screen — it turns green when paired.
 
 The tablet now holds a long-lived device token. **Do not sign in as a user on
-this tablet** — the kiosk token is all it needs.
+this tablet** — the kiosk token is all it needs. Opening the kiosk or pairing
+signs out any user session in that browser, so if you generate the code and
+pair in the same browser, you'll need to sign in again afterwards (better: pair
+on the tablet itself).
 
 ## Day-to-day
 
@@ -35,6 +38,17 @@ this tablet** — the kiosk token is all it needs.
   employees gets an instant lookup.
 - Kiosk punches show `source: kiosk` in the audit trail along with the paired
   device's name.
+- After **Clock out** the confirmation shows the employee's hours worked that
+  day, in the company's default time format.
+- The screen returns to the start after 30 seconds without a tap.
+
+### When the network drops
+
+The kiosk does not store punches offline: verifying a PIN or badge needs the
+server, and holding them on a shared tablet isn't safe. If it can't reach the
+server it shows **Kiosk offline** with the action and time the employee tried.
+Nothing is recorded. Employees clock in on their phone instead, or tell their
+supervisor the time shown so it can be added from the timesheet.
 
 ## Locking the tablet
 
@@ -49,6 +63,11 @@ this tablet** — the kiosk token is all it needs.
    server.
 2. On the tablet, clear site data for the appliance URL to wipe the device
    token. (Optional — the server-side revocation is the one that matters.)
+
+You can also unpair from the tablet itself: tap **Unpair** and type `UNPAIR`
+to confirm (a single tap isn't enough, so a passer-by can't do it). This
+revokes the device token on the server too; if the tablet is offline it
+unpairs locally and the token stays valid until you revoke it under **Kiosks**.
 
 ## QR badge mode (Phase 4.5)
 
