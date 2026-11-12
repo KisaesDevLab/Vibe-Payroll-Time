@@ -135,6 +135,115 @@ export function TimesheetView({
     return map;
   }, [data.entries, data.days]);
 
+  /** The pieces of one entry's row, shared by the phone card and the
+   *  table so both show the same thing. */
+  const entryParts = (e: TimeEntry) => {
+    // Time off is hours on a day, not a span of clock time: its stored
+    // start/end are a placeholder, so don't show them.
+    const isTimeOff = e.jobId != null && timeOffCategoryByJob.has(e.jobId);
+    const pendingFix = pendingRequestEntryIds?.has(e.id) ?? false;
+    return {
+      isTimeOff,
+      type: (
+        <>
+          <span
+            className={
+              'whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ' +
+              (isTimeOff
+                ? 'bg-emerald-100 text-emerald-800'
+                : e.entryType === 'work'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-amber-100 text-amber-800')
+            }
+          >
+            {isTimeOff
+              ? `time off · ${TIME_OFF_CATEGORY_LABELS[timeOffCategoryByJob.get(e.jobId!)!]}`
+              : e.entryType}
+          </span>
+          {pendingFix && (
+            <span className="ml-1 whitespace-nowrap rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+              fix requested
+            </span>
+          )}
+        </>
+      ),
+      start: (
+        <>{isTimeOff ? <span className="text-slate-400">—</span> : formatTime(e.startedAt, tz)}</>
+      ),
+      end: (
+        <>
+          {isTimeOff ? (
+            <span className="text-slate-400">—</span>
+          ) : e.endedAt ? (
+            formatTime(e.endedAt, tz)
+          ) : (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+              OPEN
+            </span>
+          )}
+        </>
+      ),
+      hours: e.durationSeconds != null ? hrs(e.durationSeconds) : '—',
+      source: (
+        <>
+          {e.source}
+          {e.sourceOffline && (
+            <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">offline</span>
+          )}
+          {e.isAutoClosed && (
+            <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-800">
+              auto-closed
+            </span>
+          )}
+          <LocationBadges entry={e} />
+        </>
+      ),
+      actions: (
+        <>
+          <button
+            type="button"
+            className="text-slate-600 hover:underline"
+            onClick={() => setAuditEntryId(e.id)}
+          >
+            History
+          </button>
+          {onRequestCorrection &&
+            !e.approvedAt &&
+            e.supersededByEntryId == null &&
+            (isTimeOff ? (
+              timeOffFixHint
+            ) : pendingFix ? null : (
+              <button
+                type="button"
+                className="whitespace-nowrap text-slate-700 hover:underline"
+                onClick={() => onRequestCorrection(e)}
+              >
+                Request fix
+              </button>
+            ))}
+          {onEditEntry && (!e.approvedAt || allowApprovedChanges) && (
+            <button
+              type="button"
+              className="text-slate-900 hover:underline"
+              onClick={() => onEditEntry(e)}
+            >
+              Edit
+            </button>
+          )}
+          {onDeleteEntry && (!e.approvedAt || allowApprovedChanges) && (
+            <button
+              type="button"
+              className="text-red-700 hover:underline"
+              onClick={() => onDeleteEntry(e)}
+            >
+              Delete
+            </button>
+          )}
+        </>
+      ),
+    };
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <header className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -193,7 +302,7 @@ export function TimesheetView({
             key={day.date}
             className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
           >
-            <header className="flex items-center justify-between bg-slate-50 px-5 py-3">
+            <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 bg-slate-50 px-4 py-3 sm:px-5">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
                   {formatCivilDay(day.date, { weekday: 'long', month: 'short', day: 'numeric' })}
@@ -204,8 +313,36 @@ export function TimesheetView({
                 {day.timeOffSeconds > 0 && <> · Time off {hrs(day.timeOffSeconds)} hrs</>}
               </p>
             </header>
-            {/* Scrolls sideways on a phone rather than clipping the actions. */}
-            <div className="overflow-x-auto">
+            {/* Phones get one card per entry so nothing hides off-screen;
+                wider screens keep the table. */}
+            <ul className="divide-y divide-slate-100 sm:hidden">
+              {dayEntries.map((e) => {
+                const p = entryParts(e);
+                return (
+                  <li key={e.id} className="flex flex-col gap-1.5 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-1">{p.type}</div>
+                      <span className="whitespace-nowrap font-mono text-sm font-medium text-slate-900">
+                        {p.hours}
+                        {data.timeFormat === 'decimal' && e.durationSeconds != null ? ' hrs' : ''}
+                      </span>
+                    </div>
+                    {!p.isTimeOff && (
+                      <p className="font-mono text-xs text-slate-700">
+                        {p.start} → {p.end}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
+                      {p.source}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-sm">
+                      {p.actions}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden overflow-x-auto sm:block">
               <table className="min-w-full divide-y divide-slate-100 text-sm">
                 <thead className="bg-white text-xs uppercase text-slate-500">
                   <tr>
@@ -219,110 +356,22 @@ export function TimesheetView({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {dayEntries.map((e) => {
-                    // Time off is hours on a day, not a span of clock time: its
-                    // stored start/end are a placeholder, so don't show them.
-                    const isTimeOff = e.jobId != null && timeOffCategoryByJob.has(e.jobId);
-                    const pendingFix = pendingRequestEntryIds?.has(e.id) ?? false;
+                    const p = entryParts(e);
                     return (
                       <tr key={e.id}>
-                        <td className="px-5 py-2">
-                          <span
-                            className={
-                              'whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ' +
-                              (isTimeOff
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : e.entryType === 'work'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-amber-100 text-amber-800')
-                            }
-                          >
-                            {isTimeOff
-                              ? `time off · ${TIME_OFF_CATEGORY_LABELS[timeOffCategoryByJob.get(e.jobId!)!]}`
-                              : e.entryType}
-                          </span>
-                          {pendingFix && (
-                            <span className="ml-1 whitespace-nowrap rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                              fix requested
-                            </span>
-                          )}
+                        <td className="px-5 py-2">{p.type}</td>
+                        <td className="whitespace-nowrap px-5 py-2 font-mono text-xs text-slate-700">
+                          {p.start}
                         </td>
                         <td className="whitespace-nowrap px-5 py-2 font-mono text-xs text-slate-700">
-                          {isTimeOff ? (
-                            <span className="text-slate-400">—</span>
-                          ) : (
-                            formatTime(e.startedAt, tz)
-                          )}
+                          {p.end}
                         </td>
                         <td className="whitespace-nowrap px-5 py-2 font-mono text-xs text-slate-700">
-                          {isTimeOff ? (
-                            <span className="text-slate-400">—</span>
-                          ) : e.endedAt ? (
-                            formatTime(e.endedAt, tz)
-                          ) : (
-                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                              OPEN
-                            </span>
-                          )}
+                          {p.hours}
                         </td>
-                        <td className="whitespace-nowrap px-5 py-2 font-mono text-xs text-slate-700">
-                          {e.durationSeconds != null ? hrs(e.durationSeconds) : '—'}
-                        </td>
-                        <td className="px-5 py-2 text-xs text-slate-500">
-                          {e.source}
-                          {e.sourceOffline && (
-                            <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px]">
-                              offline
-                            </span>
-                          )}
-                          {e.isAutoClosed && (
-                            <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-800">
-                              auto-closed
-                            </span>
-                          )}
-                          <LocationBadges entry={e} />
-                        </td>
+                        <td className="px-5 py-2 text-xs text-slate-500">{p.source}</td>
                         <td className="px-5 py-2 text-right text-xs">
-                          <div className="flex items-center justify-end gap-3">
-                            <button
-                              type="button"
-                              className="text-slate-600 hover:underline"
-                              onClick={() => setAuditEntryId(e.id)}
-                            >
-                              History
-                            </button>
-                            {onRequestCorrection &&
-                              !e.approvedAt &&
-                              e.supersededByEntryId == null &&
-                              (isTimeOff ? (
-                                timeOffFixHint
-                              ) : pendingFix ? null : (
-                                <button
-                                  type="button"
-                                  className="whitespace-nowrap text-slate-700 hover:underline"
-                                  onClick={() => onRequestCorrection(e)}
-                                >
-                                  Request fix
-                                </button>
-                              ))}
-                            {onEditEntry && (!e.approvedAt || allowApprovedChanges) && (
-                              <button
-                                type="button"
-                                className="text-slate-900 hover:underline"
-                                onClick={() => onEditEntry(e)}
-                              >
-                                Edit
-                              </button>
-                            )}
-                            {onDeleteEntry && (!e.approvedAt || allowApprovedChanges) && (
-                              <button
-                                type="button"
-                                className="text-red-700 hover:underline"
-                                onClick={() => onDeleteEntry(e)}
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
+                          <div className="flex items-center justify-end gap-3">{p.actions}</div>
                         </td>
                       </tr>
                     );
