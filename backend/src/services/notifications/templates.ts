@@ -14,6 +14,8 @@ export type NotificationType =
   | 'password_reset'
   | 'magic_link'
   | 'missed_punch_reminder'
+  | 'missing_time_reminder'
+  | 'missing_time_summary'
   | 'timesheet_approval_deadline'
   | 'correction_request_received'
   | 'correction_request_decided'
@@ -121,6 +123,43 @@ You've had an open entry at {{companyName}} since {{startedAt}} ({{elapsedHours}
 
 {{myPunchUrl}}`,
     sms: 'Still clocked in at {{companyName}}? Fix: {{myPunchUrl}}',
+  },
+
+  // `fixHow` is the next step, set by whether this company lets
+  // employees enter their own time. `missingDays` is one date per line.
+  missing_time_reminder: {
+    subject: 'Missing time for {{periodLabel}} at {{companyName}}',
+    html: `<p>Hi {{firstName}},</p>
+<p>Your timesheet at {{companyName}} has no time recorded for {{missingCount}} work day(s) in the {{periodLabel}} pay period:</p>
+<p style="white-space:pre-line">{{missingDays}}</p>
+<p>{{fixHow}} If you didn't work those days, let your supervisor know.</p>
+<p><a href="{{timesheetUrl}}">Open my timesheet</a></p>`,
+    text: `Hi {{firstName}},
+
+Your timesheet at {{companyName}} has no time recorded for {{missingCount}} work day(s) in the {{periodLabel}} pay period:
+
+{{missingDays}}
+
+{{fixHow}} If you didn't work those days, let your supervisor know.
+
+{{timesheetUrl}}`,
+    sms: '{{companyName}}: no time recorded for {{missingCount}} day(s) in {{periodLabel}}. Please fix: {{timesheetUrl}}',
+  },
+
+  missing_time_summary: {
+    subject: '{{employeeCount}} employee(s) missing time for {{periodLabel}}',
+    html: `<p>Hi,</p>
+<p>These employees at {{companyName}} still have work days with no time recorded in the {{periodLabel}} pay period. Each was sent a reminder today.</p>
+<p style="white-space:pre-line">{{summaryList}}</p>
+<p><a href="{{reviewUrl}}">Review timesheets</a></p>`,
+    text: `Hi,
+
+These employees at {{companyName}} still have work days with no time recorded in the {{periodLabel}} pay period. Each was sent a reminder today.
+
+{{summaryList}}
+
+{{reviewUrl}}`,
+    sms: '{{employeeCount}} employee(s) at {{companyName}} missing time for {{periodLabel}}: {{reviewUrl}}',
   },
 
   timesheet_approval_deadline: {

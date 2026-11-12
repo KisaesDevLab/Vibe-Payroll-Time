@@ -1,6 +1,10 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import type {
+  MissingTimePeriod,
+  MissingTimeReport,
+  SendMissingTimeRemindersRequest,
+  SendMissingTimeRemindersResponse,
   AccessGroup,
   CreateAccessGroupRequest,
   SetAccessGroupCompaniesRequest,
@@ -323,6 +327,16 @@ export const jobs = {
 // Time off (Settings → Time off)
 // ---------------------------------------------------------------------------
 
+export const missingTime = {
+  report: (companyId: number, period: MissingTimePeriod) =>
+    apiFetch<MissingTimeReport>(`/companies/${companyId}/missing-time?period=${period}`),
+  remind: (companyId: number, body: SendMissingTimeRemindersRequest) =>
+    apiFetch<SendMissingTimeRemindersResponse>(`/companies/${companyId}/missing-time/remind`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+};
+
 export const timeOff = {
   listTypes: (companyId: number) =>
     apiFetch<TimeOffTypeState[]>(`/companies/${companyId}/time-off-types`),
@@ -363,7 +377,7 @@ export const timesheets = {
   get: (
     companyId: number,
     employeeId: number,
-    opts: { periodStart?: string; periodEnd?: string } = {},
+    opts: { periodStart?: string; periodEnd?: string; at?: string } = {},
   ) => {
     const params = new URLSearchParams({
       companyId: String(companyId),
@@ -371,6 +385,7 @@ export const timesheets = {
     });
     if (opts.periodStart) params.set('periodStart', opts.periodStart);
     if (opts.periodEnd) params.set('periodEnd', opts.periodEnd);
+    if (opts.at) params.set('at', opts.at);
     return apiFetch<TimesheetResponse>(`/timesheets?${params.toString()}`);
   },
   current: (companyId: number) =>

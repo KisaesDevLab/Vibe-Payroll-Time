@@ -41,9 +41,7 @@ export const hoursByJobReport: ReportHandler<typeof hoursByJobParamsSchema> = {
       .where('t.company_id', companyId)
       .where('t.entry_type', 'work')
       .whereNull('t.deleted_at')
-      // A manual entry supersedes the punches it replaces; only the
-      // active row counts (punch-activity / audit-trail keep raw punches).
-      .whereNull('t.superseded_by_entry_id')
+      .whereNull('t.superseded_by_entry_id') // replaced by a manual entry
       .whereNotNull('t.ended_at')
       .where('t.started_at', '>=', start)
       .where('t.started_at', '<', end)

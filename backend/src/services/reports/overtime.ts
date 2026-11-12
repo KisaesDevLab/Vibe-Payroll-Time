@@ -51,9 +51,7 @@ export const overtimeReport: ReportHandler<typeof overtimeParamsSchema> = {
     const rows = await db<TimeEntryRow>('time_entries')
       .where('company_id', companyId)
       .whereNull('deleted_at')
-      // A manual entry supersedes the punches it replaces; only the
-      // active row counts (punch-activity / audit-trail keep raw punches).
-      .whereNull('superseded_by_entry_id')
+      .whereNull('superseded_by_entry_id') // replaced by a manual entry
       .where(function () {
         this.whereNull('ended_at').orWhere('ended_at', '>', start);
       })

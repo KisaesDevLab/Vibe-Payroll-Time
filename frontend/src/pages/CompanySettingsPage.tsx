@@ -15,6 +15,7 @@ import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { TimezoneOptions } from '../components/TimezoneOptions';
+import { WorkDaysPicker } from '../components/WorkDaysPicker';
 import { ApiError } from '../lib/api';
 import {
   ai,
@@ -25,13 +26,21 @@ import {
 import type { CompanyContext } from './CompanyLayout';
 import { deliveryLabel } from '../lib/sms-delivery';
 
-type Section = 'general' | 'punch' | 'approval' | 'timeOff' | 'notifications' | 'ai';
+type Section =
+  | 'general'
+  | 'punch'
+  | 'approval'
+  | 'timeOff'
+  | 'missingTime'
+  | 'notifications'
+  | 'ai';
 
 const SECTIONS: Array<{ id: Section; label: string }> = [
   { id: 'general', label: 'General' },
   { id: 'punch', label: 'Punch rules' },
   { id: 'approval', label: 'Approval' },
   { id: 'timeOff', label: 'Time off' },
+  { id: 'missingTime', label: 'Missing time' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'ai', label: 'AI' },
 ];
@@ -119,6 +128,14 @@ export function CompanySettingsPage() {
         {section === 'timeOff' && (
           <TimeOffSection
             companyId={companyId}
+            settings={settingsQ.data}
+            onSubmit={updateSettings.mutate}
+            saving={updateSettings.isPending}
+            error={updateSettings.error}
+          />
+        )}
+        {section === 'missingTime' && (
+          <MissingTimeSection
             settings={settingsQ.data}
             onSubmit={updateSettings.mutate}
             saving={updateSettings.isPending}
@@ -491,6 +508,114 @@ function ApprovalSection({
         />
         Allow company admin to self-approve (solo firm / internal use)
       </label>
+    </SectionShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Missing time
+// ---------------------------------------------------------------------------
+
+function hourLabel(h: number): string {
+  const suffix = h < 12 ? 'AM' : 'PM';
+  const twelve = h % 12 === 0 ? 12 : h % 12;
+  return `${twelve}:00 ${suffix}`;
+}
+
+function MissingTimeSection({
+  settings,
+  onSubmit,
+  saving,
+  error,
+}: {
+  settings: CompanySettings;
+  onSubmit: (body: UpdateCompanySettingsRequest) => void;
+  saving: boolean;
+  error: unknown;
+}) {
+  const [form, setForm] = useState<UpdateCompanySettingsRequest>({});
+  const workDays = form.workDays ?? settings.workDays;
+  const enabled = form.missingTimeRemindersEnabled ?? settings.missingTimeRemindersEnabled;
+
+  return (
+    <SectionShell
+      title="Missing time"
+      onSave={() => onSubmit(form)}
+      saving={saving}
+      error={error}
+      disabled={Object.keys(form).length === 0 || workDays.length === 0}
+    >
+      <p className="-mt-2 text-sm text-slate-600">
+        A day is missing when it is one of an employee&apos;s work days, on or after their hire
+        date, and has no work or time-off entry at all. Short days are not flagged. Employees
+        without a sign-in, employees you switch reminders off for, and approved pay periods are left
+        out. Managers can also send reminders any time from Timesheets → Missing time.
+      </p>
+      <div className="flex flex-col gap-1.5 text-sm">
+        <span className="font-medium text-slate-700">Work days</span>
+        <WorkDaysPicker
+          value={workDays}
+          onChange={(days) => setForm((f) => ({ ...f, workDays: days }))}
+        />
+        <span className="text-xs text-slate-500">
+          The company default. Give someone different days on their employee record.
+          {workDays.length === 0 && (
+            <span className="ml-1 text-red-600">Pick at least one day.</span>
+          )}
+        </span>
+      </div>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4"
+          defaultChecked={settings.missingTimeRemindersEnabled}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, missingTimeRemindersEnabled: e.target.checked }))
+          }
+        />
+        <span>
+          Remind employees automatically after each pay period ends
+          <span className="block text-xs text-slate-500">
+            The morning after a period closes, anyone with missing days gets an email or text
+            listing them, then one a day until the days are filled, the period is approved, or the
+            limit below is reached. Company admins get one summary each day reminders go out;
+            supervisors too when supervisor approval is required.
+          </span>
+        </span>
+      </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Send at (company time)</span>
+          <select
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm disabled:bg-slate-50"
+            disabled={!enabled}
+            defaultValue={settings.missingTimeReminderHour}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, missingTimeReminderHour: Number(e.target.value) }))
+            }
+          >
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>
+                {hourLabel(h)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium text-slate-700">Reminders per pay period</span>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm disabled:bg-slate-50"
+            disabled={!enabled}
+            defaultValue={settings.missingTimeReminderMax}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, missingTimeReminderMax: Number(e.target.value) }))
+            }
+          />
+        </label>
+      </div>
     </SectionShell>
   );
 }

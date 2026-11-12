@@ -62,11 +62,23 @@ export async function listCorrectionRequests(
   companyId: number,
   opts: { status?: 'pending' | 'approved' | 'rejected'; employeeId?: number } = {},
 ): Promise<CorrectionRequest[]> {
-  const q = db<CorrectionRow>('correction_requests').where({ company_id: companyId });
-  if (opts.status) q.where('status', opts.status);
-  if (opts.employeeId) q.where('employee_id', opts.employeeId);
-  const rows = await q.orderBy('created_at', 'desc').orderBy('id', 'desc');
-  return rows.map(rowToRequest);
+  const q = db('correction_requests as cr')
+    .join('employees as e', function () {
+      this.on('e.id', '=', 'cr.employee_id').andOn('e.company_id', '=', 'cr.company_id');
+    })
+    .where('cr.company_id', companyId);
+  if (opts.status) q.where('cr.status', opts.status);
+  if (opts.employeeId) q.where('cr.employee_id', opts.employeeId);
+  const rows = await q
+    .orderBy('cr.created_at', 'desc')
+    .orderBy('cr.id', 'desc')
+    .select<
+      Array<CorrectionRow & { first_name: string; last_name: string }>
+    >('cr.*', 'e.first_name', 'e.last_name');
+  return rows.map((r) => ({
+    ...rowToRequest(r),
+    employeeName: `${r.first_name} ${r.last_name}`.trim(),
+  }));
 }
 
 /** The employee's own correction requests at this company, newest first. */

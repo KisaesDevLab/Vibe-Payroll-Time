@@ -3,6 +3,7 @@
 import type { ReportColumn, ReportResult } from '@vibept/shared';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { isTotalRow } from './report-rows';
 
 /**
  * Report PDFs, built in the browser with jsPDF + jspdf-autotable (the
@@ -29,11 +30,6 @@ export interface ReportPdfInput {
 
 const MARGIN = 36; // 0.5in in points
 const isNumeric = (c: ReportColumn) => c.type === 'hours' || c.type === 'number';
-
-/** A summary row a report appends (e.g. the time card's TOTAL lines). */
-function isTotalRow(row: Record<string, unknown>): boolean {
-  return Object.values(row).some((v) => typeof v === 'string' && /^(TOTAL|TIME OFF ·)/.test(v));
-}
 
 export function buildReportPdf(input: ReportPdfInput): jsPDF {
   const { columns, result } = input;

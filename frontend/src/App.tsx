@@ -77,6 +77,10 @@ const TimesheetsReviewPage = lazyPage(
 // needs the network anyway, so it stays lazy; the list view
 // (MyTimesheetPage) is the one that must work offline.
 const WeeklyGridPage = lazyPage(() => import('./pages/WeeklyGridPage'), 'WeeklyGridPage');
+const WeeklyTimesheetPrintPage = lazyPage(
+  () => import('./pages/WeeklyTimesheetPrintPage'),
+  'WeeklyTimesheetPrintPage',
+);
 
 /** `/kiosk` and `/kiosk/...` — a shared tablet, not a person's session. */
 function isKioskPath(pathname: string): boolean {
@@ -308,6 +312,7 @@ export function App() {
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="timesheets/:employeeId/week" element={<WeeklyGridPage />} />
           <Route path="timesheets/grid" element={<MultiEmployeeGridPage />} />
+          <Route path="timesheets/print" element={<WeeklyTimesheetPrintPage />} />
           <Route path="timesheets" element={<TimesheetsReviewPage />} />
           <Route path="corrections" element={<CorrectionsPage />} />
           <Route path="reports" element={<ReportsPage />} />

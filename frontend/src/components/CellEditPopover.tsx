@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import type { ParseError, TimeFormat } from '@vibept/shared';
 import { formatHours } from '@vibept/shared';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button } from './Button.js';
 import { HoursInput } from './HoursInput.js';
 import { Modal } from './Modal.js';
@@ -32,6 +32,12 @@ export interface CellEditPopoverProps {
    *  note, since nobody should have to justify a day off. */
   timeOff?: boolean;
   /** What saving 0 hours does on this cell. Absent → 0 can't be saved. */
+  /** The day sits in an approved pay period (admin-only path): show
+   *  `lockedWarning` and require a reason for every change. */
+  lockedWarning?: string | null;
+  /** Rendered under the header — the entries behind this cell, with
+   *  per-entry actions for managers. */
+  entriesSlot?: ReactNode;
   zero?: {
     /** Button label, e.g. "Remove punches". */
     label: string;
@@ -57,6 +63,8 @@ export function CellEditPopover({
   saving,
   errorText,
   timeOff = false,
+  lockedWarning = null,
+  entriesSlot,
   zero,
 }: CellEditPopoverProps): JSX.Element {
   const [seconds, setSeconds] = useState<number | null>(initialSeconds);
@@ -66,7 +74,7 @@ export function CellEditPopover({
     initialSeconds != null ? formatHours(initialSeconds, format) : '',
   );
 
-  const reasonRequired = !timeOff && mode !== 'add';
+  const reasonRequired = !!lockedWarning || (!timeOff && mode !== 'add');
   const reasonOk = !reasonRequired || reason.trim().length > 0;
   // Zero isn't an entry: it removes what the cell holds, via `zero`.
   const isZero = seconds === 0 && !parseError;
@@ -131,6 +139,14 @@ export function CellEditPopover({
           <span className="font-medium text-slate-700">{jobLabel}</span>
         </div>
 
+        {lockedWarning && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {lockedWarning}
+          </div>
+        )}
+
+        {entriesSlot}
+
         {mode === 'override' && (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <span className="mr-2 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
@@ -188,7 +204,13 @@ export function CellEditPopover({
             onChange={(e) => setReason(e.target.value)}
             rows={2}
             disabled={saving}
-            placeholder={reasonRequired ? 'Required for overrides and edits' : 'Optional'}
+            placeholder={
+              lockedWarning
+                ? 'Required — this period is approved'
+                : reasonRequired
+                  ? 'Required for overrides and edits'
+                  : 'Optional'
+            }
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:bg-slate-50"
           />
         </label>

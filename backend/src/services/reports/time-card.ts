@@ -46,9 +46,7 @@ export const timeCardReport: ReportHandler<typeof timeCardParamsSchema> = {
       .leftJoin('jobs as j', 'j.id', 't.job_id')
       .where({ 't.company_id': companyId, 't.employee_id': params.employeeId })
       .whereNull('t.deleted_at')
-      // A manual entry supersedes the punches it replaces; only the
-      // active row counts (punch-activity / audit-trail keep raw punches).
-      .whereNull('t.superseded_by_entry_id')
+      .whereNull('t.superseded_by_entry_id') // replaced by a manual entry
       .where(function () {
         this.whereNull('t.ended_at').orWhere('t.ended_at', '>', start);
       })

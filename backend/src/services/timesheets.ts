@@ -93,6 +93,7 @@ export async function getTimesheet(
   opts: {
     periodStart?: Date;
     periodEnd?: Date;
+    at?: Date;
     /** Whose display preference sets `timeFormat`; company default if omitted. */
     viewerUserId?: number;
   } = {},
@@ -132,7 +133,7 @@ export async function getTimesheet(
     periodStart = opts.periodStart;
     periodEnd = opts.periodEnd;
   } else {
-    const resolved = resolvePayPeriod(new Date(), {
+    const resolved = resolvePayPeriod(opts.at ?? new Date(), {
       type: company.payPeriodType,
       weekStartDay: company.weekStartDay,
       ...(company.payPeriodAnchor ? { anchorDate: company.payPeriodAnchor } : {}),
@@ -145,10 +146,9 @@ export async function getTimesheet(
   const rows = await db<TimeEntryRow>('time_entries')
     .where({ company_id: companyId, employee_id: employeeId })
     .whereNull('deleted_at')
-    // A manual entry supersedes the punches it replaces: only the active
-    // row is part of the timesheet (entries, totals, approval state), the
-    // same view grids.ts and payroll preflight use. Superseded punches
-    // stay in the DB and in the raw-punch reports.
+    // A punch replaced by a manual entry stays in the table for the audit
+    // trail but is no longer part of the timesheet — counting it too
+    // would double the day.
     .whereNull('superseded_by_entry_id')
     // Entries that overlap the period (start < end AND end > start).
     .where(function () {

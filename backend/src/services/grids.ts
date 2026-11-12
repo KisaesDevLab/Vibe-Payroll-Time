@@ -28,6 +28,7 @@ import { loadTimeOffJobs } from './time-off.js';
 
 interface CompanyContext {
   id: number;
+  name: string;
   timezone: string;
   weekStartDay: number;
   payPeriodType: PayPeriodType;
@@ -44,6 +45,7 @@ async function loadCompany(companyId: number): Promise<CompanyContext> {
     .where('c.id', companyId)
     .first<{
       id: number;
+      name: string;
       timezone: string;
       week_start_day: number;
       pay_period_type: PayPeriodType;
@@ -52,10 +54,11 @@ async function loadCompany(companyId: number): Promise<CompanyContext> {
       punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
       punch_rounding_grace_minutes: number;
       time_off_self_entry: boolean;
-    }>('s.time_off_self_entry', 'c.id', 'c.timezone', 'c.week_start_day', 'c.pay_period_type', 'c.pay_period_anchor', 's.time_format_default', 's.punch_rounding_mode', 's.punch_rounding_grace_minutes');
+    }>('s.time_off_self_entry', 'c.id', 'c.name', 'c.timezone', 'c.week_start_day', 'c.pay_period_type', 'c.pay_period_anchor', 's.time_format_default', 's.punch_rounding_mode', 's.punch_rounding_grace_minutes');
   if (!row) throw NotFound('Company not found');
   return {
     id: row.id,
+    name: row.name,
     timezone: row.timezone,
     weekStartDay: row.week_start_day,
     payPeriodType: row.pay_period_type,
@@ -311,6 +314,7 @@ export async function getWeeklyGrid(input: GetWeeklyGridInput): Promise<WeeklyGr
       lastName: employee.last_name,
       companyId: input.companyId,
     },
+    company: { name: company.name, timezone: company.timezone },
     week: { start: input.weekStart, end: weekEndIso },
     jobs: jobs.map((j) => ({
       id: j.id,

@@ -11,13 +11,14 @@ import type {
   MagicLinkOptionsResponse,
   UpdateEmployeeRequest,
 } from '@vibept/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
 import { FormField } from '../components/FormField';
 import { Modal } from '../components/Modal';
 import { SendLinkMenu } from '../components/SendLinkMenu';
+import { WorkDaysPicker } from '../components/WorkDaysPicker';
 import { ApiError, apiFetch } from '../lib/api';
 import { renderBadgeCardPng } from '../lib/badge-card';
 import {
@@ -26,6 +27,9 @@ import {
   employees as employeesApi,
 } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
+
+/** Shared <datalist> of the company's departments for both employee forms. */
+const DEPARTMENT_LIST_ID = 'employee-departments';
 
 export function EmployeesPage() {
   const { companyId } = useOutletContext<CompanyContext>();
@@ -43,6 +47,12 @@ export function EmployeesPage() {
     queryKey: ['employees', companyId, search],
     queryFn: () => employeesApi.list(companyId, search || undefined),
   });
+
+  // Departments already in use, offered as suggestions on the employee
+  // forms so "Tax" isn't typed three different ways.
+  const departments = [
+    ...new Set((roster.data ?? []).map((e) => e.department).filter((d): d is string => !!d)),
+  ].sort((a, b) => a.localeCompare(b));
 
   const badgeStates = useQuery({
     queryKey: ['badge-states', companyId, (roster.data ?? []).map((e) => e.id).join(',')],
@@ -128,6 +138,7 @@ export function EmployeesPage() {
               </th>
               <th className="px-4 py-3 text-left font-medium">Name</th>
               <th className="px-4 py-3 text-left font-medium">Number</th>
+              <th className="px-4 py-3 text-left font-medium">Department</th>
               <th className="px-4 py-3 text-left font-medium">Email</th>
               <th className="px-4 py-3 text-left font-medium">PIN</th>
               <th className="px-4 py-3 text-left font-medium">Badge</th>
@@ -167,6 +178,7 @@ export function EmployeesPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{e.employeeNumber ?? '—'}</td>
+                  <td className="px-4 py-3 text-slate-700">{e.department ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-700">{e.email ?? '—'}</td>
                   <td className="px-4 py-3">
                     <PinCell employee={e} />
@@ -191,7 +203,7 @@ export function EmployeesPage() {
             })}
             {roster.data?.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
                   {search ? 'No employees match your search.' : 'No employees yet.'}
                 </td>
               </tr>
@@ -199,6 +211,12 @@ export function EmployeesPage() {
           </tbody>
         </table>
       </div>
+
+      <datalist id={DEPARTMENT_LIST_ID}>
+        {departments.map((d) => (
+          <option key={d} value={d} />
+        ))}
+      </datalist>
 
       {createOpen && (
         <CreateEmployeeModal
@@ -387,6 +405,14 @@ function CreateEmployeeModal({
           onChange={(e) => setForm((f) => ({ ...f, employeeNumber: e.target.value || undefined }))}
         />
         <FormField
+          label="Department"
+          hint="Optional. Reports subtotal by department."
+          list={DEPARTMENT_LIST_ID}
+          maxLength={100}
+          value={form.department ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, department: e.target.value || undefined }))}
+        />
+        <FormField
           label="Email"
           type="email"
           value={form.email ?? ''}
@@ -546,7 +572,9 @@ function ImportCsvModal({
             className="h-48 w-full rounded-md border border-slate-300 bg-white p-3 font-mono text-xs shadow-sm"
             value={csv}
             onChange={(e) => setCsv(e.target.value)}
-            placeholder={'first_name,last_name,employee_number\nJane,Doe,E001\nJohn,Smith,E002'}
+            placeholder={
+              'first_name,last_name,employee_number,department\nJane,Doe,E001,Tax\nJohn,Smith,E002,Admin'
+            }
           />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
@@ -708,6 +736,14 @@ function EmployeeDetailDrawer({
           onChange={(e) => setPatch((p) => ({ ...p, employeeNumber: e.target.value || null }))}
         />
         <FormField
+          label="Department"
+          hint="Optional. Reports subtotal by department."
+          list={DEPARTMENT_LIST_ID}
+          maxLength={100}
+          defaultValue={employee.department ?? ''}
+          onChange={(e) => setPatch((p) => ({ ...p, department: e.target.value || null }))}
+        />
+        <FormField
           label="Email"
           type="email"
           defaultValue={employee.email ?? ''}
@@ -718,6 +754,13 @@ function EmployeeDetailDrawer({
           defaultValue={employee.phone ?? ''}
           onChange={(e) => setPatch((p) => ({ ...p, phone: e.target.value || null }))}
         />
+        <FormField
+          label="Hire date"
+          type="date"
+          defaultValue={employee.hiredAt ?? ''}
+          onChange={(e) => setPatch((p) => ({ ...p, hiredAt: e.target.value || null }))}
+        />
+        <MissingTimeFields employee={employee} patch={patch} setPatch={setPatch} />
         <dl className="grid grid-cols-2 gap-y-1 text-xs text-slate-500">
           <dt>Status</dt>
           <dd className="text-right font-medium text-slate-800">{employee.status}</dd>
@@ -756,6 +799,76 @@ function EmployeeDetailDrawer({
         />
       )}
     </Drawer>
+  );
+}
+
+/**
+ * Work days + reminder switch for missing-time reminders. Work days
+ * default to the company's; "Custom" stores this employee's own.
+ */
+function MissingTimeFields({
+  employee,
+  patch,
+  setPatch,
+}: {
+  employee: Employee;
+  patch: UpdateEmployeeRequest;
+  setPatch: Dispatch<SetStateAction<UpdateEmployeeRequest>>;
+}) {
+  const days = patch.workDays !== undefined ? patch.workDays : employee.workDays;
+  const custom = days !== null;
+  return (
+    <fieldset className="rounded-md border border-slate-200 p-4">
+      <legend className="px-2 text-xs font-medium uppercase text-slate-500">
+        Missing-time reminders
+      </legend>
+      <div className="flex flex-col gap-3 text-sm text-slate-700">
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name={`workdays-${employee.id}`}
+              className="h-4 w-4"
+              checked={!custom}
+              onChange={() => setPatch((p) => ({ ...p, workDays: null }))}
+            />
+            Company work days
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name={`workdays-${employee.id}`}
+              className="h-4 w-4"
+              checked={custom}
+              onChange={() => setPatch((p) => ({ ...p, workDays: [1, 2, 3, 4, 5] }))}
+            />
+            Custom
+          </label>
+        </div>
+        {custom && (
+          <WorkDaysPicker
+            value={days ?? []}
+            onChange={(next) => setPatch((p) => ({ ...p, workDays: next }))}
+          />
+        )}
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            defaultChecked={employee.missingTimeRemindersEnabled}
+            onChange={(e) =>
+              setPatch((p) => ({ ...p, missingTimeRemindersEnabled: e.target.checked }))
+            }
+          />
+          <span>
+            Send this employee missing-time reminders
+            <span className="block text-xs text-slate-500">
+              Days before the hire date are never counted.
+            </span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
   );
 }
 

@@ -74,8 +74,12 @@ export function TimesheetView({
   onDeleteEntry,
   pendingRequestEntryIds,
   timeOffFixHint,
+  allowApprovedChanges = false,
 }: {
   data: TimesheetResponse;
+  /** Company admins may edit and delete approved entries too (the change
+   *  is audited); everyone else stops at approval. */
+  allowApprovedChanges?: boolean;
   /** Employee "Request fix". Not offered on time-off entries (changed on
    *  the grid) or entries that already have a pending request. */
   onRequestCorrection?: (entry: TimeEntry) => void;
@@ -85,7 +89,8 @@ export function TimesheetView({
    *  the grid where time off is changed. */
   timeOffFixHint?: ReactNode;
   /** Supervisor/admin inline edit. When present, renders "Edit" in each
-   *  row's actions so long as the entry isn't approved. */
+   *  row's actions so long as the entry isn't approved (or
+   *  `allowApprovedChanges` is set). */
   onEditEntry?: (entry: TimeEntry) => void;
   /** Supervisor/admin soft-delete. Same visibility rules as edit. */
   onDeleteEntry?: (entry: TimeEntry) => void;
@@ -299,7 +304,7 @@ export function TimesheetView({
                                   Request fix
                                 </button>
                               ))}
-                            {onEditEntry && !e.approvedAt && (
+                            {onEditEntry && (!e.approvedAt || allowApprovedChanges) && (
                               <button
                                 type="button"
                                 className="text-slate-900 hover:underline"
@@ -308,7 +313,7 @@ export function TimesheetView({
                                 Edit
                               </button>
                             )}
-                            {onDeleteEntry && !e.approvedAt && (
+                            {onDeleteEntry && (!e.approvedAt || allowApprovedChanges) && (
                               <button
                                 type="button"
                                 className="text-red-700 hover:underline"

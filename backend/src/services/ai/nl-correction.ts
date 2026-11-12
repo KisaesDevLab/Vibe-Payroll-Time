@@ -172,20 +172,16 @@ async function loadEntries(
   periodStart: Date,
   periodEnd: Date,
 ): Promise<TimeEntryRow[]> {
-  return (
-    db<TimeEntryRow>('time_entries')
-      .where({ company_id: companyId, employee_id: employeeId })
-      .whereNull('deleted_at')
-      // Superseded punches aren't on the timesheet; showing them next to
-      // the manual entry that replaced them would invite double edits.
-      .whereNull('superseded_by_entry_id')
-      .where(function () {
-        this.whereNull('ended_at').orWhere('ended_at', '>', periodStart);
-      })
-      .where('started_at', '<', periodEnd)
-      .orderBy('started_at', 'asc')
-      .select<TimeEntryRow[]>('*')
-  );
+  return db<TimeEntryRow>('time_entries')
+    .where({ company_id: companyId, employee_id: employeeId })
+    .whereNull('deleted_at')
+    .whereNull('superseded_by_entry_id') // replaced by a manual entry
+    .where(function () {
+      this.whereNull('ended_at').orWhere('ended_at', '>', periodStart);
+    })
+    .where('started_at', '<', periodEnd)
+    .orderBy('started_at', 'asc')
+    .select<TimeEntryRow[]>('*');
 }
 
 type ActorRole = 'super_admin' | 'company_admin' | 'supervisor' | 'employee';

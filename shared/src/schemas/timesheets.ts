@@ -103,6 +103,9 @@ export const timesheetQuerySchema = z.object({
   employeeId: z.coerce.number().int().positive(),
   periodStart: z.string().datetime().optional(),
   periodEnd: z.string().datetime().optional(),
+  /** Show the pay period containing this instant (default: now). Ignored
+   *  when periodStart/periodEnd are given. */
+  at: z.string().datetime().optional(),
 });
 export type TimesheetQuery = z.infer<typeof timesheetQuerySchema>;
 
@@ -175,6 +178,8 @@ export const correctionRequestSchema = z.object({
   id: z.number().int().positive(),
   companyId: z.number().int().positive(),
   employeeId: z.number().int().positive(),
+  /** "First Last" — present on list responses so reviewers see who asked. */
+  employeeName: z.string().optional(),
   timeEntryId: z.number().int().positive().nullable(),
   requesterUserId: z.number().int().positive().nullable(),
   requestType: z.enum(['edit', 'add', 'delete']),

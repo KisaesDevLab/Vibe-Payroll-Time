@@ -7,12 +7,13 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Replaced punches no longer count twice.** When a manual entry replaces a punch (for example "Didn't clock out" after an auto-clock-out), the punch is kept for the audit trail but was still counted on the Timesheets page and in the Time card, Hours by pay period, Hours by job and Overtime reports, inflating hours and inventing overtime. Those now skip it, as the weekly grid and payroll exports already did. Punch activity still lists it, flagged `superseded`.
+- **Time card CSV no longer stops at the TOTAL row**, and the TOTAL row's Date column is blank on screen and in the PDF instead of "Invalid Date".
+
 ### Fixed — Employee QA pass
 
-- **Hours were double-counted after a manual override.** The timesheet, the
-  approval page and the hours-by-period, overtime, time-card and hours-by-job
-  reports counted a superseded punch alongside the manual entry replacing it.
-  They now use active entries only, like the grid and payroll export.
 - **Timesheet times use the company timezone everywhere.** The Request fix and
   Add time dialogs, the timesheet rows, the supervisor edit form, Corrections,
   the weekly grid's week and "today", and the period header (which showed the
@@ -40,6 +41,10 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Totals on Hours by pay period.** A TOTAL row at the bottom sums every hours column across employees (on screen, PDF and CSV). Overtime is each employee's own overtime added up, never recomputed on combined hours.
+- **Employee departments.** An optional department on each employee (record, create form and CSV import, with suggestions from departments already in use; searchable on Employees). Hours by pay period groups by department with a SUBTOTAL row each, "No department" last, then the grand TOTAL. Migration `20261102000002_employee_department.js` adds `employees.department`.
+- **Week-by-week navigation on Timesheets.** Previous / Next (by pay period, labelled "week" for weekly payroll) and Back to current week. The week is kept in the URL.
+
 - **My requests** on My timesheet: the employee's correction requests with
   status and supervisor note (`GET /timesheets/my-correction-requests`).
 - **Kiosk shows hours worked today after clock-out** (`todayWorkSeconds` on the
@@ -54,6 +59,21 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Employee direct edits follow the manual-entry mode.** In Override only and
   Disabled, an employee's own punch edits (including AI corrections) are refused
   with a pointer to Request fix.
+
+## [1.7.0] - 2026-11-02
+
+### Added
+
+- **Printable weekly timesheets.** A **Print** button on the weekly grid, and **Print all** on the multi-employee grid (one page per employee). Each sheet has the hours grid, every time entry by day with clock times in the company timezone, and signature lines. Print-based, no server rendering.
+- **Per-entry edit and delete on the weekly grid.** A cell's popover lists its entries; clicking a day's date lists every entry that day, breaks included. Supervisors and admins can edit; admins can delete. Manual entries are deleted through the manual-entry path, so the punches they replaced come back.
+- **Admins can change approved entries.** On the weekly grid and on Timesheets, with a warning and a required reason. The change is audited and the entry keeps its approval.
+
+- **Missing-time reminders.** A missing day is an expected work day (company default Mon–Fri, or the employee's own days) on or after the hire date, before today, with no work or time-off entry. **Timesheets → Missing time** lists who has missing days in the last or current pay period and sends reminders to the ones selected. With **Settings → Missing time → Remind automatically** on, an hourly job reminds employees the morning after a period ends (at the company's chosen hour), once a day until the days are filled, the period is approved or the per-period limit is reached, and emails company admins one summary each time. Employees without a sign-in, employees switched off on their record, and approved periods are skipped. New BullMQ queue `missing-time`; migration `20261102000001_missing_time_reminders.js` adds `company_settings.work_days` / `missing_time_reminders_enabled` / `missing_time_reminder_hour` / `missing_time_reminder_max`, `employees.work_days` / `missing_time_reminders_enabled`, and the `missing_time_reminders` log.
+- **Hire date on the employee record.** Editable in the employee drawer; the API now returns `hiredAt` as a plain `YYYY-MM-DD`.
+
+### Changed
+
+- **Corrections queue shows the employee's name** instead of "Employee #id".
 
 ## [1.6.0] - 2026-10-22
 

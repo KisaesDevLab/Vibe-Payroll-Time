@@ -9,11 +9,13 @@ import {
   csvImportRequestSchema,
   inviteMembershipRequestSchema,
   markInternalRequestSchema,
+  missingTimeReportQuerySchema,
   renameKioskDeviceLocationRequestSchema,
   renameKioskDeviceRequestSchema,
   revokeBadgeRequestSchema,
   sendAccountLinkRequestSchema,
   sendEmployeeLinkRequestSchema,
+  sendMissingTimeRemindersRequestSchema,
   setEmployeeLoginRequestSchema,
   setEmployeePinRequestSchema,
   setTimeOffTypeRequestSchema,
@@ -52,6 +54,7 @@ import {
   updateEmployee,
 } from '../../services/employees.js';
 import { archiveJob, createJob, listJobs, unarchiveJob, updateJob } from '../../services/jobs.js';
+import { getMissingTimeReport, sendMissingTimeReminders } from '../../services/missing-time.js';
 import { listTimeOffTypes, setTimeOffType } from '../../services/time-off.js';
 import {
   issuePairingCode,
@@ -848,6 +851,43 @@ companiesRouter.delete(
     try {
       await archiveJob(companyIdFromParams(req), Number(req.params.jobId));
       res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Missing-time reminders: who has expected work days with no time in
+// the current or previous pay period, and a manual "remind them now".
+companiesRouter.get(
+  '/:companyId/missing-time',
+  requireAuth,
+  requireCompanyRole(['company_admin', 'supervisor'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      const q = missingTimeReportQuerySchema.parse(req.query);
+      res.json({ data: await getMissingTimeReport(companyIdFromParams(req), q.period) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+companiesRouter.post(
+  '/:companyId/missing-time/remind',
+  requireAuth,
+  requireCompanyRole(['company_admin', 'supervisor'], { companyIdFrom: companyIdFromParams }),
+  async (req, res, next) => {
+    try {
+      if (!req.user) return next(Unauthorized());
+      const body = sendMissingTimeRemindersRequestSchema.parse(req.body);
+      const result = await sendMissingTimeReminders(
+        companyIdFromParams(req),
+        req.user.id,
+        body.period,
+        body.employeeIds,
+      );
+      res.json({ data: result });
     } catch (err) {
       next(err);
     }

@@ -180,6 +180,46 @@ and the access goes with it on their next request.
 Approving a pay period locks employee edits for that window; correction
 requests still route through the Supervisor / Admin.
 
+## Missing-time reminders
+
+Vibe PT can remind employees who have work days with no time recorded.
+
+**What counts as missing.** A day is missing when all of these are true:
+
+- it is one of the employee's work days. The company default is under
+  **Settings → Missing time** (Mon–Fri unless you change it). An employee
+  with different days gets **Custom** work days on their record under
+  **Employees → row → Missing-time reminders**;
+- it is on or after the employee's **Hire date**, if one is set;
+- it is before today, in company time;
+- it has no work or time-off entry at all. A short day is not missing.
+
+**Who is left out.** Employees with no sign-in (no account, sign-in
+switched off, or personal devices turned off for the company), employees
+whose reminders you switched off on their record, employees with no email
+and no verified phone, and anyone whose pay period is already approved.
+
+**Sending by hand.** **Timesheets → Missing time** lists everyone with
+missing days in **Last pay period** or **This pay period** (checked up to
+yesterday). Everyone who can be reminded starts ticked; untick anyone you
+want to skip and press **Send**. Admins and supervisors can do this,
+whether or not automatic reminders are on.
+
+**Automatic reminders.** Turn on **Settings → Missing time → Remind
+employees automatically**. The morning after a pay period ends, at the
+hour you pick (company time), anyone with missing days in that period gets
+an email or text listing the days and linking to their timesheet. It
+repeats once a day until the days are filled, the period is approved, or
+the **Reminders per pay period** limit (default 3) is reached. Each day
+reminders go out, company admins get one summary email listing who was
+reminded. Supervisors get it too when **Supervisor approval required** is
+on.
+
+Employees fill a missing day on **My timesheet**. If your manual-entry
+policy is **Allowed**, they add the time themselves; otherwise the
+reminder tells them to use **Add time**, which sends you a correction
+request. Reminders never change time entries.
+
 ## Employees
 
 - Create an employee: **Employees → New employee**. Email is optional; without
@@ -188,6 +228,13 @@ requests still route through the Supervisor / Admin.
   invalidated immediately.
 - Retire an employee: **Employees → row menu → Deactivate**. They disappear
   from pickers but existing punches and audit trail remain forever.
+- Department (optional): set it on the employee record or as a `department`
+  column in the CSV import. The field suggests departments already in use.
+  **Reports → Hours by pay period** groups employees by department with a
+  SUBTOTAL row for each (employees without one land under "No department")
+  and ends with a grand TOTAL. Grouping ignores capitalization, so "Tax" and
+  "tax" are one department. With no departments set, the report shows just
+  the grand total.
 
 ## Jobs
 
@@ -310,6 +357,39 @@ depending on your company settings, in payroll exports.
 
 Punches are never deleted. A manual override marks overlapping punches as
 superseded in the DB; delete the manual entry and the punch returns.
+
+The cell popover lists the time entries behind that cell (clock-in and
+clock-out, job, source). Click a day's date in the column header to see
+every entry on that day, breaks included. From either list:
+
+- **Edit** (supervisors and admins) changes an entry's start, end, job or
+  type. A reason is required.
+- **Delete** (company admins only) removes an entry. A deleted punch stays
+  in the audit trail; deleting a manual entry brings back any punches it
+  replaced.
+
+**Approved days.** Supervisors and employees can't change an approved
+day. Company admins can: the popover shows a warning and every change
+needs a reason. The entry keeps its approval, and the change is recorded in
+its history. If payroll was already exported for that period, export it
+again. The same applies on **Timesheets**, where admins see Edit and
+Delete on approved entries.
+
+### Printing timesheets
+
+**Print** on the weekly grid opens a printable timesheet for that employee
+and week, then the browser's Print / Save-as-PDF dialog. It has:
+
+- the job × day hours grid, with daily, weekly and time-off totals;
+- every time entry, grouped by day: in, out, hours, job, source
+  (kiosk, web, phone, manual), plus notes such as the manual-entry reason,
+  open, auto-closed, offline or approved;
+- employee and supervisor signature lines.
+
+Times are printed in the company's timezone. **Print all (N)** on the
+multi-employee grid prints one page per employee shown, after any filter
+chip is applied. Employees can print their own week; the sheet never shows
+other employees.
 
 ### Multi-employee grid
 
