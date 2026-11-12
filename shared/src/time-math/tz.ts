@@ -65,3 +65,30 @@ export function isoDateInTz(date: Date, tz: string): string {
   const d = String(zoned.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
+
+/** Today's civil date (YYYY-MM-DD) in `tz`. */
+export function todayInTz(tz: string, now: Date = new Date()): string {
+  return isoDateInTz(now, tz);
+}
+
+/**
+ * `YYYY-MM-DDTHH:mm` wall-clock time of `date` in `tz` — the value an
+ * `<input type="datetime-local">` expects when the form works in the
+ * company's timezone rather than the browser's.
+ */
+export function wallClockInTz(date: Date, tz: string): string {
+  const zoned = toZonedTime(date, tz);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${zoned.getFullYear()}-${p(zoned.getMonth() + 1)}-${p(zoned.getDate())}T${p(zoned.getHours())}:${p(zoned.getMinutes())}`;
+}
+
+/**
+ * The instant a wall-clock time (`YYYY-MM-DDTHH:mm[:ss]`, or a bare
+ * `YYYY-MM-DD` for midnight) names in `tz`. Returns null for input that
+ * doesn't parse. Inverse of `wallClockInTz`.
+ */
+export function instantFromWallClock(local: string, tz: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/.test(local)) return null;
+  const d = fromZonedTime(local.length === 10 ? `${local}T00:00:00` : local, tz);
+  return Number.isNaN(d.getTime()) ? null : d;
+}

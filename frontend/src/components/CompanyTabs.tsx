@@ -3,25 +3,43 @@
 import { NavLink } from 'react-router-dom';
 import { useSession } from '../hooks/useSession';
 
+interface TabUser {
+  roleGlobal: string;
+  memberships: Array<{ companyId: number; role: string }>;
+}
+
+/**
+ * True when the user has a manager's role at this company: SuperAdmin,
+ * company admin or supervisor. The company pages are theirs; an
+ * employee-role member's are /my-punch and /my-timesheet (the backend
+ * refuses employees on employees, timesheets, corrections, reports and
+ * everything admin-only).
+ */
+export function canManageCompany(user: TabUser, companyId: number): boolean {
+  if (user.roleGlobal === 'super_admin') return true;
+  const role = user.memberships.find((m) => m.companyId === companyId)?.role;
+  return role === 'company_admin' || role === 'supervisor';
+}
+
 export function CompanyTabs({ companyId }: { companyId: number }) {
   const session = useSession();
   const membership = session?.user.memberships.find((m) => m.companyId === companyId);
   const isSuper = session?.user.roleGlobal === 'super_admin';
   const isAdmin = membership?.role === 'company_admin' || isSuper;
+  const isSupervisor = !!session && canManageCompany(session.user, companyId);
 
-  const isSupervisor =
-    membership?.role === 'company_admin' || membership?.role === 'supervisor' || isSuper;
-
+  // Employees see no tabs at all — CompanyLayout redirects them — but
+  // gate each tab on its own role anyway so nothing leaks if it renders.
   const tabs = [
-    { to: `/companies/${companyId}/employees`, label: 'Employees' },
     ...(isSupervisor
       ? [
+          { to: `/companies/${companyId}/employees`, label: 'Employees' },
           { to: `/companies/${companyId}/timesheets`, label: 'Timesheets' },
           { to: `/companies/${companyId}/corrections`, label: 'Corrections' },
           { to: `/companies/${companyId}/reports`, label: 'Reports' },
+          { to: `/companies/${companyId}/jobs`, label: 'Jobs' },
         ]
       : []),
-    { to: `/companies/${companyId}/jobs`, label: 'Jobs' },
     ...(isAdmin
       ? [
           { to: `/companies/${companyId}/exports`, label: 'Exports' },

@@ -34,7 +34,7 @@ Identical to Vibe Trial Balance / Vibe MyBooks conventions unless noted.
 | Layer         | Tech                                                                                                                                                                                                                                                                                                                                                     |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend      | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, TanStack Table                                                                                                                                                                                                                                                                                 |
-| PWA           | Workbox, IndexedDB (offline punch queue), Background Sync API                                                                                                                                                                                                                                                                                            |
+| PWA           | Workbox, IndexedDB (offline punch queue, drained from the page — no Background Sync)                                                                                                                                                                                                                                                                     |
 | Backend       | Node.js 20, Express, Knex.js (plain JS migrations for Windows compat), Zod                                                                                                                                                                                                                                                                               |
 | Database      | PostgreSQL 16                                                                                                                                                                                                                                                                                                                                            |
 | Queue / cron  | BullMQ + Redis 7 for scheduled background jobs (auto-clock-out, missed-punch reminders, retention sweep). Phase 14 reversed the v1 "no BullMQ" stance for parity with sibling Vibe apps and to enable horizontal scaling under the appliance overlay. Standalone runs scheduler+worker in-process (single container); the appliance compose splits them. |
@@ -196,14 +196,16 @@ Company timezone is a required setting. All pay period math, daily boundaries, a
 
 ### PWA and offline
 
-Kiosk mode and personal-device mode **both** need offline punch capability — Wi-Fi hiccups at a shared kiosk are common, and a phone on cellular in a basement is common.
+Personal-device mode needs offline punch capability — a phone on cellular in a basement is common. The kiosk does **not** queue (owner decision 2026-11-11): verifying a PIN or badge offline would mean holding them on a shared tablet. When it can't reach the server it shows a "Kiosk offline" screen with the attempted time and records nothing.
 
-Offline punch queue:
+Offline punch queue (`frontend/src/lib/offline-queue.ts`):
 
-- IndexedDB stores pending punches with local timestamps
-- Background Sync API flushes on reconnect
-- Server accepts punches with `client_started_at` + `client_clock_skew` metadata, stamps its own `started_at` based on client time adjusted for clock skew, and flags the entry as `source_offline = true`
-- Conflict resolution: if two offline punches would create overlapping open entries, second one is rejected and surfaced as an exception on the employee's timesheet
+- IndexedDB stores pending punches with the **tap** time, tagged with the user. Punch mutations run with `networkMode: 'always'` and a 10s timeout so an offline or hanging request lands in the queue.
+- The page drains the queue (on `online`, tab visible, every 60s, and sign-in). No Background Sync: draining needs the user's token, which lives in the page, and iOS lacks the API.
+- The queue survives sign-out and refresh failures; only the owning user's items are sent. A 401 is transient. `refreshSession` signs out only when our server refuses the token (a 4xx other than 408/429 from `/auth/refresh`); network errors, 5xx and rate limits keep the session.
+- Server accepts punches with `client_started_at` + `client_clock_skew` metadata, stamps its own `started_at` based on client time adjusted for clock skew, and flags the entry as `source_offline = true`. An offline close is recorded as an `ended_offline` audit row.
+- A punch the server refuses (4xx other than 401/408/429, or older than 72h) moves to a rejected list on the device and is shown in the offline banner with the reason. Nothing is recorded server-side for it.
+- The punch page caches the last known status per (user, company) so a cold start offline still shows the punch buttons.
 
 ### AI feature scope
 
@@ -281,6 +283,10 @@ docker compose -f docker-compose.prod.yml build
 - **Don't show balances.** Vibe PT records time off used; it never shows "remaining" or accruals.
 - **Don't make a punch depend on its location.** `required` mode lives in the PWA; the service records `missing` and moves on. A dropped punch is a wage claim, a flagged one is a conversation.
 - **Don't ask a personal device for location outside the moment of a punch.** No `watchPosition`, no fix on page load, no fix when the mode is `off`. The employee guide promises exactly one fix per punch.
+- **Don't show or take timesheet times in the browser's zone.** Days, periods and the approval lock are company-tz on the server; `TimesheetResponse.companyTimezone` drives display and input (`wallClockInTz` / `instantFromWallClock` in shared `time-math/tz.ts`). Mixing zones is how a shift lands in the wrong pay period.
+- **Don't count superseded punches.** Every view that totals hours (timesheet, approval, grid, preflight, hours/OT/time-card/by-job reports, "today") filters `superseded_by_entry_id IS NULL`. Only the raw-punch views (audit trail, punch activity) show them.
+- **Don't let an employee edit directly outside `allowed` mode.** `canEditEntry` gives employees direct edits only when `employee_manual_entry_mode = 'allowed'`; otherwise changes go through correction requests. AI apply runs the same `assertCanEdit` / `assertCanDelete` per tool call.
+- **Don't lock approval by day.** The employee-side lock is "any approved entry in the same pay period _and_ workweek" (`isPayPeriodApproved`), so an empty day in an approved range is locked too, while a week approved early from the grid doesn't close the rest of the period.
 - **Don't let a grid re-render without reading the user's current format preference.** Format is resolved server-side on every grid-payload response (`timeFormat` field) so client and server always agree.
 
 ---

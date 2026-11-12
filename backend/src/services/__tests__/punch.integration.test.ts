@@ -16,8 +16,11 @@ import {
   clockIn,
   clockOut,
   createEntryForEmployee,
+  editEntry,
+  getTodayWorkSeconds,
   switchJob,
 } from '../punch.js';
+import { setTimeOffType } from '../time-off.js';
 
 // Probe once at module load so `describe.skipIf` gets a synchronous
 // boolean. Top-level await is supported under NodeNext ESM.
@@ -529,5 +532,202 @@ describe.skipIf(!dbReachable)('punch service (DB-backed)', () => {
     );
     expect(entry.entryType).toBe('break');
     expect(entry.jobId).toBeNull();
+  });
+
+  // --- editEntry validation (every edit path lands here) ---
+
+  async function closedEntry(
+    fromHoursAgo: number,
+    toHoursAgo: number,
+    jobId: number | null = jobA,
+  ) {
+    return createEntryForEmployee(
+      {
+        employeeId,
+        startedAt: new Date(Date.now() - fromHoursAgo * 3600_000).toISOString(),
+        endedAt: new Date(Date.now() - toHoursAgo * 3600_000).toISOString(),
+        entryType: 'work',
+        jobId,
+        reason: 'seed',
+      },
+      { userId: actorUserId, companyId },
+    );
+  }
+
+  const editor = () => ({ userId: actorUserId, companyId });
+
+  it('editEntry applies a valid edit and audits it', async () => {
+    const e = await closedEntry(5, 3);
+    const newStart = new Date(Date.now() - 6 * 3600_000).toISOString();
+    const edited = await editEntry(e.id, { startedAt: newStart, jobId: jobB }, editor(), 'fix');
+    expect(edited.startedAt).toBe(newStart);
+    expect(edited.jobId).toBe(jobB);
+    expect(Math.abs(edited.durationSeconds! - 3 * 3600)).toBeLessThanOrEqual(2);
+    const fields = (
+      await db('time_entry_audit').where({ time_entry_id: e.id, action: 'edit' })
+    ).map((a) => a.field);
+    expect(fields).toEqual(expect.arrayContaining(['started_at', 'job_id']));
+  });
+
+  it('editEntry refuses a clock-out before the clock-in', async () => {
+    const e = await closedEntry(5, 3);
+    await expect(
+      editEntry(
+        e.id,
+        { endedAt: new Date(Date.now() - 6 * 3600_000).toISOString() },
+        editor(),
+        'oops',
+      ),
+    ).rejects.toThrow(/after clock-in/);
+  });
+
+  it('editEntry refuses to overlap another active entry', async () => {
+    await closedEntry(8, 6);
+    const e = await closedEntry(5, 3);
+    await expect(
+      editEntry(
+        e.id,
+        { startedAt: new Date(Date.now() - 7 * 3600_000).toISOString() },
+        editor(),
+        'stretch',
+      ),
+    ).rejects.toThrow(/overlap/);
+    // Reopening it would run into the later open entry too.
+    await clockIn(ctx());
+    await expect(editEntry(e.id, { endedAt: null }, editor(), 'reopen')).rejects.toThrow(/overlap/);
+  });
+
+  it('editEntry ignores deleted and superseded entries when checking overlap', async () => {
+    const gone = await closedEntry(8, 6);
+    await db('time_entries').where({ id: gone.id }).update({ deleted_at: db.fn.now() });
+    const e = await closedEntry(5, 3);
+    const edited = await editEntry(
+      e.id,
+      { startedAt: new Date(Date.now() - 7 * 3600_000).toISOString() },
+      editor(),
+      'stretch',
+    );
+    expect(Math.abs(edited.durationSeconds! - 4 * 3600)).toBeLessThanOrEqual(2);
+  });
+
+  it("editEntry isn't blocked by a grid manual entry's midnight-anchored span", async () => {
+    // Grid entries sit at local midnight + duration; their span is
+    // placement, not when the work happened. Mark one as such and stretch
+    // a punch across it.
+    const manual = await closedEntry(8, 6, jobB);
+    await db('time_entries').where({ id: manual.id }).update({ source: 'web_manual' });
+    const e = await closedEntry(5, 3);
+    const edited = await editEntry(
+      e.id,
+      { startedAt: new Date(Date.now() - 7 * 3600_000).toISOString() },
+      editor(),
+      'stretch',
+    );
+    expect(Math.abs(edited.durationSeconds! - 4 * 3600)).toBeLessThanOrEqual(2);
+  });
+
+  it('editEntry refuses times in the future', async () => {
+    const e = await closedEntry(5, 3);
+    await expect(
+      editEntry(
+        e.id,
+        { endedAt: new Date(Date.now() + 2 * 3600_000).toISOString() },
+        editor(),
+        'later',
+      ),
+    ).rejects.toThrow(/future/);
+  });
+
+  it('editEntry refuses moving worked time onto a time-off code', async () => {
+    const types = await setTimeOffType(companyId, 'pto', true);
+    const pto = types.find((t) => t.category === 'pto')!.jobId!;
+    const e = await closedEntry(5, 3);
+    await expect(editEntry(e.id, { jobId: pto }, editor(), 'pto')).rejects.toThrow(/time off/i);
+    const row = await db('time_entries').where({ id: e.id }).first();
+    expect(row.job_id).toBe(jobA);
+  });
+
+  // --- today's running total ---
+
+  it("getTodayWorkSeconds doesn't count a punch a manual entry superseded", async () => {
+    const punch = await closedEntry(0.5, 0.25);
+    expect(await getTodayWorkSeconds(companyId, employeeId)).toBe(15 * 60);
+    // Stand-in manual entry of 1 minute replacing the punch.
+    const manual = await createEntryForEmployee(
+      {
+        employeeId,
+        startedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+        endedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
+        entryType: 'work',
+        reason: 'manual',
+      },
+      { userId: actorUserId, companyId },
+    );
+    await db('time_entries').where({ id: punch.id }).update({ superseded_by_entry_id: manual.id });
+    expect(await getTodayWorkSeconds(companyId, employeeId)).toBe(60);
+  });
+
+  // --- offline + lunch + break-out details ---
+
+  it('lunch split rows carry the offline metadata and the clock-out location trail', async () => {
+    await db('company_settings')
+      .where({ company_id: companyId })
+      .update({ punch_location_mode: 'optional' });
+    const pwa = { ...ctx(), source: 'mobile_pwa' as const };
+    const opened = await clockIn(pwa);
+    await db('time_entries')
+      .where({ id: opened.id })
+      .update({ started_at: new Date(Date.now() - 8 * 3600 * 1000) });
+    const clientAt = new Date(Date.now() - 60_000).toISOString();
+    const fix = { lat: 40.7, lng: -74, accuracyM: 10 };
+    const last = await clockOut(
+      { ...pwa, clientStartedAt: clientAt, clientClockSkewMs: 0, location: fix },
+      { lunchMinutes: 30 },
+    );
+    const rows = await db('time_entries')
+      .where({ shift_id: opened.shiftId })
+      .whereNot({ id: opened.id });
+    expect(rows).toHaveLength(2);
+    for (const r of rows) {
+      expect(r.source_offline).toBe(true);
+      expect(r.client_started_at?.toISOString()).toBe(clientAt);
+      expect(r.client_clock_skew_ms).toBe(0);
+    }
+    const audit = await db('time_entry_audit').where({ time_entry_id: last.id });
+    expect(audit.find((a) => a.field === 'ended_location')?.new_value).toEqual(fix);
+    expect(audit.find((a) => a.field === 'ended_offline')?.new_value).toEqual({
+      clientEndedAt: clientAt,
+      clientClockSkewMs: 0,
+    });
+  });
+
+  it('records an offline-queued close in the audit trail', async () => {
+    const opened = await clockIn(ctx());
+    await db('time_entries')
+      .where({ id: opened.id })
+      .update({ started_at: new Date(Date.now() - 3600_000) });
+    const clientAt = new Date(Date.now() - 1000).toISOString();
+    await clockOut({ ...ctx(), clientStartedAt: clientAt, clientClockSkewMs: 500 });
+    const audit = await db('time_entry_audit').where({
+      time_entry_id: opened.id,
+      field: 'ended_offline',
+    });
+    expect(audit).toHaveLength(1);
+    expect(audit[0].new_value).toEqual({ clientEndedAt: clientAt, clientClockSkewMs: 500 });
+    // An online close leaves no such row.
+    const other = await clockIn(ctx());
+    await clockOut(ctx());
+    expect(
+      await db('time_entry_audit').where({ time_entry_id: other.id, field: 'ended_offline' }),
+    ).toHaveLength(0);
+  });
+
+  it('breakOut resumes with no job when the prior job was archived during the break', async () => {
+    await clockIn(ctx(), { jobId: jobA });
+    await breakIn(ctx());
+    await db('jobs').where({ id: jobA }).update({ archived_at: db.fn.now() });
+    const resumed = await breakOut(ctx());
+    expect(resumed.entryType).toBe('work');
+    expect(resumed.jobId).toBeNull();
   });
 });

@@ -3,12 +3,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { canManageCompany } from '../components/CompanyTabs';
 import { TopBar } from '../components/TopBar';
+import { usePunchCompany } from '../hooks/usePunchCompany';
 import { useSession } from '../hooks/useSession';
 import { companies as companiesApi } from '../lib/resources';
 
+/**
+ * `/` for anyone who manages a company (employee-only users go straight
+ * to /my-punch, see HomeRoute). Each card links to what the person can
+ * actually do at that company: the admin pages for an admin, supervisor
+ * or SuperAdmin; their own clock for an employee-role member.
+ */
 export function DashboardPage() {
   const session = useSession();
+  const isSuper = session?.user.roleGlobal === 'super_admin';
+  const { setCompanyId: setPunchCompany } = usePunchCompany();
   const companies = useQuery({
     queryKey: ['companies'],
     queryFn: companiesApi.list,
@@ -37,8 +47,10 @@ export function DashboardPage() {
           </h1>
           <p className="mt-1 text-sm text-slate-600">
             {companies.data?.length === 0
-              ? 'No companies yet. Create one from "All companies".'
-              : 'Pick a company to manage.'}
+              ? isSuper
+                ? 'No companies yet. Create one from "All companies".'
+                : "You don't have access to any company yet. Ask your administrator to add you."
+              : 'Pick a company.'}
           </p>
         </header>
 
@@ -113,12 +125,29 @@ export function DashboardPage() {
                   {c.employeeCount ?? 0} active
                 </dd>
               </dl>
-              <Link
-                to={`/companies/${c.id}/employees`}
-                className="mt-1 text-sm font-medium text-slate-900 hover:underline"
-              >
-                Manage →
-              </Link>
+              {session && canManageCompany(session.user, c.id) ? (
+                <Link
+                  to={`/companies/${c.id}/employees`}
+                  className="mt-1 text-sm font-medium text-slate-900 hover:underline"
+                >
+                  Manage →
+                </Link>
+              ) : session?.user.memberships.some((m) => m.companyId === c.id && m.isEmployee) ? (
+                <Link
+                  to="/my-punch"
+                  // My time follows the remembered punch company; point it
+                  // at this one.
+                  onClick={() => setPunchCompany(c.id)}
+                  className="mt-1 text-sm font-medium text-slate-900 hover:underline"
+                >
+                  My time →
+                </Link>
+              ) : (
+                // Employee role but no employee record: nothing to open.
+                <p className="mt-1 text-xs text-slate-500">
+                  No employee record here yet. Ask an administrator.
+                </p>
+              )}
             </li>
           ))}
         </ul>

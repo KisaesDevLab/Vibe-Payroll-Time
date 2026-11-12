@@ -1,8 +1,9 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { lazy, Suspense, type ComponentType, type ReactNode } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { OfflineBanner } from './components/OfflineBanner';
+import { RequireSession, SignedInRedirect, ToLogin } from './components/RouteGuards';
 import { SupportChatWidget } from './components/SupportChatWidget';
 import { useSession } from './hooks/useSession';
 import { useSetupStatus } from './hooks/useSetupStatus';
@@ -72,28 +73,36 @@ const TimesheetsReviewPage = lazyPage(
   () => import('./pages/TimesheetsReviewPage'),
   'TimesheetsReviewPage',
 );
+// Also the employee's own week grid (/my-timesheet/week): grid editing
+// needs the network anyway, so it stays lazy; the list view
+// (MyTimesheetPage) is the one that must work offline.
 const WeeklyGridPage = lazyPage(() => import('./pages/WeeklyGridPage'), 'WeeklyGridPage');
 const WeeklyTimesheetPrintPage = lazyPage(
   () => import('./pages/WeeklyTimesheetPrintPage'),
   'WeeklyTimesheetPrintPage',
 );
 
+/** `/kiosk` and `/kiosk/...` — a shared tablet, not a person's session. */
+function isKioskPath(pathname: string): boolean {
+  return pathname === '/kiosk' || pathname.startsWith('/kiosk/');
+}
+
 function AppShell({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  const kiosk = isKioskPath(pathname);
   return (
     <div className="min-h-screen bg-slate-50">
       <Suspense fallback={<p className="px-6 py-8 text-sm text-slate-500">Loading…</p>}>
         {children}
       </Suspense>
+      {/* Neither personal-session widget belongs on the kiosk: it has no
+          user session and no punch queue (it shows its own offline
+          screen), and a floating chat button on a shared punch screen is
+          just something to mis-tap. OfflineBanner hides itself there. */}
       <OfflineBanner />
-      <SupportChatWidget />
+      {!kiosk && <SupportChatWidget />}
     </div>
   );
-}
-
-function RequireSession({ children }: { children: ReactNode }) {
-  const session = useSession();
-  if (!session) return <Navigate to="/login" replace />;
-  return <>{children}</>;
 }
 
 /**
@@ -101,6 +110,12 @@ function RequireSession({ children }: { children: ReactNode }) {
  * clock for someone whose only job here is to punch (no SuperAdmin, no
  * admin or supervisor role anywhere, and an employee record somewhere).
  * Sign-in lands on `/`, so this is also where employees start.
+ *
+ *   - employee-only            → /my-punch
+ *   - admin/supervisor (+ employee somewhere) → dashboard; My time is in
+ *     the top bar, and the company card links to it
+ *   - no memberships (not SuperAdmin) → dashboard, which says to ask an
+ *     administrator for access
  */
 function HomeRoute() {
   const session = useSession();
@@ -111,7 +126,7 @@ function HomeRoute() {
 
 function RequireSuperAdmin({ children }: { children: ReactNode }) {
   const session = useSession();
-  if (!session) return <Navigate to="/login" replace />;
+  if (!session) return <ToLogin />;
   if (session.user.roleGlobal !== 'super_admin') return <Navigate to="/" replace />;
   return <>{children}</>;
 }
@@ -134,7 +149,9 @@ export function App() {
     );
   }
 
-  if (setupStatus.isError) {
+  // Only fall back when there's no answer at all: a remembered setup
+  // status (useSetupStatus) lets an offline phone reach its punch page.
+  if (setupStatus.isError && !setupStatus.data) {
     return (
       <AppShell>
         <Routes>
@@ -159,19 +176,19 @@ export function App() {
   return (
     <AppShell>
       <Routes>
-        <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
+        <Route path="/login" element={session ? <SignedInRedirect /> : <LoginPage />} />
         {/* The firm's staff sign-in (single sign-on). Kept off /login so
             client-company users never see the identity-provider button. */}
         <Route
           path="/firm"
-          element={session ? <Navigate to="/" replace /> : <LoginPage variant="firm" />}
+          element={session ? <SignedInRedirect /> : <LoginPage variant="firm" />}
         />
         {/* Break-glass: the password form even when the firm has gone
             SSO-only. Unlisted on purpose — the appliance prints the URL
             alongside the break-glass credentials. */}
         <Route
           path="/login/local"
-          element={session ? <Navigate to="/" replace /> : <LoginPage variant="breakglass" />}
+          element={session ? <SignedInRedirect /> : <LoginPage variant="breakglass" />}
         />
         {/* Magic-link callback. Must run unauthenticated — the whole
             point is to MINT a session. Even if the user already has
@@ -200,6 +217,17 @@ export function App() {
           element={
             <RequireSession>
               <MyTimesheetPage />
+            </RequireSession>
+          }
+        />
+        {/* The employee's own week grid. Outside CompanyLayout (whose
+            tabs are admin pages); WeeklyGridPage reads the company from
+            usePunchCompany when there is no :companyId in the route. */}
+        <Route
+          path="/my-timesheet/week"
+          element={
+            <RequireSession>
+              <WeeklyGridPage />
             </RequireSession>
           }
         />

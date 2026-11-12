@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MultiEmployeeDayCell, MultiEmployeeRow, TimeFormat } from '@vibept/shared';
-import { formatHours } from '@vibept/shared';
+import { formatHours, instantFromWallClock, todayInTz } from '@vibept/shared';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Drawer } from '../components/Drawer';
 import { FormatToggle } from '../components/FormatToggle';
+import { useCompany } from '../hooks/useCompany';
 import { ApiError } from '../lib/api';
+import { formatCivilDay, isoDayOfWeek, shiftIsoDate, weekStartFor } from '../lib/company-time';
 import { grids, timesheets, userPreferences } from '../lib/resources';
 
 type FilterChip = 'all' | 'pending' | 'exceptions' | 'manual' | 'approved';
@@ -34,18 +36,20 @@ export function MultiEmployeeGridPage(): JSX.Element {
     entryCount: number;
   } | null>(null);
 
-  const today = new Date();
-  const defaultWeekStart = (() => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - d.getDay());
-    return d.toISOString().slice(0, 10);
-  })();
+  // The company's today and week start day, not the browser's: the grid
+  // waits for the company record (cached by CompanyLayout).
+  const companyQ = useCompany(companyId);
+  const tz = companyQ.data?.timezone ?? null;
+  const todayIso = tz ? todayInTz(tz) : null;
+  const defaultWeekStart =
+    todayIso && companyQ.data ? weekStartFor(todayIso, companyQ.data.weekStartDay) : null;
   const weekStart = search.get('week') ?? defaultWeekStart;
   const [filter, setFilter] = useState<FilterChip>('all');
 
   const gridQ = useQuery({
     queryKey: ['multi-grid', companyId, weekStart],
-    queryFn: () => grids.multi(companyId, weekStart),
+    queryFn: () => grids.multi(companyId, weekStart!),
+    enabled: weekStart != null,
   });
   const prefsQ = useQuery({
     queryKey: ['me-prefs'],
@@ -63,10 +67,8 @@ export function MultiEmployeeGridPage(): JSX.Element {
   });
 
   function gotoWeek(delta: number) {
-    const d = new Date(weekStart + 'T00:00:00');
-    d.setDate(d.getDate() + delta * 7);
-    const next = d.toISOString().slice(0, 10);
-    search.set('week', next);
+    if (!weekStart) return;
+    search.set('week', shiftIsoDate(weekStart, delta * 7));
     setSearch(search);
   }
 
@@ -81,8 +83,13 @@ export function MultiEmployeeGridPage(): JSX.Element {
         setApproveResult({ employeeCount: 0, entryCount: 0 });
         return;
       }
-      const startIso = new Date(grid.week.start + 'T00:00:00Z').toISOString();
-      const endIso = new Date(grid.week.end + 'T23:59:59Z').toISOString();
+      // Company-tz midnight starting the week through the midnight after
+      // its last (inclusive) day.
+      const start = tz ? instantFromWallClock(grid.week.start, tz) : null;
+      const end = tz ? instantFromWallClock(shiftIsoDate(grid.week.end, 1), tz) : null;
+      if (!start || !end) throw new Error('Company timezone not loaded');
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
       const res = await timesheets.approve(companyId, {
         employeeIds: clean.map((r) => r.id),
         periodStart: startIso,
@@ -118,7 +125,10 @@ export function MultiEmployeeGridPage(): JSX.Element {
     }
   }, [gridQ.data, filter]);
 
-  if (gridQ.isLoading) {
+  if (companyQ.isError) {
+    return <p className="py-6 text-sm text-red-600">Failed to load grid.</p>;
+  }
+  if (gridQ.isPending) {
     return <p className="py-6 text-sm text-slate-500">Loading…</p>;
   }
   if (gridQ.error || !gridQ.data) {
@@ -128,11 +138,11 @@ export function MultiEmployeeGridPage(): JSX.Element {
   const grid = gridQ.data;
   const dayHeaders = grid.dailyTotals.map((d) => ({
     date: d.date,
-    dow: new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' }),
-    dom: new Date(d.date + 'T00:00:00').getDate(),
+    dow: formatCivilDay(d.date, { weekday: 'short' }),
+    dom: Number(d.date.slice(8, 10)),
     total: d.seconds,
-    isWeekend: [0, 6].includes(new Date(d.date + 'T00:00:00').getDay()),
-    isToday: d.date === new Date().toISOString().slice(0, 10),
+    isWeekend: [0, 6].includes(isoDayOfWeek(d.date)),
+    isToday: d.date === todayIso,
   }));
 
   return (
@@ -348,9 +358,10 @@ export function MultiEmployeeGridPage(): JSX.Element {
         <Drawer
           open
           onClose={() => setDrilldown(null)}
-          title={`${drilldown.row.firstName} ${drilldown.row.lastName} · ${new Date(
-            drilldown.day.date + 'T00:00:00',
-          ).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}`}
+          title={`${drilldown.row.firstName} ${drilldown.row.lastName} · ${formatCivilDay(
+            drilldown.day.date,
+            { weekday: 'long', month: 'short', day: 'numeric' },
+          )}`}
         >
           <div className="flex flex-col gap-3 text-sm">
             <KV label="Total" value={formatHours(drilldown.day.seconds, format)} />

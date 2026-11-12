@@ -15,9 +15,16 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/knex.js';
 import { runMigrations } from '../../db/migrate.js';
-import { createManualEntry, deleteManualEntry, updateManualEntry } from '../manual-entries.js';
+import { resolvePayPeriod, resolveWorkWeek } from '@vibept/shared';
+import {
+  copyLastWeek,
+  createManualEntry,
+  deleteManualEntry,
+  updateManualEntry,
+} from '../manual-entries.js';
 import { hashPassword } from '../passwords.js';
 import { clockIn, clockOut } from '../punch.js';
+import { setTimeOffType } from '../time-off.js';
 import { hoursByPeriodReport } from '../reports/hours-by-period.js';
 import { timeCardReport } from '../reports/time-card.js';
 import { getTimesheet } from '../timesheets.js';
@@ -478,5 +485,138 @@ describe.skipIf(!dbReachable)('manual-entries service (DB-backed)', () => {
         actor: { userId: adminUserId, roleGlobal: 'super_admin' },
       }),
     ).rejects.toThrow(/already exists/i);
+  });
+
+  // --- future days + the pay-period approval lock ---
+
+  function addDays(isoDay: string, n: number): string {
+    const d = new Date(`${isoDay}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  it('refuses future worked time from the employee but not planned time off or a supervisor', async () => {
+    const tomorrow = addDays(today(), 1);
+    const asEmployee = { userId: employeeUserId, roleGlobal: 'none' as const };
+    await expect(
+      createManualEntry({
+        companyId,
+        employeeId,
+        day: tomorrow,
+        jobId: jobA,
+        durationSeconds: 3600,
+        reason: 'ahead of time',
+        actor: asEmployee,
+      }),
+    ).rejects.toThrow(/future day/);
+
+    const types = await setTimeOffType(companyId, 'pto', true);
+    const pto = types.find((t) => t.category === 'pto')!.jobId!;
+    await db('company_settings')
+      .where({ company_id: companyId })
+      .update({ time_off_self_entry: true });
+    const { entry: planned } = await createManualEntry({
+      companyId,
+      employeeId,
+      day: tomorrow,
+      jobId: pto,
+      durationSeconds: 8 * 3600,
+      reason: '',
+      actor: asEmployee,
+    });
+    expect(planned.id).toBeGreaterThan(0);
+
+    const { entry: scheduled } = await createManualEntry({
+      companyId,
+      employeeId,
+      day: tomorrow,
+      jobId: jobA,
+      durationSeconds: 3600,
+      reason: 'pre-entered by supervisor',
+      actor: { userId: supervisorUserId, roleGlobal: 'none' },
+    });
+    expect(scheduled.id).toBeGreaterThan(0);
+  });
+
+  it('copy-last-week skips future days for the employee', async () => {
+    // Prior-week source: a worked hour on every day of last week.
+    for (let i = 0; i < 7; i++) {
+      const start = new Date(`${addDays(today(), i - 7)}T09:00:00Z`);
+      await db('time_entries').insert({
+        company_id: companyId,
+        employee_id: employeeId,
+        shift_id: db.raw('gen_random_uuid()'),
+        entry_type: 'work',
+        job_id: jobA,
+        started_at: start,
+        ended_at: new Date(start.getTime() + 3600_000),
+        duration_seconds: 3600,
+        source: 'web',
+      });
+    }
+    const result = await copyLastWeek({
+      companyId,
+      employeeId,
+      weekStart: today(),
+      reason: 'same as last week',
+      actor: { userId: employeeUserId, roleGlobal: 'none' },
+    });
+    // Only today is not in the future.
+    expect(result.createdCount).toBe(1);
+    expect(result.skippedCount).toBe(6);
+  });
+
+  it('locks the approved week to the employee, not just approved days', async () => {
+    const period = resolvePayPeriod(new Date(), {
+      type: 'bi_weekly',
+      weekStartDay: 0,
+      timezone: 'UTC',
+    });
+    const week = resolveWorkWeek(new Date(), { weekStartDay: 0, timezone: 'UTC' });
+    const lockStart = period.start > week.start ? period.start : week.start;
+    const periodStartDay = lockStart.toISOString().slice(0, 10);
+    const insertApproved = async (day: string) =>
+      db('time_entries').insert({
+        company_id: companyId,
+        employee_id: employeeId,
+        shift_id: db.raw('gen_random_uuid()'),
+        entry_type: 'work',
+        started_at: new Date(`${day}T12:00:00Z`),
+        ended_at: new Date(`${day}T13:00:00Z`),
+        duration_seconds: 3600,
+        source: 'web',
+        approved_at: db.fn.now(),
+        approved_by: adminUserId,
+      });
+    const asEmployee = { userId: employeeUserId, roleGlobal: 'none' as const };
+
+    // Approved time before this week (the previous period, or week 1 of
+    // this one) doesn't lock it.
+    await insertApproved(addDays(periodStartDay, -1));
+    const { entry } = await createManualEntry({
+      companyId,
+      employeeId,
+      day: today(),
+      jobId: jobA,
+      durationSeconds: 3600,
+      reason: 'fine',
+      actor: asEmployee,
+    });
+    expect(entry.id).toBeGreaterThan(0);
+
+    // Approved time on another day of this week of the period does.
+    const otherDay = periodStartDay !== today() ? periodStartDay : addDays(today(), 1);
+    await insertApproved(otherDay);
+    await expect(
+      createManualEntry({
+        companyId,
+        employeeId,
+        day: today(),
+        jobId: null,
+        durationSeconds: 3600,
+        reason: 'locked',
+        actor: asEmployee,
+      }),
+    ).rejects.toThrow(/already approved/);
   });
 });

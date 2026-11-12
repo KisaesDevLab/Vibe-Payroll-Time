@@ -147,9 +147,16 @@ export async function revokeRefreshToken(submittedToken: string): Promise<void> 
     .update({ revoked_at: db.fn.now() });
 }
 
-export async function revokeAllForUser(userId: number): Promise<void> {
-  await db('refresh_tokens')
-    .where({ user_id: userId })
-    .whereNull('revoked_at')
-    .update({ revoked_at: db.fn.now() });
+/**
+ * Revoke every live refresh token the user holds. `exceptToken` keeps one
+ * session alive (the caller's own, on a password change); it only matches
+ * within this user's rows, so a foreign token spares nothing.
+ */
+export async function revokeAllForUser(
+  userId: number,
+  opts: { exceptToken?: string | null } = {},
+): Promise<void> {
+  const q = db('refresh_tokens').where({ user_id: userId }).whereNull('revoked_at');
+  if (opts.exceptToken) q.whereNot({ token_hash: sha256Hex(opts.exceptToken) });
+  await q.update({ revoked_at: db.fn.now() });
 }

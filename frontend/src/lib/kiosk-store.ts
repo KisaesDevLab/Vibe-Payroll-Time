@@ -19,6 +19,11 @@ export interface StoredKiosk {
    *  flipping `kiosk_auth_mode` propagates without re-pairing. Defaults to
    *  `pin` to preserve the Phase 4 behavior when the field is absent. */
   kioskAuthMode?: 'pin' | 'qr' | 'both';
+  /** Last values GET /kiosk/me reported, so a reload while the server is
+   *  unreachable still renders hours in the company's format and knows
+   *  whether to ask about lunch. Absent until the first /kiosk/me. */
+  timeFormat?: 'decimal' | 'hhmm';
+  lunchPromptEnabled?: boolean;
 }
 
 type Listener = (kiosk: StoredKiosk | null) => void;
@@ -33,8 +38,12 @@ class KioskStore {
 
   set(next: StoredKiosk | null): void {
     this.state = next;
-    if (next) localStorage.setItem(KEY, JSON.stringify(next));
-    else localStorage.removeItem(KEY);
+    try {
+      if (next) localStorage.setItem(KEY, JSON.stringify(next));
+      else localStorage.removeItem(KEY);
+    } catch {
+      /* storage blocked — the in-memory pairing still works this session */
+    }
     for (const fn of this.listeners) fn(next);
   }
 

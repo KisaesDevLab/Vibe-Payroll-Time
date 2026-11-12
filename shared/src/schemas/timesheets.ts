@@ -44,9 +44,22 @@ export const timesheetResponseSchema = z.object({
   }),
   period: z.object({
     start: z.string().datetime(),
+    /** Exclusive: the next period's first instant. */
     end: z.string().datetime(),
+    /** First civil day of the period (YYYY-MM-DD, company tz). */
+    firstDay: z.string(),
+    /** Last civil day of the period, inclusive (YYYY-MM-DD, company tz). */
+    lastDay: z.string(),
     type: z.enum(['weekly', 'bi_weekly', 'semi_monthly', 'monthly']),
   }),
+  /** IANA timezone the company's days, periods and clock times use. All
+   *  times on the timesheet are shown and entered in this zone. */
+  companyTimezone: z.string(),
+  /** Effective hours display format for the viewer (user pref → company
+   *  default), resolved server-side like the grid payload's. */
+  timeFormat: z.enum(['decimal', 'hhmm']),
+  /** Active entries only: superseded punches are left out, as they are of
+   *  every total. */
   entries: z.array(timeEntrySchema),
   days: z.array(daySummarySchema),
   weeks: z.array(weekSummarySchema),
@@ -189,13 +202,61 @@ export const addOwnEntryResponseSchema = z.object({
 });
 export type AddOwnEntryResponse = z.infer<typeof addOwnEntryResponseSchema>;
 
-export const createCorrectionRequestSchema = z.object({
-  timeEntryId: z.number().int().positive().nullable().optional(),
-  requestType: z.enum(['edit', 'add', 'delete']),
-  proposedChanges: z.record(z.string(), z.unknown()),
-  reason: z.string().min(1).max(500),
-});
+/** What an `edit` correction may propose: new times, job or type for an
+ *  existing entry. At least one field. */
+export const proposedEditChangesSchema = z
+  .object({
+    startedAt: z.string().datetime().optional(),
+    endedAt: z.string().datetime().nullable().optional(),
+    jobId: z.number().int().positive().nullable().optional(),
+    entryType: z.enum(['work', 'break']).optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Propose at least one change' });
+
+/** What an `add` correction proposes: a complete, closed entry. */
+export const proposedAddChangesSchema = z
+  .object({
+    startedAt: z.string().datetime(),
+    endedAt: z.string().datetime(),
+    jobId: z.number().int().positive().nullable().optional(),
+    entryType: z.enum(['work', 'break']).optional(),
+  })
+  .strict();
+
+export const createCorrectionRequestSchema = z
+  .object({
+    timeEntryId: z.number().int().positive().nullable().optional(),
+    requestType: z.enum(['edit', 'add', 'delete']),
+    proposedChanges: z.record(z.string(), z.unknown()),
+    reason: z.string().min(1).max(500),
+  })
+  .superRefine((v, ctx) => {
+    const schema =
+      v.requestType === 'edit'
+        ? proposedEditChangesSchema
+        : v.requestType === 'add'
+          ? proposedAddChangesSchema
+          : z.object({}).strict();
+    const r = schema.safeParse(v.proposedChanges);
+    if (!r.success) {
+      for (const issue of r.error.issues) {
+        ctx.addIssue({ ...issue, path: ['proposedChanges', ...issue.path] });
+      }
+    }
+    if (v.requestType !== 'add' && v.timeEntryId == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['timeEntryId'],
+        message: `A ${v.requestType} request needs the entry it applies to`,
+      });
+    }
+  });
 export type CreateCorrectionRequest = z.infer<typeof createCorrectionRequestSchema>;
+
+/** The signed-in employee's own correction requests, newest first. */
+export const myCorrectionRequestsResponseSchema = z.array(correctionRequestSchema);
+export type MyCorrectionRequestsResponse = z.infer<typeof myCorrectionRequestsResponseSchema>;
 
 export const decideCorrectionRequestSchema = z.object({
   reviewNote: z.string().max(500).optional(),

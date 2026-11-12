@@ -20,9 +20,11 @@ import {
   breakOut,
   clockIn,
   clockOut,
+  getTodayWorkSeconds,
   switchJob,
   type PunchContext,
 } from '../../services/punch.js';
+import { recordAuthEvent } from '../../services/auth-events.js';
 import { getCurrentPunch } from '../../services/time-entries.js';
 import { Unauthorized } from '../errors.js';
 import { requireKioskDevice, requireKioskEmployee } from '../middleware/kiosk-auth.js';
@@ -67,8 +69,9 @@ kioskRouter.get('/me', requireKioskDevice, async (req, res, next) => {
       .first<{
         kiosk_auth_mode: 'pin' | 'qr' | 'both';
         lunch_prompt_enabled: boolean;
+        time_format_default: 'decimal' | 'hhmm' | null;
         name: string;
-      }>('company_settings.kiosk_auth_mode', 'company_settings.lunch_prompt_enabled', 'companies.name');
+      }>('company_settings.kiosk_auth_mode', 'company_settings.lunch_prompt_enabled', 'company_settings.time_format_default', 'companies.name');
     res.json({
       data: {
         id: req.kioskDevice.id,
@@ -77,8 +80,32 @@ kioskRouter.get('/me', requireKioskDevice, async (req, res, next) => {
         companyName: row?.name ?? '',
         kioskAuthMode: row?.kiosk_auth_mode ?? 'pin',
         lunchPromptEnabled: row?.lunch_prompt_enabled ?? true,
+        timeFormat: row?.time_format_default ?? 'decimal',
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// The tablet unpairs itself: revoke its own device token so the copy in
+// the tablet's storage is dead server-side, not merely forgotten locally.
+// Device-authenticated only — the token being revoked is the credential.
+kioskRouter.post('/unpair', requireKioskDevice, async (req, res, next) => {
+  try {
+    if (!req.kioskDevice) return next(Unauthorized());
+    await db('kiosk_devices')
+      .where({ id: req.kioskDevice.id, company_id: req.kioskDevice.companyId })
+      .whereNull('revoked_at')
+      .update({ revoked_at: db.fn.now() });
+    await recordAuthEvent({
+      eventType: 'logout',
+      companyId: req.kioskDevice.companyId,
+      ip: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+      metadata: { kiosk_device_id: req.kioskDevice.id, action: 'kiosk_self_unpair' },
+    });
+    res.status(204).end();
   } catch (err) {
     next(err);
   }
@@ -172,7 +199,14 @@ kioskRouter.post('/punch/clock-out', ...bothAuthed, async (req, res, next) => {
     const body = kioskClockOutRequestSchema.parse(req.body ?? {});
     const ids = await resolveEmployeeForKiosk(req);
     const entry = await clockOut(kioskCtx(req, ids, body), { lunchMinutes: body.lunchMinutes });
-    res.json({ data: entry });
+    // Read after the close so the total includes the shift just ended
+    // (and the lunch split, if the prompt made one) for the confirmation.
+    // The punch is already committed: a failed read must not turn it into an
+    // error the employee "retries" into a conflict. Omit the total instead.
+    const todayWorkSeconds = await getTodayWorkSeconds(ids.companyId, ids.employeeId).catch(
+      () => undefined,
+    );
+    res.json({ data: { ...entry, todayWorkSeconds } });
   } catch (err) {
     next(err);
   }

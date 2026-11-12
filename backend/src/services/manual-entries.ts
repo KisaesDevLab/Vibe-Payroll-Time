@@ -5,14 +5,89 @@ import type {
   EmployeeManualEntryMode,
   GlobalRole,
   ManualEntryResponse,
+  PayPeriodType,
   PunchSource,
 } from '@vibept/shared';
+import { resolvePayPeriod, resolveWorkWeek, todayInTz } from '@vibept/shared';
 import type { Knex } from 'knex';
 import { db } from '../db/knex.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from './punch.js';
 import { isTimeOffJob } from './time-off.js';
 import { isCompanyLoginBlocked } from './employee-login.js';
+
+// ---------------------------------------------------------------------------
+// Approval lock + limits shared with own-entries / correction requests
+// ---------------------------------------------------------------------------
+
+/**
+ * Is the time at `instants` locked to the employee by an approval?
+ * Approval locks the approved range, not just the days that happen to
+ * carry an approved entry, so a day with no time yet is locked too. The
+ * range is the part of the pay period that falls in the same workweek:
+ * supervisors approve either a whole pay period or one grid week, and a
+ * week approved early in a bi-weekly or monthly period must not close
+ * the weeks after it. Periods and weeks resolve in the company's
+ * timezone with its pay-period settings, as the timesheet view does.
+ */
+export async function isPayPeriodApproved(
+  conn: Knex | Knex.Transaction,
+  companyId: number,
+  employeeId: number,
+  instants: Date[],
+): Promise<boolean> {
+  const company = await conn('companies').where({ id: companyId }).first<{
+    timezone: string;
+    week_start_day: number;
+    pay_period_type: PayPeriodType;
+    pay_period_anchor: Date | null;
+  }>();
+  if (!company) throw NotFound('Company not found');
+  for (const at of instants) {
+    const period = resolvePayPeriod(at, {
+      type: company.pay_period_type,
+      weekStartDay: company.week_start_day,
+      ...(company.pay_period_anchor ? { anchorDate: company.pay_period_anchor } : {}),
+      timezone: company.timezone,
+    });
+    const week = resolveWorkWeek(at, {
+      weekStartDay: company.week_start_day,
+      timezone: company.timezone,
+    });
+    const from = period.start > week.start ? period.start : week.start;
+    const to = period.end < week.end ? period.end : week.end;
+    const approved = await conn('time_entries')
+      .where({ company_id: companyId, employee_id: employeeId })
+      .whereNull('deleted_at')
+      .whereNotNull('approved_at')
+      .where('started_at', '>=', from)
+      .where('started_at', '<', to)
+      .first<{ id: number }>('id');
+    if (approved) return true;
+  }
+  return false;
+}
+
+/** A shift typed in after the fact can't end more than this far ahead of
+ *  the server clock (allows for a slightly fast phone). */
+export const ADDED_SHIFT_FUTURE_SLACK_MS = 5 * 60_000;
+/** Longest shift an employee may add (or ask to add) in one go. */
+export const ADDED_SHIFT_MAX_MS = 24 * 3600_000;
+
+/** The limits on a whole shift an employee adds after the fact, applied
+ *  both when it's saved directly and when it's sent as a request. */
+export function assertAddedShiftWindow(startedAt: Date, endedAt: Date): void {
+  if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime())) {
+    throw BadRequest('Invalid clock-in or clock-out time');
+  }
+  if (endedAt <= startedAt) throw BadRequest('Clock-out must be after clock-in');
+  if (endedAt.getTime() - startedAt.getTime() > ADDED_SHIFT_MAX_MS) {
+    throw BadRequest('A shift can be at most 24 hours');
+  }
+  if (endedAt.getTime() > Date.now() + ADDED_SHIFT_FUTURE_SLACK_MS) {
+    throw BadRequest("Clock-out can't be in the future");
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Pure authorization function (unit-testable without touching the DB).
@@ -274,21 +349,17 @@ export async function createManualEntry(
       input.employeeId,
     );
 
-    // Approval state of any existing punch on this day (approved punches
-    // gate employee-originated manual entries).
-    const approvedEntryToday = await trx('time_entries')
-      .where({ company_id: input.companyId, employee_id: input.employeeId })
-      .whereNull('deleted_at')
-      .whereRaw(`date_trunc('day', started_at AT TIME ZONE ?) = ?::date`, [
-        config.timezone,
-        input.day,
-      ])
-      .whereNotNull('approved_at')
-      .first<{ id: number }>();
+    const startedAtUtc = await localMidnightToUtc(trx, config.timezone, input.day);
+
+    // An approved week of a pay period is locked to employee-originated
+    // manual entries, including days in it that have no time yet.
+    const periodApproved = await isPayPeriodApproved(trx, input.companyId, input.employeeId, [
+      startedAtUtc,
+    ]);
 
     const mode = employeeModeFor(config, timeOff);
     const decision = canManualEdit(actorCtx, {
-      isApproved: !!approvedEntryToday,
+      isApproved: periodApproved,
       mode,
     });
     if (!decision.allowed) {
@@ -297,6 +368,18 @@ export async function createManualEntry(
           ? TIME_OFF_SELF_ENTRY_OFF
           : (decision.reason ?? 'Not allowed'),
       );
+    }
+
+    // Employees record hours they've worked, not hours they will work.
+    // Planned time off may sit ahead; supervisors and admins aren't
+    // limited (they may pre-enter a known schedule).
+    if (
+      !timeOff &&
+      actorCtx.roleGlobal !== 'super_admin' &&
+      actorCtx.companyRole === 'employee' &&
+      input.day > todayInTz(config.timezone)
+    ) {
+      throw BadRequest("Worked time can't be entered for a future day");
     }
 
     // `override_only` means employees may create a manual entry only
@@ -328,7 +411,6 @@ export async function createManualEntry(
       await ensureJobBelongsToCompany(trx, input.companyId, input.jobId);
     }
 
-    const startedAtUtc = await localMidnightToUtc(trx, config.timezone, input.day);
     const endedAtUtc = new Date(startedAtUtc.getTime() + input.durationSeconds * 1000);
 
     // Lock the day's rows for this employee so concurrent creates race

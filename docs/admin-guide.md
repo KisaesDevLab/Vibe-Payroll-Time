@@ -406,15 +406,31 @@ table to specific subsets.
 create manual entries on their own behalf:
 
 - **Allowed** (default) — employees can add any manual entry to an
-  unapproved period.
+  unapproved period, and can edit their own unapproved punches directly
+  (including through AI corrections).
 - **Override only** — employees may only adjust time on days they
   already punched; pure allocations (no punch on the day/job) are
   blocked. Supervisors/admins are not restricted.
 - **Disabled** — only supervisors and admins can create manual entries.
 
-Approved periods are always locked for employees regardless of mode. A
-supervisor can still post a manual entry after approval — the audit row
-makes the post-approval edit visible.
+In **Override only** and **Disabled**, employees can't edit punches
+directly: they use **Request fix**, and the change waits for a supervisor
+on the **Corrections** page.
+
+Employees can't enter worked hours for a future day (planned time off is
+fine). Approved periods are always locked for employees regardless of
+mode: once you approve a pay period, or a week of one from the grid,
+that range is closed to them, including days that had no time. A supervisor can still
+post a manual entry after approval — the audit row makes the post-approval
+edit visible.
+
+### Correction requests
+
+An employee can have one pending request per entry. Approving re-checks
+the entry first: if it has since been approved, replaced by a manual
+entry or deleted, approval is refused and the request stays pending so
+you can reject it with a note. The employee sees the status and your note
+under **My requests** on their timesheet.
 
 ## Punch location
 

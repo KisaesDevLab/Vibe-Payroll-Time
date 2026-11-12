@@ -8,12 +8,15 @@ import type {
   RunExportRequest,
 } from '@vibept/shared';
 import { GENERIC_COLUMN_KEYS, type GenericColumnKey } from '@vibept/shared';
+import { todayInTz } from '@vibept/shared';
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
+import { useCompany } from '../hooks/useCompany';
 import { ApiError } from '../lib/api';
 import { authStore } from '../lib/auth-store';
+import { browserTodayIso, monthBounds } from '../lib/company-time';
 import { payrollExports } from '../lib/resources';
 import type { CompanyContext } from './CompanyLayout';
 
@@ -27,11 +30,12 @@ const FORMAT_LABELS: Record<PayrollFormat, string> = {
 export function PayrollExportsPage() {
   const { companyId } = useOutletContext<CompanyContext>();
   const qc = useQueryClient();
-  const today = new Date();
-  const firstOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-  const firstOfNext = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
-  const [periodStart, setPeriodStart] = useState(firstOfMonth.toISOString().slice(0, 10));
-  const [periodEnd, setPeriodEnd] = useState(firstOfNext.toISOString().slice(0, 10));
+  // Default to the month holding today in the company's timezone
+  // (CompanyLayout has the company cached by the time this renders).
+  const tz = useCompany(companyId).data?.timezone;
+  const [defaults] = useState(() => monthBounds(tz ? todayInTz(tz) : browserTodayIso()));
+  const [periodStart, setPeriodStart] = useState(defaults.first);
+  const [periodEnd, setPeriodEnd] = useState(defaults.firstOfNext);
   const [runOpen, setRunOpen] = useState<{
     format: PayrollFormat;
     preflight: PreflightResponse;
@@ -442,6 +446,8 @@ function HistoryTable({
               <tr key={e.id} className={e.replacedById ? 'text-slate-400' : ''}>
                 <td className="px-4 py-2">{new Date(e.exportedAt).toLocaleString()}</td>
                 <td className="px-4 py-2">{FORMAT_LABELS[e.format]}</td>
+                {/* The run form sends each picked day as UTC midnight and the server
+                    stores that instant, so the UTC date is the day that was picked. */}
                 <td className="px-4 py-2 text-xs">
                   {new Date(e.periodStart).toISOString().slice(0, 10)} →{' '}
                   {new Date(e.periodEnd).toISOString().slice(0, 10)}

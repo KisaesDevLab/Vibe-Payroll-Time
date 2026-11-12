@@ -3,12 +3,19 @@
 import type {
   ApprovePeriodRequest,
   ApprovePeriodResponse,
+  EmployeeManualEntryMode,
   EntryAuditRow,
   PayPeriodType,
+  TimeFormat,
   TimesheetResponse,
   TimeEntry,
 } from '@vibept/shared';
-import { buildTimesheetSummary, resolvePayPeriod } from '@vibept/shared';
+import {
+  buildTimesheetSummary,
+  isoDateInTz,
+  resolveFormat,
+  resolvePayPeriod,
+} from '@vibept/shared';
 import { db } from '../db/knex.js';
 import { Forbidden, NotFound } from '../http/errors.js';
 import { rowToTimeEntry, type TimeEntryRow } from './punch.js';
@@ -45,18 +52,34 @@ async function loadSettings(companyId: number): Promise<{
   roundingMode: 'none' | '1min' | '5min' | '6min' | '15min';
   roundingGraceMinutes: number;
   timeOffSelfEntry: boolean;
+  timeFormatDefault: TimeFormat;
 }> {
   const row = await db('company_settings').where({ company_id: companyId }).first<{
     punch_rounding_mode: 'none' | '1min' | '5min' | '6min' | '15min';
     punch_rounding_grace_minutes: number;
     time_off_self_entry: boolean;
+    time_format_default: TimeFormat | null;
   }>();
   if (!row) throw NotFound('Company settings not found');
   return {
     roundingMode: row.punch_rounding_mode,
     roundingGraceMinutes: row.punch_rounding_grace_minutes,
     timeOffSelfEntry: row.time_off_self_entry,
+    timeFormatDefault: row.time_format_default ?? 'decimal',
   };
+}
+
+/** Viewer's effective hours format: user preference → company default.
+ *  Same resolution the grid payloads use (services/grids.ts). */
+async function resolveViewerTimeFormat(
+  viewerUserId: number | undefined,
+  companyDefault: TimeFormat,
+): Promise<TimeFormat> {
+  if (viewerUserId === undefined) return companyDefault;
+  const row = await db('users').where({ id: viewerUserId }).first<{
+    time_format_preference: TimeFormat | null;
+  }>('time_format_preference');
+  return resolveFormat(row?.time_format_preference ?? null, companyDefault);
 }
 
 /**
@@ -67,7 +90,13 @@ async function loadSettings(companyId: number): Promise<{
 export async function getTimesheet(
   companyId: number,
   employeeId: number,
-  opts: { periodStart?: Date; periodEnd?: Date; at?: Date } = {},
+  opts: {
+    periodStart?: Date;
+    periodEnd?: Date;
+    at?: Date;
+    /** Whose display preference sets `timeFormat`; company default if omitted. */
+    viewerUserId?: number;
+  } = {},
 ): Promise<TimesheetResponse> {
   const employee = await db('employees')
     .where({ id: employeeId, company_id: companyId })
@@ -160,6 +189,8 @@ export async function getTimesheet(
       }, null)
     : null;
 
+  const timeFormat = await resolveViewerTimeFormat(opts.viewerUserId, settings.timeFormatDefault);
+
   return {
     employee: {
       id: employee.id,
@@ -170,8 +201,14 @@ export async function getTimesheet(
     period: {
       start: periodStart.toISOString(),
       end: periodEnd.toISOString(),
+      firstDay: isoDateInTz(periodStart, company.timezone),
+      // End is exclusive: the last civil day is the one holding the
+      // period's final instant.
+      lastDay: isoDateInTz(new Date(periodEnd.getTime() - 1), company.timezone),
       type: company.payPeriodType,
     },
+    companyTimezone: company.timezone,
+    timeFormat,
     entries,
     days: summary.days,
     weeks: summary.weeks,
@@ -210,6 +247,10 @@ export async function approvePeriod(
       .whereNotNull('ended_at')
       .whereNull('approved_at')
       .whereNull('deleted_at')
+      // Superseded punches aren't part of the timesheet being signed off.
+      // If the manual entry replacing them is later deleted, they come
+      // back unapproved and the period needs approving again.
+      .whereNull('superseded_by_entry_id')
       .where('started_at', '>=', periodStart)
       .where('started_at', '<', periodEnd)
       .select<Array<{ id: number; employee_id: number }>>('id', 'employee_id');
@@ -325,7 +366,14 @@ export interface EditAuthContext {
   isOwnEntry: boolean;
   /** Is the entry currently approved? */
   isApproved: boolean;
+  /** Company's `employee_manual_entry_mode`. An employee edits their own
+   *  entries directly only in `allowed`; otherwise changes go through a
+   *  correction request ("Request fix"). */
+  employeeManualEntryMode: EmployeeManualEntryMode;
 }
+
+export const EMPLOYEE_EDIT_NEEDS_APPROVAL_MESSAGE =
+  'Your company requires a supervisor to approve changes. Use Request fix on the entry.';
 
 export function canEditEntry(ctx: EditAuthContext): boolean {
   if (ctx.roleGlobal === 'super_admin') return true;
@@ -336,7 +384,7 @@ export function canEditEntry(ctx: EditAuthContext): boolean {
     case 'supervisor':
       return true; // can edit any, approved or not
     case 'employee':
-      return ctx.isOwnEntry && !ctx.isApproved;
+      return ctx.isOwnEntry && !ctx.isApproved && ctx.employeeManualEntryMode === 'allowed';
   }
 }
 
@@ -363,6 +411,9 @@ export async function loadEditContext(
     .where({ id: entry.employee_id })
     .first<{ user_id: number | null }>();
   const blocked = await isCompanyLoginBlocked(actor.userId, companyId);
+  const settings = await db('company_settings')
+    .where({ company_id: companyId })
+    .first<{ employee_manual_entry_mode: EmployeeManualEntryMode }>('employee_manual_entry_mode');
 
   return {
     userId: actor.userId,
@@ -370,11 +421,22 @@ export async function loadEditContext(
     companyRole: blocked ? null : (membership?.role ?? null),
     isOwnEntry: employee?.user_id === actor.userId,
     isApproved: !!entry.approved_at,
+    employeeManualEntryMode: settings?.employee_manual_entry_mode ?? 'disabled',
   };
 }
 
 export function assertCanEdit(ctx: EditAuthContext): void {
-  if (!canEditEntry(ctx)) throw Forbidden('Not allowed to edit this entry');
+  if (canEditEntry(ctx)) return;
+  if (
+    ctx.roleGlobal !== 'super_admin' &&
+    ctx.companyRole === 'employee' &&
+    ctx.isOwnEntry &&
+    !ctx.isApproved
+  ) {
+    // Only the company's policy stands in the way: say what to do instead.
+    throw Forbidden(EMPLOYEE_EDIT_NEEDS_APPROVAL_MESSAGE);
+  }
+  throw Forbidden('Not allowed to edit this entry');
 }
 
 export function assertCanDelete(ctx: EditAuthContext): void {

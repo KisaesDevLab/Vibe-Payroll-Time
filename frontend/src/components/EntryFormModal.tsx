@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 import type { Job, TimeEntry } from '@vibept/shared';
 import { useMemo, useState } from 'react';
+import { fromZoneInput, toZoneInput, zoneNotice } from '../lib/company-time';
 
 /**
  * Shared form modal for both creating new entries (missed-punch flow)
@@ -33,24 +34,21 @@ interface Props {
   onSubmit: (values: EntryFormValues) => void;
   pending: boolean;
   error?: string | null;
+  /** Company IANA timezone. Start and end are shown and entered as wall
+   *  clock time there, matching the timesheet, whatever the browser's zone. */
+  timezone: string;
 }
 
-function toLocalInputValue(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  // HTML datetime-local uses local time, format YYYY-MM-DDTHH:mm.
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function fromLocalInputValue(local: string): string | null {
-  if (!local) return null;
-  const d = new Date(local);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
-
-export function EntryFormModal({ target, jobs, onCancel, onSubmit, pending, error }: Props) {
+export function EntryFormModal({
+  target,
+  jobs,
+  onCancel,
+  onSubmit,
+  pending,
+  error,
+  timezone,
+}: Props) {
+  const zoneLabel = zoneNotice(timezone);
   const initial = useMemo<EntryFormValues>(() => {
     if (target.mode === 'edit') {
       return {
@@ -61,7 +59,7 @@ export function EntryFormModal({ target, jobs, onCancel, onSubmit, pending, erro
         reason: '',
       };
     }
-    // Create mode defaults to a two-hour window ending now in local tz.
+    // Create mode defaults to a two-hour window ending now.
     const end = new Date();
     const start = new Date(end.getTime() - 2 * 60 * 60 * 1000);
     return {
@@ -102,6 +100,7 @@ export function EntryFormModal({ target, jobs, onCancel, onSubmit, pending, erro
             ? 'Creates a closed entry retroactively (missed-punch recovery). Every change is logged to the audit trail.'
             : 'Changes are logged to the audit trail. Only supervisors and admins see this.'}
         </p>
+        {zoneLabel && <p className="mt-1 text-xs font-medium text-slate-600">{zoneLabel}</p>}
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">
@@ -110,9 +109,9 @@ export function EntryFormModal({ target, jobs, onCancel, onSubmit, pending, erro
               type="datetime-local"
               required
               className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm"
-              value={toLocalInputValue(values.startedAt)}
+              value={toZoneInput(values.startedAt, timezone)}
               onChange={(e) => {
-                const iso = fromLocalInputValue(e.target.value);
+                const iso = fromZoneInput(e.target.value, timezone);
                 if (iso) setValues((v) => ({ ...v, startedAt: iso }));
               }}
             />
@@ -125,9 +124,9 @@ export function EntryFormModal({ target, jobs, onCancel, onSubmit, pending, erro
               type="datetime-local"
               required={isCreate}
               className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm"
-              value={toLocalInputValue(values.endedAt)}
+              value={toZoneInput(values.endedAt, timezone)}
               onChange={(e) => {
-                const iso = fromLocalInputValue(e.target.value);
+                const iso = fromZoneInput(e.target.value, timezone);
                 setValues((v) => ({ ...v, endedAt: iso }));
               }}
             />

@@ -2,23 +2,35 @@
 // SPDX-License-Identifier: MIT
 import { useQuery } from '@tanstack/react-query';
 import { Suspense } from 'react';
-import { Outlet, useParams } from 'react-router-dom';
-import { CompanyTabs } from '../components/CompanyTabs';
+import { Navigate, Outlet, useParams } from 'react-router-dom';
+import { CompanyTabs, canManageCompany } from '../components/CompanyTabs';
 import { TopBar } from '../components/TopBar';
+import { useSession } from '../hooks/useSession';
 import { companies as companiesApi } from '../lib/resources';
 
 export function CompanyLayout() {
   const params = useParams();
   const companyId = Number(params.companyId);
+  const session = useSession();
+  const validId = Number.isFinite(companyId) && companyId > 0;
+  const allowed = !!session && validId && canManageCompany(session.user, companyId);
 
   const company = useQuery({
     queryKey: ['company', companyId],
     queryFn: () => companiesApi.get(companyId),
-    enabled: Number.isFinite(companyId) && companyId > 0,
+    enabled: allowed,
   });
 
-  if (!Number.isFinite(companyId) || companyId <= 0) {
+  if (!validId) {
     return <p className="p-6 text-sm text-red-700">Invalid company id</p>;
+  }
+  // Every page under /companies/:id is an admin or supervisor page. An
+  // employee there (an old bookmark, a link from the dashboard, a typed
+  // URL) gets their own timesheet instead of a row of 403s; anyone else
+  // without a role at this company goes home.
+  if (session && !allowed) {
+    const membership = session.user.memberships.find((m) => m.companyId === companyId);
+    return <Navigate to={membership?.role === 'employee' ? '/my-timesheet' : '/'} replace />;
   }
 
   return (

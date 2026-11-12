@@ -8,13 +8,15 @@ import type {
   MagicLinkOptionsResponse,
   MagicLinkRequest,
 } from '@vibept/shared';
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { FormField } from '../components/FormField';
 import { useApplianceName } from '../hooks/useApplianceName';
 import { ApiError, apiFetch } from '../lib/api';
 import { authStore } from '../lib/auth-store';
+import { storeReturnTo } from '../lib/return-to';
+import { takeSessionEndReason } from '../lib/session-end';
 import { SSO_BASE_PATH, takeSsoHandoffError } from '../lib/sso';
 
 /**
@@ -42,6 +44,11 @@ import { SSO_BASE_PATH, takeSsoHandoffError } from '../lib/sso';
  *   - `/login/local` (breakglass): the password form even in SSO-only
  *     mode, for the one account that may still use it. The magic-link
  *     options are dropped — the break-glass address is undeliverable.
+ *
+ * After a sign-in this page only stores the session: the /login, /firm
+ * and /login/local routes redirect a signed-in visitor (App.tsx
+ * SignedInRedirect), to the page they were on when the session ended if
+ * a route guard sent them here, else `/`.
  */
 
 type MagicChannel = 'email' | 'sms';
@@ -58,8 +65,18 @@ export const FIRM_LOGIN_PATH = '/firm';
 
 export function LoginPage({ variant = 'standard' }: { variant?: LoginVariant }) {
   const breakglass = variant === 'breakglass';
-  const navigate = useNavigate();
+  const location = useLocation();
   const [ssoError] = useState(takeSsoHandoffError);
+  // Why the server ended the last session (sign-in turned off), if it did.
+  const [sessionEndReason] = useState(takeSessionEndReason);
+
+  // A route guard that bounced an expired session here passes the page
+  // it was on. Keep it in storage so it also survives a magic link
+  // opened in another tab.
+  const returnTo = (location.state as { returnTo?: unknown } | null)?.returnTo;
+  useEffect(() => {
+    if (returnTo) storeReturnTo(returnTo);
+  }, [returnTo]);
   const applianceName = useApplianceName();
   const [form, setForm] = useState<LoginRequest>({
     email: '',
@@ -81,10 +98,8 @@ export function LoginPage({ variant = 'standard' }: { variant?: LoginVariant }) 
         anonymous: true,
         body: JSON.stringify(payload),
       }),
-    onSuccess: (data) => {
-      authStore.set(data);
-      navigate('/', { replace: true });
-    },
+    // The route re-renders as signed in and redirects (see above).
+    onSuccess: (data) => authStore.set(data),
   });
 
   const [magicChannel, setMagicChannel] = useState<MagicChannel | null>(null);
@@ -112,6 +127,7 @@ export function LoginPage({ variant = 'standard' }: { variant?: LoginVariant }) 
     setMagicChannel(channel);
     setMagicFlow(flow);
     setMagicSent(false);
+    requestMagic.reset();
   };
 
   const showEmail = !breakglass && (options.data?.emailEnabled ?? false);
@@ -143,17 +159,28 @@ export function LoginPage({ variant = 'standard' }: { variant?: LoginVariant }) 
         setMagicChannel(null);
         setMagicSent(false);
         setMagicIdentifier('');
+        requestMagic.reset();
       }}
       onSwitchChannel={
         showEmail && showSms
           ? () => {
               setMagicChannel(magicChannel === 'email' ? 'sms' : 'email');
               setMagicIdentifier('');
+              requestMagic.reset();
             }
           : undefined
       }
       sent={magicSent}
       pending={requestMagic.isPending}
+      error={
+        requestMagic.isError
+          ? requestMagic.error instanceof ApiError
+            ? requestMagic.error.status === 429
+              ? 'Too many requests. Wait a few minutes, then try again.'
+              : requestMagic.error.message
+            : 'Could not send the link. Check your connection and try again.'
+          : null
+      }
     />
   ) : (
     <>
@@ -286,6 +313,14 @@ export function LoginPage({ variant = 'standard' }: { variant?: LoginVariant }) 
           {ssoError}
         </div>
       )}
+      {sessionEndReason && (
+        <div
+          role="alert"
+          className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+        >
+          You were signed out. {sessionEndReason}
+        </div>
+      )}
 
       {variant === 'standard' ? (
         <div className="flex flex-col gap-6">{localSignIn}</div>
@@ -332,6 +367,7 @@ function MagicLinkForm({
   onSwitchChannel,
   sent,
   pending,
+  error,
 }: {
   channel: MagicChannel;
   flow: LinkFlow;
@@ -343,6 +379,8 @@ function MagicLinkForm({
   onSwitchChannel?: (() => void) | undefined;
   sent: boolean;
   pending: boolean;
+  /** Why the last send failed (rate limit, network), shown under the field. */
+  error: string | null;
 }) {
   const isReset = flow === 'password_reset';
 
@@ -410,6 +448,15 @@ function MagicLinkForm({
         >
           {channel === 'email' ? 'Use my phone number instead' : 'Use my email address instead'}
         </button>
+      )}
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {error}
+        </div>
       )}
 
       <div className="flex justify-between gap-2">

@@ -17,6 +17,7 @@ import {
   approveCorrectionRequest,
   createCorrectionRequest,
   listCorrectionRequests,
+  listMyCorrectionRequests,
   rejectCorrectionRequest,
 } from '../../services/correction-requests.js';
 import {
@@ -70,6 +71,25 @@ async function assertCallerOwnsCompany(
   return membership.role;
 }
 
+/**
+ * The caller's own active employee record at a company, for the
+ * self-service routes (/current, /my-correction-requests). Refuses when
+ * the company's sign-in switch is off for them.
+ */
+async function resolveOwnActiveEmployee(
+  userId: number,
+  companyId: number,
+): Promise<{ id: number }> {
+  const employee = await db('employees')
+    .where({ company_id: companyId, user_id: userId, status: 'active' })
+    .first<{ id: number }>('id');
+  if (!employee) throw Forbidden('Not an active employee at this company');
+  if (await isCompanyLoginBlocked(userId, companyId)) {
+    throw Forbidden('Your sign-in to this company has been turned off');
+  }
+  return employee;
+}
+
 // ---------------------------------------------------------------------------
 // Timesheet reads
 // ---------------------------------------------------------------------------
@@ -94,6 +114,7 @@ timesheetsRouter.get('/', requireAuth, async (req, res, next) => {
     const result = await getTimesheet(q.companyId, q.employeeId, {
       ...(q.periodStart ? { periodStart: new Date(q.periodStart) } : {}),
       ...(q.periodEnd ? { periodEnd: new Date(q.periodEnd) } : {}),
+      viewerUserId: req.user.id,
       ...(q.at ? { at: new Date(q.at) } : {}),
     });
     res.json({ data: result });
@@ -186,13 +207,22 @@ timesheetsRouter.get('/current', requireAuth, async (req, res, next) => {
     const companyId = Number(req.query.companyId);
     if (!Number.isFinite(companyId)) return next(Forbidden('companyId required'));
 
-    const employee = await db('employees')
-      .where({ company_id: companyId, user_id: req.user.id, status: 'active' })
-      .first<{ id: number }>();
-    if (!employee) return next(Forbidden('Not an active employee at this company'));
-
-    const result = await getTimesheet(companyId, employee.id);
+    const employee = await resolveOwnActiveEmployee(req.user.id, companyId);
+    const result = await getTimesheet(companyId, employee.id, { viewerUserId: req.user.id });
     res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** The signed-in employee's own correction requests, newest first. */
+timesheetsRouter.get('/my-correction-requests', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) return next(Unauthorized());
+    const { companyId } = approveQuery.parse(req.query);
+    const employee = await resolveOwnActiveEmployee(req.user.id, companyId);
+    const rows = await listMyCorrectionRequests(companyId, employee.id);
+    res.json({ data: rows });
   } catch (err) {
     next(err);
   }

@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: MIT
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TimeEntry, TimeFormat, WeeklyGridCell, WeeklyGridJob } from '@vibept/shared';
-import { TIME_OFF_CATEGORY_LABELS, formatHours } from '@vibept/shared';
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  TIME_OFF_CATEGORY_LABELS,
+  formatHours,
+  instantFromWallClock,
+  todayInTz,
+} from '@vibept/shared';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AddJobPicker } from '../components/AddJobPicker';
 import { Button } from '../components/Button';
 import { CellEditPopover } from '../components/CellEditPopover';
@@ -13,9 +18,13 @@ import { EntryFormModal, type EntryFormValues } from '../components/EntryFormMod
 import { FormatToggle } from '../components/FormatToggle';
 import { HoursCell } from '../components/HoursCell';
 import { Modal } from '../components/Modal';
+import { TopBar } from '../components/TopBar';
 import { SOURCE_LABELS, formatClock, isoDateInTz } from '../components/WeeklyTimesheetPrint';
+import { useCompany } from '../hooks/useCompany';
+import { usePunchCompany } from '../hooks/usePunchCompany';
 import { useSession } from '../hooks/useSession';
 import { ApiError } from '../lib/api';
+import { formatCivilDay, isoDayOfWeek, shiftIsoDate, weekStartFor } from '../lib/company-time';
 import {
   employees as employeesApi,
   grids,
@@ -24,6 +33,7 @@ import {
   timesheets,
   userPreferences,
 } from '../lib/resources';
+import { invalidateTimeEntryQueries } from '../lib/timesheet-queries';
 
 const UNDO_WINDOW_MS = 60_000;
 
@@ -34,14 +44,33 @@ const UNDO_WINDOW_MS = 60_000;
  * Every cell opens the CellEditPopover when clicked. Save path always
  * creates or updates a `web_manual` entry (which supersedes punches if
  * any exist). Delete on a manual cell restores superseded punches.
+ *
+ * Two routes render it: `/companies/:companyId/timesheets/:employeeId/week`
+ * inside the company layout, and the employee's own `/my-timesheet/week`
+ * with no route params, where the company is the one picked on My
+ * timesheet and the employee is the signed-in user's record there.
+ *
+ * Days and weeks are the company's: the default week is the one holding
+ * today in the company's timezone, starting on its week start day.
  */
 export function WeeklyGridPage(): JSX.Element {
   const params = useParams<{ companyId: string; employeeId: string }>();
   const navigate = useNavigate();
   const session = useSession();
   const [search, setSearch] = useSearchParams();
-  const companyId = Number(params.companyId);
-  const employeeId = Number(params.employeeId);
+  const selfMode = params.companyId == null;
+  const punchCompany = usePunchCompany();
+  const companyId = selfMode ? (punchCompany.companyId ?? NaN) : Number(params.companyId);
+  // Own grid: the employee id comes from the current timesheet, which
+  // resolves the signed-in user's employee record at the company.
+  const ownSheetQ = useQuery({
+    queryKey: ['my-timesheet', companyId],
+    queryFn: () => timesheets.current(companyId),
+    enabled: selfMode && Number.isFinite(companyId),
+  });
+  const employeeId = selfMode ? (ownSheetQ.data?.employee.id ?? NaN) : Number(params.employeeId);
+  const companyQ = useCompany(Number.isFinite(companyId) ? companyId : null);
+  const tz = companyQ.data?.timezone ?? null;
 
   // Managers and admins get an employee picker so they can page through
   // the roster without bouncing to the TimesheetsReviewPage. An employee
@@ -57,13 +86,11 @@ export function WeeklyGridPage(): JSX.Element {
     enabled: isManager,
     staleTime: 60_000,
   });
-  const today = new Date();
-  const dow = today.getDay(); // 0=Sun
-  const defaultWeekStart = (() => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - dow); // Sunday-anchored default
-    return d.toISOString().slice(0, 10);
-  })();
+  // Today in the company's zone, not the browser's; null until the
+  // company has loaded (the grid waits for it).
+  const todayIso = tz ? todayInTz(tz) : null;
+  const defaultWeekStart =
+    todayIso && companyQ.data ? weekStartFor(todayIso, companyQ.data.weekStartDay) : null;
   const weekStart = search.get('start') ?? defaultWeekStart;
   const qc = useQueryClient();
 
@@ -137,7 +164,8 @@ export function WeeklyGridPage(): JSX.Element {
 
   const gridQ = useQuery({
     queryKey: ['weekly-grid', companyId, employeeId, weekStart],
-    queryFn: () => grids.weekly(companyId, employeeId, weekStart),
+    queryFn: () => grids.weekly(companyId, employeeId, weekStart!),
+    enabled: Number.isFinite(companyId) && Number.isFinite(employeeId) && weekStart != null,
   });
 
   const prefsQ = useQuery({
@@ -151,8 +179,9 @@ export function WeeklyGridPage(): JSX.Element {
   const updatePref = useMutation({
     mutationFn: (next: TimeFormat) => userPreferences.update({ timeFormatPreference: next }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['me-prefs'] });
-      qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+      void qc.invalidateQueries({ queryKey: ['me-prefs'] });
+      // The list timesheet carries the format too.
+      invalidateTimeEntryQueries(qc);
     },
   });
 
@@ -204,7 +233,7 @@ export function WeeklyGridPage(): JSX.Element {
       setErrorText(null);
       setLastSavedAt(Date.now());
       setLastSaveFailed(false);
-      qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+      invalidateTimeEntryQueries(qc);
     },
     onError: (err) => {
       setErrorText(err instanceof ApiError ? err.message : 'Save failed');
@@ -241,7 +270,7 @@ export function WeeklyGridPage(): JSX.Element {
           : 'Sent to your supervisor. The punches are removed once they approve.',
       );
       setLastSavedAt(Date.now());
-      qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+      invalidateTimeEntryQueries(qc);
     },
     onError: (err) => {
       setErrorText(err instanceof ApiError ? err.message : 'Could not remove the punches');
@@ -326,7 +355,7 @@ export function WeeklyGridPage(): JSX.Element {
       setEditing(null);
       setErrorText(null);
       setLastSavedAt(Date.now());
-      qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+      invalidateTimeEntryQueries(qc);
     },
     onError: (err) => {
       setErrorText(err instanceof ApiError ? err.message : 'Delete failed');
@@ -336,9 +365,9 @@ export function WeeklyGridPage(): JSX.Element {
 
   const copyWeek = useMutation({
     mutationFn: (reason: string) =>
-      manualEntries.copyLastWeek({ companyId, employeeId, weekStart, reason }),
+      manualEntries.copyLastWeek({ companyId, employeeId, weekStart: weekStart!, reason }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+      invalidateTimeEntryQueries(qc);
       setLastSavedAt(Date.now());
     },
     onError: (err) => {
@@ -351,9 +380,13 @@ export function WeeklyGridPage(): JSX.Element {
       const period = gridQ.data;
       if (!period) throw new Error('no grid data');
       // Use the week window itself as the "period" to approve. The
-      // timesheets approve endpoint takes periodStart/End ISO.
-      const startIso = new Date(period.week.start + 'T00:00:00Z').toISOString();
-      const endIso = new Date(period.week.end + 'T23:59:59Z').toISOString();
+      // approve endpoint takes instants: the company-tz midnight starting
+      // the week through the midnight after its last (inclusive) day.
+      const start = tz ? instantFromWallClock(period.week.start, tz) : null;
+      const end = tz ? instantFromWallClock(shiftIsoDate(period.week.end, 1), tz) : null;
+      if (!start || !end) throw new Error('Company timezone not loaded');
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
       return timesheets.approve(companyId, {
         employeeIds: [employeeId],
         periodStart: startIso,
@@ -361,7 +394,7 @@ export function WeeklyGridPage(): JSX.Element {
       });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+      invalidateTimeEntryQueries(qc);
       setLastSavedAt(Date.now());
     },
     onError: (err) => {
@@ -397,7 +430,7 @@ export function WeeklyGridPage(): JSX.Element {
     },
     onSuccess: () => {
       setUndo(null);
-      qc.invalidateQueries({ queryKey: ['weekly-grid'] });
+      invalidateTimeEntryQueries(qc);
     },
   });
 
@@ -417,31 +450,61 @@ export function WeeklyGridPage(): JSX.Element {
   }, [gridQ.data]);
 
   function gotoWeek(delta: number) {
-    const d = new Date(weekStart + 'T00:00:00');
-    d.setDate(d.getDate() + delta * 7);
-    const next = d.toISOString().slice(0, 10);
-    search.set('start', next);
+    if (!weekStart) return;
+    search.set('start', shiftIsoDate(weekStart, delta * 7));
     setSearch(search);
   }
 
-  if (gridQ.isLoading) {
-    return <p className="py-6 text-sm text-slate-500">Loading…</p>;
+  // Inside the company layout the page container and TopBar come from
+  // CompanyLayout; the employee's own route supplies them here, plus a way
+  // back to the list view.
+  const shell = (children: ReactNode): JSX.Element =>
+    selfMode ? (
+      <>
+        <TopBar />
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+          <div className="mb-4 inline-flex overflow-hidden rounded-full border border-slate-300 text-xs font-medium">
+            <Link to="/my-timesheet" className="px-3 py-1.5 text-slate-600 hover:bg-slate-100">
+              ← List view
+            </Link>
+            <span className="bg-slate-900 px-3 py-1.5 text-white">Grid view</span>
+          </div>
+          {children}
+        </main>
+      </>
+    ) : (
+      <>{children}</>
+    );
+
+  if (selfMode && punchCompany.memberships.length === 0) {
+    return shell(
+      <p className="py-6 text-sm text-slate-600">
+        You don&apos;t have an active employee record at any company, so there&apos;s no grid to
+        show.
+      </p>,
+    );
+  }
+  if (ownSheetQ.isError || companyQ.isError) {
+    return shell(<p className="py-6 text-sm text-red-600">Failed to load weekly grid.</p>);
+  }
+  if (gridQ.isPending) {
+    return shell(<p className="py-6 text-sm text-slate-500">Loading…</p>);
   }
   if (gridQ.error || !gridQ.data) {
-    return <p className="py-6 text-sm text-red-600">Failed to load weekly grid.</p>;
+    return shell(<p className="py-6 text-sm text-red-600">Failed to load weekly grid.</p>);
   }
 
   const grid = gridQ.data;
   const dayHeaders = grid.days.map((d) => ({
     date: d.date,
-    dow: new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' }),
-    dom: new Date(d.date + 'T00:00:00').getDate(),
+    dow: formatCivilDay(d.date, { weekday: 'short' }),
+    dom: Number(d.date.slice(8, 10)),
     totalSeconds: d.totalSeconds,
     timeOffSeconds: d.timeOffSeconds,
     hasException: d.hasException,
     hasManual: d.hasManual,
-    isWeekend: [0, 6].includes(new Date(d.date + 'T00:00:00').getDay()),
-    isToday: d.date === new Date().toISOString().slice(0, 10),
+    isWeekend: [0, 6].includes(isoDayOfWeek(d.date)),
+    isToday: d.date === todayIso,
   }));
 
   // Row-visibility rule. Backend returns every active job; this is
@@ -571,15 +634,13 @@ export function WeeklyGridPage(): JSX.Element {
     );
   };
 
-  return (
+  return shell(
     <>
-      {/* Rendered inside CompanyLayout, which supplies the TopBar and the
-          page container. */}
       <div>
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              {isManager && (rosterQ.data?.length ?? 0) > 0 ? (
+              {!selfMode && isManager && (rosterQ.data?.length ?? 0) > 0 ? (
                 <>
                   <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
                     Weekly grid ·
@@ -906,7 +967,7 @@ export function WeeklyGridPage(): JSX.Element {
           </table>
         </div>
 
-        <ExceptionsPanel entries={grid.entries} />
+        <ExceptionsPanel entries={grid.entries} timezone={tz} />
       </div>
 
       {undo && (
@@ -929,7 +990,7 @@ export function WeeklyGridPage(): JSX.Element {
           format={format}
           initialSeconds={editing.initialSeconds}
           initialReason={editing.initialReason}
-          dayLabel={new Date(editing.date + 'T00:00:00').toLocaleDateString(undefined, {
+          dayLabel={formatCivilDay(editing.date, {
             weekday: 'long',
             month: 'short',
             day: 'numeric',
@@ -1015,10 +1076,10 @@ export function WeeklyGridPage(): JSX.Element {
           // it's inside the visible week, otherwise the first day of
           // the week. Same state shape the cell-click handler uses,
           // so CellEditPopover opens with no special branching.
-          const todayIso = new Date().toISOString().slice(0, 10);
-          const defaultDate = grid.days.some((d) => d.date === todayIso)
-            ? todayIso
-            : (grid.days[0]?.date ?? weekStart);
+          const defaultDate =
+            todayIso && grid.days.some((d) => d.date === todayIso)
+              ? todayIso
+              : (grid.days[0]?.date ?? grid.week.start);
           setErrorText(null);
           setEditing({
             jobId: picked.id,
@@ -1087,6 +1148,7 @@ export function WeeklyGridPage(): JSX.Element {
             employeeName: `${grid.employee.firstName} ${grid.employee.lastName}`,
           }}
           jobs={jobsQ.data ?? []}
+          timezone={grid.company.timezone}
           onCancel={() => setEntryEdit(null)}
           onSubmit={(values) => editOneEntry.mutate(values)}
           pending={editOneEntry.isPending}
@@ -1115,7 +1177,7 @@ export function WeeklyGridPage(): JSX.Element {
           }
         />
       )}
-    </>
+    </>,
   );
 }
 
@@ -1294,7 +1356,13 @@ function UndoToast({
   );
 }
 
-function ExceptionsPanel({ entries }: { entries: TimeEntry[] }): JSX.Element | null {
+function ExceptionsPanel({
+  entries,
+  timezone,
+}: {
+  entries: TimeEntry[];
+  timezone: string | null;
+}): JSX.Element | null {
   const exceptions = entries.filter((e) => !e.endedAt || e.isAutoClosed || e.sourceOffline);
   const [open, setOpen] = useState(false);
   if (exceptions.length === 0) return null;
@@ -1323,7 +1391,11 @@ function ExceptionsPanel({ entries }: { entries: TimeEntry[] }): JSX.Element | n
             <li key={e.id} className="flex items-center justify-between gap-4 px-4 py-2">
               <div>
                 <div className="font-mono text-xs text-amber-900">
-                  #{e.id} · {new Date(e.startedAt).toLocaleString()}
+                  #{e.id} ·{' '}
+                  {new Date(e.startedAt).toLocaleString(
+                    undefined,
+                    timezone ? { timeZone: timezone } : {},
+                  )}
                 </div>
                 <div className="text-xs text-amber-800">
                   {e.entryType}

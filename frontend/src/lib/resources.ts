@@ -422,6 +422,9 @@ export const timesheets = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  /** The signed-in employee's own correction requests, newest first. */
+  myCorrectionRequests: (companyId: number) =>
+    apiFetch<CorrectionRequest[]>(`/timesheets/my-correction-requests?companyId=${companyId}`),
   /** Employee adds a shift they forgot to punch. */
   addOwnEntry: (companyId: number, body: AddOwnEntryRequest) =>
     apiFetch<AddOwnEntryResponse>(`/timesheets/my-entries?companyId=${companyId}`, {

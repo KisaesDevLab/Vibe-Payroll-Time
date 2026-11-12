@@ -276,6 +276,8 @@ export function TimesheetsReviewPage() {
               employeeId={sheet.data.employee.id}
               periodStart={sheet.data.period.start}
               periodEnd={sheet.data.period.end}
+              companyTimezone={sheet.data.companyTimezone}
+              entries={sheet.data.entries}
               onApplied={() =>
                 qc.invalidateQueries({ queryKey: ['timesheet', companyId, effectiveId] })
               }
@@ -298,6 +300,7 @@ export function TimesheetsReviewPage() {
                 jobs={activeJobs}
                 onCancel={() => setAddOpen(false)}
                 onSubmit={(values) => createEntry.mutate(values)}
+                timezone={sheet.data.companyTimezone}
                 pending={createEntry.isPending}
                 error={
                   createEntry.error instanceof ApiError
@@ -314,6 +317,7 @@ export function TimesheetsReviewPage() {
                 jobs={activeJobs}
                 onCancel={() => setEditTarget(null)}
                 onSubmit={(values) => editEntry.mutate(values)}
+                timezone={sheet.data.companyTimezone}
                 pending={editEntry.isPending}
                 error={
                   editEntry.error instanceof ApiError

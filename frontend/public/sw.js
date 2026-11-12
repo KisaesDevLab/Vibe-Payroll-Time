@@ -16,7 +16,12 @@
  *   - Static assets        cache-first long-lived (hashed filenames make
  *                          the cache safe — new builds get new URLs)
  *   - Roster / schedule    network-first 30s (kiosk needs freshest roster)
- *   - Punch POSTs          network-only (offline punches handled separately)
+ *   - Punch POSTs          network-only. Offline punches are queued in
+ *                          IndexedDB by the page (src/lib/offline-queue.ts)
+ *                          and drained on the main thread: sending them
+ *                          needs the employee's bearer token, which lives
+ *                          in the page. No Background Sync — it would wake
+ *                          a worker that can't authenticate, and iOS lacks it.
  *   - Everything else      pass-through
  *
  * Cross-origin requests bypass this worker entirely. If a customer
@@ -24,9 +29,7 @@
  * origin is a fresh install — no stale cache from the old origin.
  *
  * The fetch handler ignores any non-GET request — POST/PUT/PATCH/DELETE
- * fall through to the network. The Phase 5 offline punch queue (when
- * shipped) plugs in on top of this and intercepts punch POSTs
- * specifically.
+ * fall through to the network.
  */
 
 const BUILD_VERSION = '__VIBE_BUILD_VERSION__';
@@ -189,8 +192,8 @@ self.addEventListener('fetch', (event) => {
   // Cross-origin requests (Twilio, LLM, etc.) go straight to network.
   if (!isSameOrigin(url)) return;
 
-  // Punch POSTs always hit the network. Phase 5 will hook this slot
-  // for the offline-queue → IndexedDB → background sync flow.
+  // Punch POSTs always hit the network. A failure surfaces to the page,
+  // which queues the punch (src/lib/offline-queue.ts).
   if (isPunchPost(request, url)) {
     event.respondWith(fetch(request));
     return;

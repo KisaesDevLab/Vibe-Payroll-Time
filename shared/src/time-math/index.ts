@@ -13,4 +13,7 @@ export {
   dayOfWeekInTz,
   civilDaysBetween,
   isoDateInTz,
+  todayInTz,
+  wallClockInTz,
+  instantFromWallClock,
 } from './tz.js';

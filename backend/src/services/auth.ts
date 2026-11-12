@@ -153,16 +153,18 @@ export async function loginWithPassword(
  * flip creds without also knowing the password.
  *
  * On success: writes the new bcrypt hash, revokes every refresh token
- * for the user so other sessions are forced to re-login, and records
- * a `password_change` auth event. The caller's current access token
- * stays valid until expiry (15 min) to keep this API a single call
- * instead of forcing the caller to re-login immediately.
+ * for the user except `keepRefreshToken` (the caller's own session, when
+ * supplied) so other sessions are forced to re-login, and records a
+ * `password_change` auth event. Without `keepRefreshToken` every session
+ * ends, the caller's included: its access token lives out its 15 minutes
+ * and the next refresh fails.
  */
 export async function changePassword(
   userId: number,
   currentPassword: string,
   newPassword: string,
   ctx: RequestContext,
+  keepRefreshToken?: string | null,
 ): Promise<void> {
   if (newPassword === currentPassword) {
     throw BadRequest('New password must differ from the current one');
@@ -191,7 +193,7 @@ export async function changePassword(
 
   // Revoke other sessions — stale refresh tokens from the pre-change
   // state become unusable on their next rotation attempt.
-  await revokeAllForUser(userId);
+  await revokeAllForUser(userId, { exceptToken: keepRefreshToken });
 
   await recordAuthEvent({
     eventType: 'password_change',
@@ -206,12 +208,14 @@ export async function changePassword(
  * calls this gates on the session having been minted via magic-link,
  * so the caller has already proved ownership of the account's email
  * or phone within the last 15 minutes. Forgotten-password recovery
- * flow.
+ * flow. `keepRefreshToken` as on changePassword; the reset page omits it
+ * and signs the person out.
  */
 export async function setPasswordAfterMagicLink(
   userId: number,
   newPassword: string,
   ctx: RequestContext,
+  keepRefreshToken?: string | null,
 ): Promise<void> {
   const user = await findUserById(userId);
   if (!user) throw NotFound('User not found');
@@ -226,7 +230,7 @@ export async function setPasswordAfterMagicLink(
     updated_at: db.fn.now(),
   });
 
-  await revokeAllForUser(userId);
+  await revokeAllForUser(userId, { exceptToken: keepRefreshToken });
 
   await recordAuthEvent({
     eventType: 'password_change',

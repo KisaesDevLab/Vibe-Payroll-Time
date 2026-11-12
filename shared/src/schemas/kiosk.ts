@@ -1,6 +1,7 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { z } from 'zod';
+import { timeEntrySchema } from './punch.js';
 
 // ---------------------------------------------------------------------------
 // Admin-facing (manage paired devices, issue pairing codes)
@@ -71,6 +72,9 @@ export const kioskMeResponseSchema = z.object({
   companyName: z.string(),
   kioskAuthMode: z.enum(['pin', 'qr', 'both']),
   lunchPromptEnabled: z.boolean(),
+  /** The company's default hours display (`company_settings.time_format_default`).
+   *  A shared tablet has no user preference, so this is what it renders. */
+  timeFormat: z.enum(['decimal', 'hhmm']),
 });
 export type KioskMeResponse = z.infer<typeof kioskMeResponseSchema>;
 
@@ -99,3 +103,12 @@ export const kioskEmployeeContextSchema = z.object({
   todayWorkSeconds: z.number().int().nonnegative(),
 });
 export type KioskEmployeeContext = z.infer<typeof kioskEmployeeContextSchema>;
+
+/** Kiosk clock-out: the closed entry plus the employee's worked time for
+ *  the company-timezone day, computed after the close so the confirmation
+ *  screen can show it (lunch deduction and the just-closed shift included). */
+export const kioskClockOutResponseSchema = timeEntrySchema.extend({
+  /** Absent only if the read failed after the clock-out committed. */
+  todayWorkSeconds: z.number().int().nonnegative().optional(),
+});
+export type KioskClockOutResponse = z.infer<typeof kioskClockOutResponseSchema>;

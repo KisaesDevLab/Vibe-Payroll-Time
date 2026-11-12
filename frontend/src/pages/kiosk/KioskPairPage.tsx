@@ -1,10 +1,10 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../lib/api';
-import { kioskApi } from '../../lib/kiosk-api';
+import { dropUserSessionForKiosk, kioskApi } from '../../lib/kiosk-api';
 import { kioskStore } from '../../lib/kiosk-store';
 import { KioskButton, KioskField } from './kiosk-ui';
 
@@ -21,9 +21,16 @@ export function KioskPairPage() {
   const [code, setCode] = useState('');
   const [deviceName, setDeviceName] = useState(DEFAULT_NAME);
 
+  // Pairing turns this device into a shared kiosk: no one's sign-in may
+  // survive it (the admin who paired it included).
+  useEffect(() => {
+    void dropUserSessionForKiosk();
+  }, []);
+
   const pair = useMutation({
     mutationFn: () => kioskApi.pair({ code, deviceName }),
     onSuccess: async (data) => {
+      await dropUserSessionForKiosk();
       kioskStore.set({
         deviceToken: data.deviceToken,
         deviceId: data.device.id,

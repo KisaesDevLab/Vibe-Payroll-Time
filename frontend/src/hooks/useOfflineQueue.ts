@@ -1,15 +1,38 @@
 // Copyright 2026 Kisaes LLC
 // SPDX-License-Identifier: MIT
-import { useEffect, useState } from 'react';
-import { drainQueue, queueSize, subscribeQueueSize } from '../lib/offline-queue';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  dismissRejected,
+  drainQueue,
+  listPendingFor,
+  listRejectedFor,
+  subscribeQueue,
+  type QueuedPunch,
+  type RejectedPunch,
+} from '../lib/offline-queue';
+import { useSession } from './useSession';
 
-export function useOfflineQueue(): {
+/**
+ * The signed-in user's slice of the offline punch queue: pending punches
+ * (optionally for one company), punches the server rejected, and the
+ * browser's online flag. Re-reads whenever the queue changes.
+ */
+export function useOfflineQueue(companyId?: number | null): {
   online: boolean;
   pending: number;
+  pendingItems: QueuedPunch[];
+  rejected: RejectedPunch[];
+  /** False until the first read from IndexedDB completes. */
+  loaded: boolean;
   sync: () => Promise<void>;
+  dismiss: (id: number) => Promise<void>;
 } {
+  const session = useSession();
+  const userId = session?.user.id ?? null;
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
-  const [pending, setPending] = useState(0);
+  const [pendingItems, setPendingItems] = useState<QueuedPunch[]>([]);
+  const [rejected, setRejected] = useState<RejectedPunch[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -24,21 +47,47 @@ export function useOfflineQueue(): {
 
   useEffect(() => {
     let alive = true;
-    queueSize().then((n) => {
-      if (alive) setPending(n);
-    });
-    const unsub = subscribeQueueSize((n) => {
-      if (alive) setPending(n);
-    });
+    if (userId == null) {
+      setPendingItems([]);
+      setRejected([]);
+      setLoaded(true);
+      return;
+    }
+    const load = () => {
+      Promise.all([listPendingFor(userId, companyId), listRejectedFor(userId)])
+        .then(([p, r]) => {
+          if (!alive) return;
+          setPendingItems(p);
+          setRejected(r);
+          setLoaded(true);
+        })
+        .catch(() => {
+          // IndexedDB unavailable (private mode on some browsers): show nothing queued.
+          if (alive) setLoaded(true);
+        });
+    };
+    load();
+    const unsub = subscribeQueue(load);
     return () => {
       alive = false;
       unsub();
     };
+  }, [userId, companyId]);
+
+  const sync = useCallback(async () => {
+    await drainQueue().catch(() => undefined);
+  }, []);
+  const dismiss = useCallback(async (id: number) => {
+    await dismissRejected(id).catch(() => undefined);
   }, []);
 
-  const sync = async () => {
-    await drainQueue();
+  return {
+    online,
+    pending: pendingItems.length,
+    pendingItems,
+    rejected,
+    loaded,
+    sync,
+    dismiss,
   };
-
-  return { online, pending, sync };
 }
